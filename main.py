@@ -52,7 +52,6 @@ from astrbot.api import logger
 
 from astrbot.api.all import *
 from astrbot.api.event import filter
-from astrbot.api.event import EventMessageType
 
 from astrbot.core.message.components import Plain, At, AtAll
 from astrbot.core.message.message_event_result import MessageChain
@@ -677,7 +676,7 @@ class ChatPlus(Star):
     # 指令过滤与重置指令
     # ============================================================
 
-    @filter.event_message_type(EventMessageType.ALL, priority=sys.maxsize - 1)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=sys.maxsize - 1)
     async def command_filter_handler(self, event: AstrMessageEvent):
         """
         指令过滤处理器（超高优先级）
@@ -1114,7 +1113,7 @@ class ChatPlus(Star):
     # 群消息入口
     # ============================================================
 
-    @event_message_type(EventMessageType.GROUP_MESSAGE, priority=-1)
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE, priority=-1)
     async def on_group_message(self, event: AstrMessageEvent):
         """
         群消息事件监听
