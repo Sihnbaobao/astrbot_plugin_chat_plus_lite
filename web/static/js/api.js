@@ -115,10 +115,7 @@ const Api = {
     reloadPlugin(config)     { return this.post('/api/config/reload', config ? { config } : {}); },
 
     dataSessions()           { return this.get('/api/data/sessions'); },
-    dataAttention(session, options = {})   { return this.get(`/api/data/attention/${encodeURIComponent(session)}`, options); },
-    dataMood(session, options = {})        { return this.get(`/api/data/mood/${encodeURIComponent(session)}`, options); },
     dataProbability(session, options = {}) { return this.get(`/api/data/probability/${encodeURIComponent(session)}`, options); },
-    dataProactive(options = {})            { return this.get('/api/data/proactive', options); },
     dataOverview(options = {})             { return this.get('/api/data/overview', options); },
     dataStatus()             { return this.get('/api/data/status'); },
 

@@ -120,7 +120,7 @@
     opacity: 0.8;
 }
 
-/* Step alternative branch paths (e.g. complaint system) */
+/* Step alternative branch paths */
 .step-branch-path {
     fill: none;
     stroke: var(--accent-orange);

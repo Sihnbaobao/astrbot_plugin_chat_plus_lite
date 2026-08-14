@@ -137,7 +137,7 @@ const ConfigEditor = {
             const sharedMeta = isShared ? {
                 isShared: true,
                 badgeText: sharedConfig.badgeText || '共用',
-                note: sharedConfig.fieldNote || '此项属于共享配置，修改后会同步影响读空气AI、主动对话判断AI、频率判断AI。'
+                note: sharedConfig.fieldNote || '此项属于共享配置，修改后会在多个使用该配置的节点之间同步生效。'
             } : null;
             const explicitFieldMeta = fieldMetaMap[key] || null;
             const fieldMeta = this._getEffectiveFieldMeta(node, key, sharedMeta, explicitFieldMeta);

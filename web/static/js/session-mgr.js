@@ -180,7 +180,7 @@ const SessionMgr = {
 
         const storageHint = document.createElement('div');
         storageHint.style.cssText = 'font-size:12px;color:var(--text-secondary);line-height:1.7;';
-        storageHint.innerHTML = '同一批真实会话的两种表示：<strong>聊天记录文件</strong>来自 <code>chat_history/...</code>，<strong>运行时状态</strong>来自当前内存。「重置」按钮仅清除运行时状态（注意力、情绪、概率等），<strong>不会删除聊天记录文件</strong>；重置后插件自动重载使清理生效。「清理孤立记录」仅删除没有对应运行时状态的残留文件。';
+        storageHint.innerHTML = '同一批真实会话的两种表示：<strong>聊天记录文件</strong>来自 <code>chat_history/...</code>，<strong>运行时状态</strong>来自当前内存。「重置」按钮仅清除运行时状态（概率等），<strong>不会删除聊天记录文件</strong>；重置后插件自动重载使清理生效。「清理孤立记录」仅删除没有对应运行时状态的残留文件。';
         header.appendChild(storageHint);
         container.appendChild(header);
 
@@ -420,9 +420,7 @@ const SessionMgr = {
         const tabBar = document.createElement('div');
         tabBar.className = 'tab-bar';
         const tabs = [
-            { id: 'attention', label: '注意力' },
             { id: 'probability', label: '概率' },
-            { id: 'proactive', label: '主动对话' },
             { id: 'runtime', label: '运行时状态' },
             { id: 'history', label: '聊天记录' },
         ];
@@ -445,23 +443,11 @@ const SessionMgr = {
         container.appendChild(tabBar);
 
         // Tab 内容
-        const tabAttention = document.createElement('div');
-        tabAttention.className = 'tab-content';
-        tabAttention.id = 'tab-attention';
-        this._renderAttentionTab(tabAttention, d);
-        container.appendChild(tabAttention);
-
         const tabProb = document.createElement('div');
-        tabProb.className = 'tab-content hidden';
+        tabProb.className = 'tab-content';
         tabProb.id = 'tab-probability';
         this._renderProbabilityTab(tabProb, d);
         container.appendChild(tabProb);
-
-        const tabProactive = document.createElement('div');
-        tabProactive.className = 'tab-content hidden';
-        tabProactive.id = 'tab-proactive';
-        this._renderProactiveTab(tabProactive, d);
-        container.appendChild(tabProactive);
 
         const tabRuntime = document.createElement('div');
         tabRuntime.className = 'tab-content hidden';
@@ -479,22 +465,9 @@ const SessionMgr = {
 
     /** 渲染概览卡片 */
     _renderOverviewCards(container, d) {
-        const mood = d.mood || {};
-        const density = d.reply_density || {};
-        const activity = d.conversation_activity || {};
         const items = [
-            { label: '追踪用户', value: d.attention?.user_count || 0, id: 'ov-users' },
-            { label: '当前情绪', value: mood.current_mood || '无', id: 'ov-mood' },
-            { label: '情绪强度', value: typeof mood.intensity === 'number' ? mood.intensity.toFixed(2) : '-', id: 'ov-intensity' },
             { label: '消息缓存', value: d.message_cache_count || 0, id: 'ov-cache' },
             { label: '处理中', value: d.is_processing ? '是' : '否', id: 'ov-processing' },
-            { label: '主动处理', value: d.proactive_processing ? '是' : '否', id: 'ov-pro-proc' },
-            { label: '等待窗口', value: (d.wait_windows || []).length, id: 'ov-wait' },
-            { label: '正式冷却', value: (d.cooldowns || []).length, id: 'ov-cooldown' },
-            { label: '待冷却', value: (d.pending_cooldowns || []).length, id: 'ov-pending-cooldown' },
-            { label: '疲劳锁定', value: (d.fatigue_blocks || []).length, id: 'ov-fatigue' },
-            { label: '回复密度', value: density.reply_count !== undefined ? `${density.reply_count}/${density.max_replies || '-'}` : '-', id: 'ov-density' },
-            { label: '活跃度', value: typeof activity.activity_score === 'number' ? activity.activity_score.toFixed(2) : '-', id: 'ov-activity' },
             { label: '记录文件', value: d.chat_history_file?.exists ? Utils.formatSize(d.chat_history_file.file_size || 0) : '无', id: 'ov-file' },
         ];
         container.innerHTML = '';
@@ -508,68 +481,31 @@ const SessionMgr = {
         });
     },
 
-    /** 渲染注意力标签页 */
-    _renderAttentionTab(container, d) {
-        const users = d.attention?.users || [];
-        container.innerHTML = '';
-        if (!users.length) {
-            container.innerHTML = '<div class="chart-empty">暂无注意力数据</div>';
-            return;
-        }
-        const table = document.createElement('table');
-        table.className = 'data-table';
-        table.id = 'attention-table';
-        table.innerHTML = `<thead><tr>
-            <th>用户</th><th>注意力</th><th>情感</th><th>交互次</th><th>空闲</th><th>最近消息</th>
-        </tr></thead>`;
-        const tbody = document.createElement('tbody');
-        users.forEach(u => {
-            const tr = document.createElement('tr');
-            tr.dataset.uid = u.user_id;
-            const pct = Math.min(100, Math.round((u.attention_score || 0) * 100));
-            tr.innerHTML = `
-                <td style="font-family:monospace;font-size:11px;">${Utils.escapeHtml(u.user_id)}</td>
-                <td><div class="gauge-bar" style="width:80px;"><div class="gauge-bar-fill" style="width:${pct}%"></div></div>
-                    <span style="font-size:10px;margin-left:4px;">${(u.attention_score||0).toFixed(2)}</span></td>
-                <td>${(u.emotion||0).toFixed(2)}</td>
-                <td>${u.interaction_count||0}</td>
-                <td>${Utils.formatDuration(u.idle_seconds||0)}</td>
-                <td><span style="display:block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${Utils.escapeHtml(Utils.truncate(u.preview||'', 40))}</span></td>`;
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-        container.appendChild(table);
-    },
-
     /** 渲染概率标签页 */
     _renderProbabilityTab(container, d) {
         const p = d.probability || {};
         container.innerHTML = '';
 
-        const isTraditional = (p.mode || 'traditional') === 'traditional';
-        const modeLabel = isTraditional ? '传统模式' : '注意力模式';
-
         const items = [
             { label: '基础概率', value: p.initial_probability, color: '' },
+            { label: '回复后概率', value: p.after_reply_probability, color: 'green' },
         ];
-        if (isTraditional) {
-            items.push({ label: '回复后概率', value: p.after_reply_probability, color: 'green' });
-        }
-        if (p.frequency_adjusted_probability !== undefined) {
-            items.push({ label: '频率调整后', value: p.frequency_adjusted_probability, color: 'orange' });
-        }
-        if (p.temp_boost) {
+        if (p.reply_boost) {
             items.push({
-                label: `临时提升 (${p.temp_boost.remaining_seconds}s)`,
-                value: p.temp_boost.value, color: 'purple'
+                label: `回复提升 (${p.reply_boost.remaining_seconds}s)`,
+                value: p.reply_boost.value, color: 'purple'
+            });
+        }
+        if (p.base_override) {
+            items.push({
+                label: `基础覆盖 (${p.base_override.remaining_seconds}s)`,
+                value: p.base_override.value, color: 'orange'
             });
         }
 
         const note = document.createElement('div');
         note.style.cssText = 'font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6;';
-        note.innerHTML = isTraditional
-            ? `当前为<strong>${modeLabel}</strong>：成功回复后会在 <strong>${p.probability_duration || 0}s</strong> 内为整个会话临时提高概率；该提升不区分用户，并且再次成功回复会刷新计时。`
-            : `当前为<strong>${modeLabel}</strong>：回复后概率提升已由注意力机制接管，<strong>after_reply_probability</strong> 不再参与当前会话计算。`;
+        note.innerHTML = `成功回复后会在 <strong>${p.probability_duration || 0}s</strong> 内为整个会话临时提高回复概率；该提升不区分用户，并且再次成功回复会刷新计时。`;
         container.appendChild(note);
 
         const grid = document.createElement('div');
@@ -589,56 +525,6 @@ const SessionMgr = {
             grid.appendChild(row);
         });
         container.appendChild(grid);
-    },
-
-    /** 渲染主动对话标签页 */
-    _renderProactiveTab(container, d) {
-        const p = d.proactive || {};
-        container.innerHTML = '';
-
-        if (!Object.keys(p).length) {
-            container.innerHTML = '<div class="chart-empty">暂无主动对话数据</div>';
-            return;
-        }
-
-        const isActive = p.proactive_active || false;
-        const cooldown = p.cooldown_remaining || 0;
-        const totalSuccess = p.successful_interactions || 0;
-        const totalFailure = p.failed_interactions || 0;
-        const total = totalSuccess + totalFailure;
-        const rate = total > 0 ? ((totalSuccess / total) * 100).toFixed(1) : '0.0';
-        const score = typeof p.interaction_score === 'number' ? p.interaction_score.toFixed(1) : '-';
-
-        const wrap = document.createElement('div');
-        wrap.id = 'proactive-data';
-        wrap.innerHTML = `
-            <div class="detail-cards" style="margin-bottom:16px;">
-                <div class="detail-card">
-                    <div class="stat-value">${isActive ? '<span style="color:var(--accent-green);">活跃</span>' : '<span style="color:var(--text-muted);">不活跃</span>'}</div>
-                    <div class="stat-label">状态</div>
-                </div>
-                <div class="detail-card">
-                    <div class="stat-value">${cooldown > 0 ? Utils.formatDuration(cooldown) : '无'}</div>
-                    <div class="stat-label">冷却剩余</div>
-                </div>
-                <div class="detail-card">
-                    <div class="stat-value">${totalSuccess}</div>
-                    <div class="stat-label">成功次数</div>
-                </div>
-                <div class="detail-card">
-                    <div class="stat-value">${totalFailure}</div>
-                    <div class="stat-label">失败次数</div>
-                </div>
-                <div class="detail-card">
-                    <div class="stat-value">${rate}%</div>
-                    <div class="stat-label">成功率</div>
-                </div>
-                <div class="detail-card">
-                    <div class="stat-value">${score}</div>
-                    <div class="stat-label">交互评分</div>
-                </div>
-            </div>`;
-        container.appendChild(wrap);
     },
 
     /** 渲染运行时状态标签页 */
@@ -669,152 +555,6 @@ const SessionMgr = {
             cacheSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无待处理缓存消息</div>';
         }
         wrap.appendChild(cacheSection);
-
-        // 等待窗口
-        const waitWindows = d.wait_windows || [];
-        const waitSection = document.createElement('div');
-        waitSection.innerHTML = `<h4 style="margin:0 0 8px;font-size:13px;color:var(--text-secondary);">等待窗口 (${waitWindows.length})</h4>`;
-        if (waitWindows.length) {
-            const waitList = document.createElement('div');
-            waitList.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
-            waitWindows.forEach(w => {
-                const item = document.createElement('div');
-                item.style.cssText = 'padding:6px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:12px;display:flex;justify-content:space-between;';
-                item.innerHTML = `<span>用户: ${Utils.escapeHtml(w.user_id)}</span>` +
-                    `<span>额外消息: ${w.extra_count}</span>` +
-                    `<span>剩余: ${w.remaining}s</span>`;
-                waitList.appendChild(item);
-            });
-            waitSection.appendChild(waitList);
-        } else {
-            waitSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无活跃等待窗口</div>';
-        }
-        wrap.appendChild(waitSection);
-
-        // 正式冷却 / 待冷却
-        const cooldowns = d.cooldowns || [];
-        const pendingCooldowns = d.pending_cooldowns || [];
-        const coolSection = document.createElement('div');
-        coolSection.innerHTML = `<h4 style="margin:0 0 8px;font-size:13px;color:var(--text-secondary);">正式冷却用户 (${cooldowns.length})</h4>`;
-        coolSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">正式冷却会冻结该用户的注意力增长；若用户已不在注意力追踪列表中，会被自动移出冷却名单。</div>';
-        if (cooldowns.length) {
-            const table = document.createElement('table');
-            table.className = 'data-table';
-            table.innerHTML = `<thead><tr><th>用户</th><th>名称</th><th>剩余</th><th>原因</th></tr></thead>`;
-            const tbody = document.createElement('tbody');
-            cooldowns.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td style="font-family:monospace;font-size:11px;">${Utils.escapeHtml(c.user_id)}</td>` +
-                    `<td>${Utils.escapeHtml(c.user_name || '-')}</td>` +
-                    `<td>${Utils.formatDuration(c.remaining || 0)}</td>` +
-                    `<td>${Utils.escapeHtml(c.reason || '-')}</td>`;
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
-            coolSection.appendChild(table);
-        } else {
-            coolSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无正式冷却用户</div>';
-        }
-        wrap.appendChild(coolSection);
-
-        const pendingSection = document.createElement('div');
-        pendingSection.innerHTML = `<h4 style="margin:12px 0 8px;font-size:13px;color:var(--text-secondary);">待冷却用户 (${pendingCooldowns.length})</h4>`;
-        pendingSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">待冷却只观察同一用户自己的后续消息；如果该用户已经不在注意力追踪列表中，会直接从待冷却名单移除，不再推进到正式冷却。</div>';
-        if (pendingCooldowns.length) {
-            const table = document.createElement('table');
-            table.className = 'data-table';
-            table.innerHTML = `<thead><tr><th>用户</th><th>名称</th><th>剩余</th><th>观察</th><th>原因</th></tr></thead>`;
-            const tbody = document.createElement('tbody');
-            pendingCooldowns.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td style="font-family:monospace;font-size:11px;">${Utils.escapeHtml(c.user_id)}</td>` +
-                    `<td>${Utils.escapeHtml(c.user_name || '-')}</td>` +
-                    `<td>${Utils.formatDuration(c.remaining || 0)}</td>` +
-                    `<td>${Utils.escapeHtml(`${c.consumed_user_messages || 0}/${c.grace_message_budget || 0}`)}</td>` +
-                    `<td>${Utils.escapeHtml(c.reason || '-')}</td>`;
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
-            pendingSection.appendChild(table);
-        } else {
-            pendingSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无待冷却用户</div>';
-        }
-        wrap.appendChild(pendingSection);
-
-        // 疲劳锁定
-        const fatigueBlocks = d.fatigue_blocks || [];
-        const fatigueSection = document.createElement('div');
-        fatigueSection.innerHTML = `<h4 style="margin:0 0 8px;font-size:13px;color:var(--text-secondary);">疲劳锁定 (${fatigueBlocks.length})</h4>`;
-        if (fatigueBlocks.length) {
-            const table = document.createElement('table');
-            table.className = 'data-table';
-            table.innerHTML = `<thead><tr><th>用户</th><th>疲劳等级</th><th>锁定时间</th></tr></thead>`;
-            const tbody = document.createElement('tbody');
-            fatigueBlocks.forEach(f => {
-                const tr = document.createElement('tr');
-                const levelColor = f.fatigue_level === 'heavy' ? 'var(--accent-red)' :
-                    f.fatigue_level === 'medium' ? 'var(--accent-orange)' : 'var(--text-muted)';
-                tr.innerHTML = `<td style="font-family:monospace;font-size:11px;">${Utils.escapeHtml(f.user_id)}</td>` +
-                    `<td><span style="color:${levelColor};">${Utils.escapeHtml(f.fatigue_level || '-')}</span></td>` +
-                    `<td>${f.blocked_at ? Utils.formatTime(f.blocked_at) : '-'}</td>`;
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
-            fatigueSection.appendChild(table);
-        } else {
-            fatigueSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无疲劳锁定</div>';
-        }
-        wrap.appendChild(fatigueSection);
-
-        // 回复密度
-        const density = d.reply_density || {};
-        const densitySection = document.createElement('div');
-        densitySection.innerHTML = `<h4 style="margin:0 0 8px;font-size:13px;color:var(--text-secondary);">回复密度</h4>`;
-        if (Object.keys(density).length) {
-            const ratio = density.density_ratio || 0;
-            const pct = Math.min(100, Math.round(ratio * 100));
-            densitySection.innerHTML += `
-                <div style="display:flex;gap:16px;font-size:12px;margin-bottom:8px;">
-                    <span>窗口回复: ${density.reply_count || 0} / ${density.max_replies || '-'}</span>
-                    <span>窗口: ${density.window_minutes || '-'} 分钟</span>
-                    <span>密度: ${(ratio * 100).toFixed(1)}%</span>
-                </div>
-                <div class="gauge-bar" style="height:10px;">
-                    <div class="gauge-bar-fill ${pct > 80 ? 'red' : pct > 50 ? 'orange' : ''}" style="width:${pct}%"></div>
-                </div>`;
-        } else {
-            densitySection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无回复密度数据</div>';
-        }
-        wrap.appendChild(densitySection);
-
-        // 会话活跃度
-        const activity = d.conversation_activity || {};
-        const actSection = document.createElement('div');
-        actSection.innerHTML = `<h4 style="margin:0 0 8px;font-size:13px;color:var(--text-secondary);">会话活跃度</h4>`;
-        if (Object.keys(activity).length) {
-            actSection.innerHTML += `
-                <div class="detail-cards" style="margin:0;">
-                    <div class="detail-card">
-                        <div class="stat-value">${(activity.activity_score || 0).toFixed(2)}</div>
-                        <div class="stat-label">活跃度</div>
-                    </div>
-                    <div class="detail-card">
-                        <div class="stat-value">${Utils.escapeHtml(activity.peak_user_name || activity.peak_user_id || '-')}</div>
-                        <div class="stat-label">最高注意力用户</div>
-                    </div>
-                    <div class="detail-card">
-                        <div class="stat-value">${(activity.peak_attention || 0).toFixed(2)}</div>
-                        <div class="stat-label">最高注意力</div>
-                    </div>
-                    <div class="detail-card">
-                        <div class="stat-value">${activity.last_bot_reply ? Utils.formatTime(activity.last_bot_reply) : '-'}</div>
-                        <div class="stat-label">最后回复</div>
-                    </div>
-                </div>`;
-        } else {
-            actSection.innerHTML += '<div style="font-size:12px;color:var(--text-muted);">无活跃度数据</div>';
-        }
-        wrap.appendChild(actSection);
 
         // 最近回复缓存
         const recentCount = d.recent_replies_count || 0;
@@ -1072,26 +812,9 @@ const SessionMgr = {
     /** 更新详情数据（增量更新 + 高亮变化） */
     _updateDetailData(container, d, prev) {
         // 更新概览卡片
-        const density = d.reply_density || {};
-        const prevDensity = prev.reply_density || {};
-        const activity = d.conversation_activity || {};
-        const prevActivity = prev.conversation_activity || {};
         const updates = [
-            ['ov-users', d.attention?.user_count || 0, prev.attention?.user_count || 0],
-            ['ov-mood', d.mood?.current_mood || '无', prev.mood?.current_mood || '无'],
-            ['ov-intensity', typeof d.mood?.intensity === 'number' ? d.mood.intensity.toFixed(2) : '-',
-             typeof prev.mood?.intensity === 'number' ? prev.mood.intensity.toFixed(2) : '-'],
             ['ov-cache', d.message_cache_count || 0, prev.message_cache_count || 0],
             ['ov-processing', d.is_processing ? '是' : '否', prev.is_processing ? '是' : '否'],
-            ['ov-pro-proc', d.proactive_processing ? '是' : '否', prev.proactive_processing ? '是' : '否'],
-            ['ov-wait', (d.wait_windows || []).length, (prev.wait_windows || []).length],
-            ['ov-cooldown', (d.cooldowns || []).length, (prev.cooldowns || []).length],
-            ['ov-pending-cooldown', (d.pending_cooldowns || []).length, (prev.pending_cooldowns || []).length],
-            ['ov-fatigue', (d.fatigue_blocks || []).length, (prev.fatigue_blocks || []).length],
-            ['ov-density', density.reply_count !== undefined ? `${density.reply_count}/${density.max_replies || '-'}` : '-',
-             prevDensity.reply_count !== undefined ? `${prevDensity.reply_count}/${prevDensity.max_replies || '-'}` : '-'],
-            ['ov-activity', typeof activity.activity_score === 'number' ? activity.activity_score.toFixed(2) : '-',
-             typeof prevActivity.activity_score === 'number' ? prevActivity.activity_score.toFixed(2) : '-'],
         ];
         updates.forEach(([id, newVal, oldVal]) => {
             const el = document.getElementById(id);
@@ -1101,20 +824,10 @@ const SessionMgr = {
             }
         });
 
-        // 更新注意力表格
-        const attnTab = document.getElementById('tab-attention');
-        if (attnTab && !attnTab.classList.contains('hidden')) {
-            this._renderAttentionTab(attnTab, d);
-        }
         // 更新概率
         const probTab = document.getElementById('tab-probability');
         if (probTab && !probTab.classList.contains('hidden')) {
             this._renderProbabilityTab(probTab, d);
-        }
-        // 更新主动对话
-        const proactiveTab = document.getElementById('tab-proactive');
-        if (proactiveTab && !proactiveTab.classList.contains('hidden')) {
-            this._renderProactiveTab(proactiveTab, d);
         }
         // 更新运行时状态
         const runtimeTab = document.getElementById('tab-runtime');
@@ -1163,7 +876,7 @@ const SessionMgr = {
 
     /** 重置会话数据，随后触发插件重载使清理完全生效。 */
     async _resetSession(sessionId) {
-        const ok = await Utils.confirm(`确认重置会话「${sessionId}」的插件数据？\n将清除注意力、情绪、概率等运行时状态，重置后插件会自动重载。`);
+        const ok = await Utils.confirm(`确认重置会话「${sessionId}」的插件数据？\n将清除概率等运行时状态，重置后插件会自动重载。`);
         if (!ok) return;
         const res = await Api.sessionReset(sessionId);
         if (res.ok) {

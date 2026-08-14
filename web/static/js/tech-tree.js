@@ -558,29 +558,8 @@ const TechTree = {
                 labelY = my + offsetY;
             }
             
-            // 特殊处理："情绪状态影响"标签需要沿曲线下移
-            if (labelText.includes('情绪状态')) {
-                // 曲线从 (x1,y1) 到 (x2,y2)，中间水平段在 my
-                // 我们希望标签在曲线的下半段（从水平段向终点的过渡区域）
-                
-                // 计算曲线上 t=0.7 位置的点（70%处，接近终点但还在曲线上）
-                // 贝塞尔曲线公式: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
-                // P0=(x1,y1), P1=(x1+30,my), P2=(x2-30,my), P3=(x2,y2)
-                const t = 0.65; // 65%位置
-                const t1 = 1 - t;
-                const P0x = x1, P0y = y1;
-                const P1x = x1 + curveOffset, P1y = my;
-                const P2x = x2 - curveOffset, P2y = my;
-                const P3x = x2, P3y = y2;
-                
-                labelX = t1*t1*t1*P0x + 3*t1*t1*t*P1x + 3*t1*t*t*P2x + t*t*t*P3x;
-                labelY = t1*t1*t1*P0y + 3*t1*t1*t*P1y + 3*t1*t*t*P2y + t*t*t*P3y;
-                
-                console.log(`特殊处理"情绪状态"标签，沿曲线定位 t=${t}, X=${labelX.toFixed(1)}, Y=${labelY.toFixed(1)}`);
-            }
-            
-            // 特殊处理："内容过滤、打字错误、回复延迟"标签需要向右移动
-            if (labelText.includes('内容过滤') || labelText.includes('打字错误') || labelText.includes('回复延迟')) {
+            // 特殊处理："内容过滤"标签需要向右移动
+            if (labelText.includes('内容过滤')) {
                 // 这个标签应该在它自己的曲线上，向右偏移以区分
                 labelX = labelX + 160; // 向右移动160px
                 console.log(`特殊处理"共用处理"标签，X向右偏移至 ${labelX.toFixed(1)}`);
@@ -826,7 +805,7 @@ const TechTree = {
                 this._renderFailBranch(gSteps, pos, step, svgNS);
             }
 
-            // 绘制替代分支线（如吐槽系统）
+            // 绘制替代分支线
             if (step.branchType === 'alternative' && i > 0) {
                 this._renderAlternativeBranch(gSteps, layout[i - 1], pos, step, svgNS);
             }
@@ -901,7 +880,7 @@ const TechTree = {
         gSteps.appendChild(text);
     },
 
-    /** 渲染替代分支线（如吐槽系统：从公共入口点分叉，两条并行路径） */
+    /** 渲染替代分支线（从公共入口点分叉，两条并行路径） */
     _renderAlternativeBranch(gSteps, prevPos, pos, step, svgNS) {
         const label = step.branchLabel || '替代路径';
 
@@ -1237,7 +1216,7 @@ const TechTree = {
             return;
         }
 
-        // Disabled steps (e.g. private pipeline not yet available)
+        // Disabled steps (not available in current version)
         if (step.disabled) {
             body.innerHTML = '';
             const hint = document.createElement('div');

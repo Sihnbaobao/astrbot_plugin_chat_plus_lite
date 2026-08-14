@@ -1265,18 +1265,6 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
             if plat and ctype:
                 cid_map.setdefault(cid, set()).add(key)
 
-        # 复合 key 运行时来源
-        for key in self._safe_get_attention_map():
-            _add(key)
-        for key in self._safe_get_proactive_states():
-            _add(key)
-        if (
-            hasattr(self.plugin, "frequency_adjuster")
-            and self.plugin.frequency_adjuster
-        ):
-            if hasattr(self.plugin.frequency_adjuster, "check_states"):
-                for key in self.plugin.frequency_adjuster.check_states:
-                    _add(key)
         # 文件来源
         chat_dir = self.data_dir / "chat_history"
         if chat_dir.exists():
@@ -1301,25 +1289,10 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
         上层调用者根据需要自行规范化。
         """
         sessions = set()
-        # 注意力数据
-        for key in self._safe_get_attention_map():
-            sessions.add(key)
-        # 主动对话状态
-        for key in self._safe_get_proactive_states():
-            sessions.add(key)
-        # 主动对话处理中会话
-        if hasattr(self.plugin, "proactive_processing_sessions"):
-            for key in self.plugin.proactive_processing_sessions:
-                sessions.add(key)
         # 处理中会话
         if hasattr(self.plugin, "processing_sessions"):
             for chat_id in self.plugin.processing_sessions.values():
                 sessions.add(chat_id)
-        # 情绪追踪
-        if hasattr(self.plugin, "mood_tracker") and self.plugin.mood_tracker:
-            if hasattr(self.plugin.mood_tracker, "moods"):
-                for key in self.plugin.mood_tracker.moods:
-                    sessions.add(key)
         # 待转存消息缓存
         if hasattr(self.plugin, "pending_messages_cache"):
             for key in self.plugin.pending_messages_cache:
@@ -1327,20 +1300,6 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
         # 最近回复缓存
         if hasattr(self.plugin, "recent_replies_cache"):
             for key in self.plugin.recent_replies_cache:
-                sessions.add(key)
-        # 等待窗口
-        if hasattr(self.plugin, "_group_wait_windows"):
-            for key in self.plugin._group_wait_windows:
-                if isinstance(key, tuple) and len(key) == 2:
-                    chat_id, _user_id = key
-                    sessions.add(str(chat_id))
-        # 频率调整器
-        if (
-            hasattr(self.plugin, "frequency_adjuster")
-            and self.plugin.frequency_adjuster
-            and hasattr(self.plugin.frequency_adjuster, "check_states")
-        ):
-            for key in self.plugin.frequency_adjuster.check_states:
                 sessions.add(key)
         # 防御性过滤：排除无效 key（空字符串、None、纯空白等），防止幽灵会话
         filtered = set()
@@ -2255,18 +2214,6 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
 
     # ==================== 数据 Handler ====================
 
-    def _safe_get_attention_map(self) -> dict:
-        """安全获取注意力数据（重构后注意力机制已移除，返回空）"""
-        return {}
-
-    def _safe_get_proactive_states(self) -> dict:
-        """安全获取主动对话状态（重构后主动对话已移除，返回空）"""
-        return {}
-
-    def _safe_get_proactive_boost(self) -> dict:
-        """安全获取临时概率提升状态（重构后已移除，返回空）"""
-        return {}
-
     async def _handle_data_sessions(self, request: web.Request):
         """列出所有已知会话，返回 canonical compound key 列表"""
         cid_map = self._build_chat_id_to_compound_map()
@@ -2302,59 +2249,18 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
         return None
 
     async def _handle_data_attention(self, request: web.Request):
-        """获取会话注意力数据"""
+        """获取会话注意力数据（重构后注意力机制已移除，返回空）"""
         session = request.match_info["session"]
         if not session or not _SAFE_SESSION_RE.match(session):
             return web.json_response({"ok": False, "msg": "无效的会话名称"}, status=400)
-        _sn = self._safe_num
-        attention_map = self._safe_get_attention_map()
-        users_data = self._find_in_dict_by_chat_id(attention_map, session) or {}
-
-        result = []
-        import time as _time
-
-        now = _time.time()
-        for uid, profile in users_data.items():
-            if not isinstance(profile, dict):
-                continue
-            result.append(
-                {
-                    "user_id": str(uid),
-                    "attention_score": _sn(
-                        profile.get("attention_score", 0), ndigits=4
-                    ),
-                    "emotion": _sn(profile.get("emotion", 0), ndigits=4),
-                    "interaction_count": profile.get("interaction_count", 0),
-                    "last_interaction": profile.get("last_interaction", 0),
-                    "idle_seconds": round(
-                        now - _sn(profile.get("last_interaction", now))
-                    ),
-                    "preview": str(profile.get("last_message_preview", "")),
-                }
-            )
-
-        result.sort(key=lambda x: x["attention_score"], reverse=True)
-        return web.json_response({"ok": True, "users": result})
+        return web.json_response({"ok": True, "users": []})
 
     async def _handle_data_mood(self, request: web.Request):
-        """获取会话情绪数据"""
+        """获取会话情绪数据（重构后情绪系统已移除，返回空）"""
         session = request.match_info["session"]
         if not session or not _SAFE_SESSION_RE.match(session):
             return web.json_response({"ok": False, "msg": "无效的会话名称"}, status=400)
-        mood_data = {}
-        if hasattr(self.plugin, "mood_tracker") and self.plugin.mood_tracker:
-            tracker = self.plugin.mood_tracker
-            if hasattr(tracker, "moods"):
-                raw = self._find_in_dict_by_chat_id(tracker.moods, session)
-            else:
-                raw = None
-            if raw:
-                mood_data = {
-                    "current_mood": raw.get("mood", "平静"),
-                    "intensity": round(raw.get("intensity", 0), 4),
-                    "last_update": raw.get("last_update", 0),
-                }
-        return web.json_response({"ok": True, "mood": mood_data})
+        return web.json_response({"ok": True, "mood": {}})
 
     async def _handle_data_probability(self, request: web.Request):
         """获取会话当前概率状态"""
@@ -2369,15 +2275,10 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
                 "after_reply_probability", 0.8
             ),
             "probability_duration": self.plugin.config.get("probability_duration", 120),
-            "attention_mechanism_enabled": self.plugin.config.get(
-                "enable_attention_mechanism", False
-            ),
-            "mode": "attention"
-            if self.plugin.config.get("enable_attention_mechanism", False)
-            else "traditional",
+            "mode": "traditional",
         }
 
-        # 传统回复后提升状态（ProbabilityManager 内部按 chat_id 查找，兼容两种格式）
+        # 回复后提升状态（ProbabilityManager 内部按 chat_id 查找，兼容两种格式）
         try:
             probability_status = (
                 await ProbabilityManager.get_probability_status_snapshot(session)
@@ -2401,99 +2302,34 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
         except Exception as e:
             logger.debug(f"🌐 概率状态快照读取异常 [{session}]: {e}")
 
-        # 频率调整器状态（复合 key 存储，尝试两种格式匹配）
-        if (
-            hasattr(self.plugin, "frequency_adjuster")
-            and self.plugin.frequency_adjuster
-        ):
-            fa = self.plugin.frequency_adjuster
-            if hasattr(fa, "check_states"):
-                state = self._find_in_dict_by_chat_id(fa.check_states, session)
-                if state:
-                    prob_data["frequency_adjusted_probability"] = state.get(
-                        "adjusted_probability"
-                    )
-                    prob_data["frequency_last_check"] = state.get("last_check_time", 0)
-
-        # 临时概率提升（复合 key 存储，尝试两种格式匹配）
-        boost_map = self._safe_get_proactive_boost()
-        b = self._find_in_dict_by_chat_id(boost_map, session)
-        if b:
-            remaining = b.get("boost_until", 0) - _time.time()
-            if remaining > 0:
-                prob_data["temp_boost"] = {
-                    "value": b.get("boost_value", 0),
-                    "remaining_seconds": round(remaining),
-                }
-
         return web.json_response({"ok": True, "probability": prob_data})
 
     async def _handle_data_proactive(self, request: web.Request):
-        """获取主动对话统计"""
-        states = self._safe_get_proactive_states()
-        result = {}
-        for chat_key, state in states.items():
-            result[chat_key] = {
-                "proactive_active": state.get("proactive_active", False),
-                "last_proactive_time": state.get("last_proactive_time", 0),
-                "consecutive_failures": state.get("consecutive_failures", 0),
-                "cooldown_until": state.get("cooldown_until", 0),
-                "total_successes": state.get("successful_interactions", 0),
-                "total_failures": state.get("failed_interactions", 0),
-                "interaction_score": state.get("interaction_score", 50),
-            }
-        return web.json_response({"ok": True, "proactive": result})
+        """获取主动对话统计（重构后主动对话已移除，返回空）"""
+        return web.json_response({"ok": True, "proactive": {}})
 
     async def _handle_data_overview(self, request: web.Request):
         """总览仪表盘数据"""
-        attention_map = self._safe_get_attention_map()
-        proactive_states = self._safe_get_proactive_states()
-
-        total_sessions = len(
-            set(list(attention_map.keys()) + list(proactive_states.keys()))
-        )
-        total_tracked_users = sum(len(v) for v in attention_map.values())
         processing_count = len(getattr(self.plugin, "processing_sessions", {}))
 
-        # 额外全局统计
         total_cached_messages = 0
         if hasattr(self.plugin, "pending_messages_cache"):
             for msgs in self.plugin.pending_messages_cache.values():
                 total_cached_messages += len(msgs)
 
-        active_wait_windows = 0
-        if hasattr(self.plugin, "_group_wait_windows"):
-            active_wait_windows = len(self.plugin._group_wait_windows)
-
-        cooldown_users = 0
-        pending_cooldown_users = 0
-
         seen_count = len(getattr(self.plugin, "_seen_message_ids", {}))
         duplicate_blocked = len(getattr(self.plugin, "_duplicate_blocked_messages", {}))
-
-        proactive_processing = len(
-            getattr(self.plugin, "proactive_processing_sessions", {})
-        )
 
         return web.json_response(
             {
                 "ok": True,
                 "overview": {
-                    "total_sessions": total_sessions,
-                    "total_tracked_users": total_tracked_users,
+                    "total_sessions": processing_count,
+                    "total_tracked_users": 0,
                     "active_processing": processing_count,
-                    "proactive_active_count": sum(
-                        1
-                        for s in proactive_states.values()
-                        if s.get("proactive_active")
-                    ),
                     "total_cached_messages": total_cached_messages,
-                    "active_wait_windows": active_wait_windows,
-                    "cooldown_users": cooldown_users,
-                    "pending_cooldown_users": pending_cooldown_users,
                     "seen_messages": seen_count,
                     "duplicate_blocked": duplicate_blocked,
-                    "proactive_processing": proactive_processing,
                 },
             }
         )
@@ -2506,28 +2342,9 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
                 "ok": True,
                 "status": {
                     "group_chat": cfg.get("enable_group_chat", True),
-                    "attention_mechanism": cfg.get("enable_attention_mechanism", False),
-                    "mood_system": cfg.get("enable_mood_system", True),
-                    "frequency_adjuster": cfg.get("enable_frequency_adjuster", True),
-                    "proactive_chat": cfg.get("enable_proactive_chat", False),
-                    "typing_simulator": cfg.get("enable_typing_simulator", True),
-                    "typo_generator": cfg.get("enable_typo_generator", True),
                     "image_processing": cfg.get("enable_image_processing", False),
                     "memory_injection": cfg.get("enable_memory_injection", False),
-                    "humanize_mode": cfg.get("enable_humanize_mode", False),
-                    "private_chat": cfg.get("enable_private_chat", False),
-                    "dynamic_reply_probability": cfg.get(
-                        "enable_dynamic_reply_probability", False
-                    ),
-                    "dynamic_proactive_probability": cfg.get(
-                        "enable_dynamic_proactive_probability", False
-                    ),
                     "duplicate_filter": cfg.get("enable_duplicate_filter", True),
-                    "conversation_fatigue": cfg.get(
-                        "enable_conversation_fatigue", False
-                    ),
-                    "complaint_system": cfg.get("enable_complaint_system", True),
-                    "adaptive_proactive": cfg.get("enable_adaptive_proactive", True),
                 },
             }
         )
@@ -2574,58 +2391,9 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
         # 纯 chat_id 用于匹配仅使用 chat_id 为 key 的数据源
         session_cid = self._extract_chat_id(session)
 
-        # 注意力数据（兼容两种 key 格式）
-        try:
-            attention_map = self._safe_get_attention_map()
-            users_data = self._find_in_dict_by_chat_id(attention_map, session) or {}
-            users_list = []
-            for uid, profile in users_data.items():
-                if not isinstance(profile, dict):
-                    continue
-                users_list.append(
-                    {
-                        "user_id": str(uid),
-                        "attention_score": _sn(
-                            profile.get("attention_score", 0), ndigits=4
-                        ),
-                        "emotion": _sn(profile.get("emotion", 0), ndigits=4),
-                        "interaction_count": profile.get("interaction_count", 0),
-                        "last_interaction": profile.get("last_interaction", 0),
-                        "idle_seconds": round(
-                            now - _sn(profile.get("last_interaction", now))
-                        ),
-                        "preview": str(profile.get("last_message_preview", "")),
-                    }
-                )
-            users_list.sort(key=lambda x: x["attention_score"], reverse=True)
-            detail["attention"] = {
-                "user_count": len(users_list),
-                "users": users_list,
-            }
-        except Exception as e:
-            logger.debug(f"🌐 会话详情-注意力数据异常 [{session}]: {e}")
-            detail["attention"] = {"user_count": 0, "users": []}
-
-        # 情绪数据
-        try:
-            mood_data = {}
-            if hasattr(self.plugin, "mood_tracker") and self.plugin.mood_tracker:
-                tracker = self.plugin.mood_tracker
-                if hasattr(tracker, "moods"):
-                    raw = self._find_in_dict_by_chat_id(tracker.moods, session)
-                else:
-                    raw = None
-                if raw:
-                    if isinstance(raw, dict):
-                        mood_data = {
-                            "current_mood": str(raw.get("mood", "平静")),
-                            "intensity": _sn(raw.get("intensity", 0), ndigits=4),
-                            "last_update": raw.get("last_update", 0),
-                        }
-            detail["mood"] = mood_data
-        except Exception as e:
-            logger.debug(f"🌐 会话详情-情绪数据异常 [{session}]: {e}")
-            detail["mood"] = {}
+        # 注意力/情绪数据（重构后已移除，返回空结构保持前端兼容）
+        detail["attention"] = {"user_count": 0, "users": []}
+        detail["mood"] = {}
 
         # 概率数据
         try:
@@ -2639,12 +2407,7 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
                 "probability_duration": self.plugin.config.get(
                     "probability_duration", 120
                 ),
-                "attention_mechanism_enabled": self.plugin.config.get(
-                    "enable_attention_mechanism", False
-                ),
-                "mode": "attention"
-                if self.plugin.config.get("enable_attention_mechanism", False)
-                else "traditional",
+                "mode": "traditional",
             }
             try:
                 probability_status = (
@@ -2670,58 +2433,13 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
                     }
             except Exception as e:
                 logger.debug(f"🌐 会话详情-概率快照异常 [{session}]: {e}")
-            if (
-                hasattr(self.plugin, "frequency_adjuster")
-                and self.plugin.frequency_adjuster
-            ):
-                fa = self.plugin.frequency_adjuster
-                if hasattr(fa, "check_states"):
-                    state = self._find_in_dict_by_chat_id(fa.check_states, session)
-                    if isinstance(state, dict):
-                        prob_data["frequency_adjusted_probability"] = _sn(
-                            state.get("adjusted_probability")
-                        )
-                        prob_data["frequency_last_check"] = state.get(
-                            "last_check_time", 0
-                        )
-            boost_map = self._safe_get_proactive_boost()
-            b = self._find_in_dict_by_chat_id(boost_map, session)
-            if b and isinstance(b, dict):
-                remaining = _sn(b.get("boost_until", 0)) - now
-                if remaining > 0:
-                    prob_data["temp_boost"] = {
-                        "value": _sn(b.get("boost_value", 0)),
-                        "remaining_seconds": round(remaining),
-                    }
             detail["probability"] = prob_data
         except Exception as e:
             logger.debug(f"🌐 会话详情-概率数据异常 [{session}]: {e}")
             detail["probability"] = {}
 
-        # 主动对话状态（兼容两种 key 格式；仅暴露前端需要的字段，避免泄露内部数据）
-        try:
-            proactive_states = self._safe_get_proactive_states()
-            raw = self._find_in_dict_by_chat_id(proactive_states, session) or {}
-            if raw and isinstance(raw, dict):
-                cooldown_until = _sn(raw.get("cooldown_until", 0))
-                cooldown_remaining = (
-                    round(cooldown_until - now) if cooldown_until > now else 0
-                )
-                proactive_data = {
-                    "proactive_active": raw.get("proactive_active", False),
-                    "cooldown_remaining": cooldown_remaining,
-                    "successful_interactions": raw.get("successful_interactions", 0),
-                    "failed_interactions": raw.get("failed_interactions", 0),
-                    "interaction_score": _sn(
-                        raw.get("interaction_score", 50), ndigits=1
-                    ),
-                }
-            else:
-                proactive_data = {}
-            detail["proactive"] = proactive_data
-        except Exception as e:
-            logger.debug(f"🌐 会话详情-主动对话异常 [{session}]: {e}")
-            detail["proactive"] = {}
+        # 主动对话状态（重构后已移除，返回空结构保持前端兼容）
+        detail["proactive"] = {}
 
         # 消息缓存详情
         cache_count = 0
@@ -2753,38 +2471,9 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
             pass
         detail["is_processing"] = is_processing
 
-        # 主动对话处理中
-        try:
-            detail["proactive_processing"] = session in getattr(
-                self.plugin, "proactive_processing_sessions", {}
-            ) or session_cid in getattr(
-                self.plugin, "proactive_processing_sessions", {}
-            )
-        except Exception:
-            detail["proactive_processing"] = False
-
-        # 等待窗口
+        # 主动对话处理中/等待窗口（重构后已移除，返回空结构保持前端兼容）
+        detail["proactive_processing"] = False
         wait_windows = []
-        try:
-            if hasattr(self.plugin, "_group_wait_windows"):
-                for key, winfo in list(self.plugin._group_wait_windows.items()):
-                    if not isinstance(key, tuple) or len(key) != 2:
-                        continue
-                    cid, uid = key
-                    if str(cid) in (session, session_cid):
-                        wait_windows.append(
-                            {
-                                "user_id": str(uid),
-                                "extra_count": winfo.get("extra_count", 0),
-                                "deadline": winfo.get("deadline", 0),
-                                "remaining": max(
-                                    0,
-                                    round(winfo.get("deadline", 0) - now),
-                                ),
-                            }
-                        )
-        except Exception:
-            pass
         detail["wait_windows"] = wait_windows
 
         # 冷却/密度/活跃度/疲劳（重构后相关机制已移除，返回空结构保持前端兼容）
@@ -2832,27 +2521,6 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
         cleared = []
         session_key, chat_id = self._normalize_session_scope(session)
 
-        # 清除情绪数据（支持三种 key 格式）
-        if hasattr(self.plugin, "mood_tracker") and self.plugin.mood_tracker:
-            if hasattr(self.plugin.mood_tracker, "moods"):
-                for key in {session, session_key, chat_id}:
-                    if key and key in self.plugin.mood_tracker.moods:
-                        del self.plugin.mood_tracker.moods[key]
-                        cleared.append("mood")
-                        break
-
-        # 清除频率调整器状态（支持三种 key 格式）
-        if (
-            hasattr(self.plugin, "frequency_adjuster")
-            and self.plugin.frequency_adjuster
-        ):
-            if hasattr(self.plugin.frequency_adjuster, "check_states"):
-                for key in {session, session_key, chat_id}:
-                    if key and key in self.plugin.frequency_adjuster.check_states:
-                        del self.plugin.frequency_adjuster.check_states[key]
-                        cleared.append("frequency")
-                        break
-
         # 清除处理中标记
         if hasattr(self.plugin, "processing_sessions"):
             target_ids = {session, session_key}
@@ -2865,11 +2533,6 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
             ]
             for message_id in stale_message_ids:
                 self.plugin.processing_sessions.pop(message_id, None)
-
-        # 清除主动对话处理中标记
-        if hasattr(self.plugin, "proactive_processing_sessions"):
-            self.plugin.proactive_processing_sessions.pop(session, None)
-            self.plugin.proactive_processing_sessions.pop(session_key, None)
 
         # 清除待转存消息缓存（尝试多种 key 格式）
         try:
@@ -2890,26 +2553,6 @@ h1{{color:#ff6b6b;}}p{{color:#a0a0b8;line-height:1.8;}}
                         cleared.append("recent_replies")
         except Exception as e:
             logger.warning(f"🌐 清除最近回复缓存失败: {e}")
-
-        # 清除等待窗口（key 为 (chat_id, user_id) 元组）
-        try:
-            if hasattr(self.plugin, "_group_wait_windows"):
-                target_ids = {session, session_key}
-                if chat_id:
-                    target_ids.add(chat_id)
-                stale_windows = [
-                    wk
-                    for wk, _ in self.plugin._group_wait_windows.items()
-                    if isinstance(wk, tuple)
-                    and len(wk) >= 1
-                    and str(wk[0]) in target_ids
-                ]
-                for wk in stale_windows:
-                    self.plugin._group_wait_windows.pop(wk, None)
-                if stale_windows:
-                    cleared.append("group_wait_windows")
-        except Exception as e:
-            logger.warning(f"🌐 清除等待窗口失败: {e}")
 
         return cleared
 

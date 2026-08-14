@@ -3,7 +3,7 @@
 负责调用AI判断是否应该回复消息（读空气功能）
 
 作者: Him666233
-版本: V2.0.1-lite（refactor-lite 重构版）
+版本: V2.0.2-lite（refactor-lite 重构版）
 
 重构要点（REFACTOR_DESIGN.md）：
 - 该提示词仅用于"要不要回复"的 yes/no 判断，不生成用户可见的回复内容

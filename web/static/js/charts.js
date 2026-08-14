@@ -1,6 +1,6 @@
 /**
  * charts.js - 数据可视化（Canvas 2D 绘图）
- * 注意力分布、概率状态、主动对话统计 + 自动刷新 & 变化高亮
+ * 会话概览、概率状态 + 自动刷新 & 变化高亮
  * 刷新策略：首次/会话切换时重建 DOM，后续自动刷新时原地更新数据（无闪烁）
  */
 
@@ -140,21 +140,15 @@ const Charts = {
                 return;
             }
 
-            const [overviewRes, attentionRes, probRes, moodRes, proactiveRes, detailRes] = await Promise.allSettled([
+            const [overviewRes, probRes, detailRes] = await Promise.allSettled([
                 Api.dataOverview(),
-                Api.dataAttention(this._session),
                 Api.dataProbability(this._session),
-                Api.dataMood(this._session),
-                Api.dataProactive(),
                 Api.sessionDetail(this._session),
             ]);
 
             grid.innerHTML = '';
-            await this._buildOverview(grid, overviewRes.value, detailRes.value, attentionRes.value);
-            await this._buildAttention(grid, attentionRes.value);
+            await this._buildOverview(grid, overviewRes.value, detailRes.value);
             await this._buildProbability(grid, probRes.value);
-            await this._buildMood(grid, moodRes.value);
-            await this._buildProactive(grid, proactiveRes.value);
             this._initialized = true;
             return;
         }
@@ -162,37 +156,28 @@ const Charts = {
         // 自动刷新：原地更新，不重建 DOM，不产生闪烁
         // 无会话时仅刷新全局概览，避免无效 API 调用
         if (this._session) {
-            const [overviewRes, attentionRes, probRes, moodRes, proactiveRes, detailRes] = await Promise.allSettled([
+            const [overviewRes, probRes, detailRes] = await Promise.allSettled([
                 Api.dataOverview({ autoRefresh: true }),
-                Api.dataAttention(this._session, { autoRefresh: true }),
                 Api.dataProbability(this._session, { autoRefresh: true }),
-                Api.dataMood(this._session, { autoRefresh: true }),
-                Api.dataProactive({ autoRefresh: true }),
                 Api.sessionDetail(this._session, { autoRefresh: true }),
             ]);
-            this._updateOverview(overviewRes.value, detailRes.value, attentionRes.value);
-            this._updateAttention(attentionRes.value);
+            this._updateOverview(overviewRes.value, detailRes.value);
             this._updateProbability(probRes.value);
-            this._updateMood(moodRes.value);
-            this._updateProactive(proactiveRes.value);
         } else {
             const overviewRes = await Api.dataOverview({ autoRefresh: true });
-            this._updateOverview(overviewRes, null, null);
+            this._updateOverview(overviewRes, null);
         }
     },
 
     // ==================== 构建（首次渲染）====================
 
     /** 总览卡片（构建） */
-    async _buildOverview(grid, res, detailRes, attentionRes) {
+    async _buildOverview(grid, res, detailRes) {
         try {
             if (!res) res = await Api.dataOverview();
             if (!res || !res.ok) return;
             const d = res.overview || {};
             const sd = (detailRes && detailRes.ok) ? (detailRes.detail || {}) : {};
-            // 用注意力端点数据作为追踪用户数的后备来源
-            const attUsers = (attentionRes && attentionRes.ok) ? (attentionRes.users || []) : [];
-            const trackedUsers = sd.attention?.user_count ?? (attUsers.length || d.total_tracked_users) ?? 0;
 
             const overview = document.createElement('div');
             overview.className = 'overview-grid';
@@ -201,14 +186,8 @@ const Charts = {
 
             const cards = [
                 { label: '活跃会话', value: d.total_sessions || 0, id: 'ov-total-sessions' },
-                { label: '追踪用户', value: trackedUsers, id: 'ov-total-users' },
                 { label: '处理中', value: sd.is_processing !== undefined ? (sd.is_processing ? '是' : '否') : (d.active_processing || 0), id: 'ov-processing' },
-                { label: '主动对话', value: d.proactive_active_count || 0, id: 'ov-proactive' },
                 { label: '缓存消息', value: sd.message_cache_count ?? d.total_cached_messages ?? 0, id: 'ov-cached-msgs' },
-                { label: '等待窗口', value: sd.wait_windows ? sd.wait_windows.length : (d.active_wait_windows || 0), id: 'ov-wait-wins' },
-                { label: '正式冷却', value: sd.cooldowns ? sd.cooldowns.length : (d.cooldown_users || 0), id: 'ov-cooldown-users' },
-                { label: '待冷却', value: sd.pending_cooldowns ? sd.pending_cooldowns.length : (d.pending_cooldown_users || 0), id: 'ov-pending-cooldown-users' },
-                { label: '主动处理', value: sd.proactive_processing !== undefined ? (sd.proactive_processing ? '是' : '否') : (d.proactive_processing || 0), id: 'ov-pro-processing' },
             ];
 
             cards.forEach(c => {
@@ -224,38 +203,6 @@ const Charts = {
             grid.appendChild(overview);
         } catch (e) {
             console.error('Charts: overview build failed', e);
-        }
-    },
-
-    /** 注意力分布（构建） */
-    async _buildAttention(grid, res) {
-        try {
-            if (!res) res = await Api.dataAttention(this._session);
-            const { card, canvas, wrap } = this._createCard(
-                '注意力分布', { cls: 'live', text: '实时' }, grid, 'chart-attention'
-            );
-
-            const users = res && res.ok ? (res.users || []) : [];
-            if (!users.length) {
-                wrap.innerHTML = '<div class="chart-empty">暂无注意力数据</div>';
-                return;
-            }
-
-            const data = users.sort((a, b) => (b.attention_score || 0) - (a.attention_score || 0)).slice(0, 10);
-            this._drawBarChart(canvas, data.map(d => d.user_id || 'unknown'),
-                data.map(d => d.attention_score || 0), 'var(--accent-red)');
-
-            const stats = document.createElement('div');
-            stats.className = 'stats-row';
-            stats.id = 'stats-attention';
-            stats.innerHTML = `
-                <div class="stat-item"><div class="stat-value" id="att-count">${data.length}</div><div class="stat-label">追踪用户</div></div>
-                <div class="stat-item"><div class="stat-value" id="att-max">${data.length ? (data[0].attention_score || 0).toFixed(1) : 0}</div><div class="stat-label">最高分</div></div>`;
-            card.appendChild(stats);
-
-            this._prevData['att-data'] = data.map(d => d.attention_score || 0).join(',');
-        } catch (e) {
-            console.error('Charts: attention build failed', e);
         }
     },
 
@@ -276,23 +223,17 @@ const Charts = {
             const { labels, values } = this._probLabelsValues(d);
             const modeNote = document.createElement('div');
             modeNote.style.cssText = 'font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.6;';
-            modeNote.innerHTML = (d.mode || 'traditional') === 'traditional'
-                ? `当前为<strong>传统模式</strong>：回复后概率提升按整个会话计算，持续 <strong>${d.probability_duration || 0}s</strong>，再次成功回复会刷新计时。`
-                : `当前为<strong>注意力模式</strong>：回复后加成已由注意力机制按用户接管，<strong>after_reply_probability</strong> 不参与当前会话计算。`;
+            modeNote.innerHTML = `当前为<strong>传统模式</strong>：回复后概率提升按整个会话计算，持续 <strong>${d.probability_duration || 0}s</strong>，再次成功回复会刷新计时。`;
             card.appendChild(modeNote);
             this._drawBarChart(canvas, labels, values, 'var(--accent-red)');
 
             const stats = document.createElement('div');
             stats.className = 'stats-row';
             stats.id = 'stats-probability';
-            const mode = (d.mode || 'traditional') === 'traditional' ? '传统模式' : '注意力模式';
-            const replyStat = (d.mode || 'traditional') === 'traditional'
-                ? `<div class="stat-item"><div class="stat-value" id="prob-reply">${((d.after_reply_probability || 0) * 100).toFixed(1)}%</div><div class="stat-label">回复后概率</div></div>`
-                : `<div class="stat-item"><div class="stat-value" id="prob-reply">由注意力接管</div><div class="stat-label">回复后加成</div></div>`;
             stats.innerHTML = `
                 <div class="stat-item"><div class="stat-value" id="prob-init">${((d.initial_probability || 0) * 100).toFixed(1)}%</div><div class="stat-label">基础概率</div></div>
-                ${replyStat}
-                <div class="stat-item"><div class="stat-value" id="prob-mode">${mode}</div><div class="stat-label">当前模式</div></div>`;
+                <div class="stat-item"><div class="stat-value" id="prob-reply">${((d.after_reply_probability || 0) * 100).toFixed(1)}%</div><div class="stat-label">回复后概率</div></div>
+                <div class="stat-item"><div class="stat-value" id="prob-mode">传统模式</div><div class="stat-label">当前模式</div></div>`;
             card.appendChild(stats);
 
             this._prevData['prob-data'] = values.join(',');
@@ -301,89 +242,17 @@ const Charts = {
         }
     },
 
-    /** 情绪状态（构建） */
-    async _buildMood(grid, res) {
-        try {
-            if (!res) res = await Api.dataMood(this._session);
-            const { card, canvas, wrap } = this._createCard(
-                '情绪状态', { cls: 'live', text: '实时' }, grid, 'chart-mood'
-            );
-
-            const mood = res && res.ok ? (res.mood || {}) : {};
-            if (!Object.keys(mood).length) {
-                wrap.innerHTML = '<div class="chart-empty">暂无情绪数据</div>';
-                return;
-            }
-
-            this._drawBarChart(canvas, [mood.current_mood || '平静'], [mood.intensity || 0], 'var(--accent-red)');
-
-            const stats = document.createElement('div');
-            stats.className = 'stats-row';
-            stats.id = 'stats-mood';
-            stats.innerHTML = `
-                <div class="stat-item"><div class="stat-value" id="mood-name">${mood.current_mood || '平静'}</div><div class="stat-label">当前情绪</div></div>
-                <div class="stat-item"><div class="stat-value" id="mood-intensity">${(mood.intensity || 0).toFixed(2)}</div><div class="stat-label">强度</div></div>`;
-            card.appendChild(stats);
-
-            this._prevData['mood-name'] = mood.current_mood || '平静';
-            this._prevData['mood-intensity'] = mood.intensity || 0;
-        } catch (e) {
-            console.error('Charts: mood build failed', e);
-        }
-    },
-
-    /** 主动对话统计（构建） */
-    async _buildProactive(grid, res) {
-        try {
-            if (!res) res = await Api.dataProactive();
-            const { card, canvas, wrap } = this._createCard(
-                '主动对话统计', { cls: 'persist', text: '持久' }, grid, 'chart-proactive'
-            );
-
-            const proactive = res && res.ok ? (res.proactive || {}) : {};
-            const filtered = this._filterProactiveBySession(proactive);
-            if (!Object.keys(filtered).length) {
-                wrap.innerHTML = '<div class="chart-empty">暂无主动对话数据</div>';
-                return;
-            }
-
-            const { totalSuccess, totalFailure, totalCooldown, rate, avgScore } = this._calcProactive(filtered);
-            this._drawBarChart(canvas, ['成功', '失败', '冷却中'], [totalSuccess, totalFailure, totalCooldown], 'var(--accent-green)');
-
-            const stats = document.createElement('div');
-            stats.className = 'stats-row';
-            stats.id = 'stats-proactive';
-            stats.innerHTML = `
-                <div class="stat-item"><div class="stat-value" id="pro-total">${totalSuccess + totalFailure}</div><div class="stat-label">总次数</div></div>
-                <div class="stat-item"><div class="stat-value" id="pro-rate">${rate}%</div><div class="stat-label">成功率</div></div>
-                <div class="stat-item"><div class="stat-value" id="pro-score">${avgScore}</div><div class="stat-label">平均交互评分</div></div>`;
-            card.appendChild(stats);
-
-            this._prevData['pro-data'] = `${totalSuccess},${totalFailure},${totalCooldown}`;
-        } catch (e) {
-            console.error('Charts: proactive build failed', e);
-        }
-    },
-
     // ==================== 原地更新（自动刷新）====================
 
     /** 总览更新（只改数字，触发变化高亮） */
-    _updateOverview(res, detailRes, attentionRes) {
+    _updateOverview(res, detailRes) {
         if (!res || !res.ok) return;
         const d = res.overview || {};
         const sd = (detailRes && detailRes.ok) ? (detailRes.detail || {}) : {};
-        const attUsers = (attentionRes && attentionRes.ok) ? (attentionRes.users || []) : [];
-        const trackedUsers = sd.attention?.user_count ?? (attUsers.length || d.total_tracked_users) ?? 0;
         const map = {
             'ov-total-sessions': d.total_sessions || 0,
-            'ov-total-users': trackedUsers,
             'ov-processing': sd.is_processing !== undefined ? (sd.is_processing ? '是' : '否') : (d.active_processing || 0),
-            'ov-proactive': d.proactive_active_count || 0,
             'ov-cached-msgs': sd.message_cache_count ?? d.total_cached_messages ?? 0,
-            'ov-wait-wins': sd.wait_windows ? sd.wait_windows.length : (d.active_wait_windows || 0),
-            'ov-cooldown-users': sd.cooldowns ? sd.cooldowns.length : (d.cooldown_users || 0),
-            'ov-pending-cooldown-users': sd.pending_cooldowns ? sd.pending_cooldowns.length : (d.pending_cooldown_users || 0),
-            'ov-pro-processing': sd.proactive_processing !== undefined ? (sd.proactive_processing ? '是' : '否') : (d.proactive_processing || 0),
         };
         for (const [id, val] of Object.entries(map)) {
             const valEl = document.getElementById(`${id}-val`);
@@ -394,26 +263,6 @@ const Charts = {
                 this._prevData[id] = val;
             }
         }
-    },
-
-    /** 注意力更新 */
-    _updateAttention(res) {
-        try {
-            const users = res && res.ok ? (res.users || []) : [];
-            const data = users.sort((a, b) => (b.attention_score || 0) - (a.attention_score || 0)).slice(0, 10);
-            const key = data.map(d => d.attention_score || 0).join(',');
-
-            const canvas = document.querySelector('#chart-attention canvas');
-            if (canvas) {
-                this._drawBarChart(canvas, data.map(d => d.user_id || 'unknown'),
-                    data.map(d => d.attention_score || 0), 'var(--accent-red)');
-                this._prevData['att-data'] = key;
-            }
-
-            this._setTextIfChanged('att-count', data.length);
-            this._setTextIfChanged('att-max',
-                data.length ? (data[0].attention_score || 0).toFixed(1) : 0);
-        } catch (e) { console.error('Charts: attention update failed', e); }
     },
 
     /** 概率更新 */
@@ -431,58 +280,11 @@ const Charts = {
             }
 
             const initVal = ((d.initial_probability || 0) * 100).toFixed(1) + '%';
-            const replyVal = (d.mode || 'traditional') === 'traditional'
-                ? ((d.after_reply_probability || 0) * 100).toFixed(1) + '%'
-                : '由注意力接管';
-            const modeVal = (d.mode || 'traditional') === 'traditional' ? '传统模式' : '注意力模式';
+            const replyVal = ((d.after_reply_probability || 0) * 100).toFixed(1) + '%';
             this._setTextIfChanged('prob-init', initVal);
             this._setTextIfChanged('prob-reply', replyVal);
-            this._setTextIfChanged('prob-mode', modeVal);
+            this._setTextIfChanged('prob-mode', '传统模式');
         } catch (e) { console.error('Charts: probability update failed', e); }
-    },
-
-    /** 情绪更新 */
-    _updateMood(res) {
-        try {
-            const mood = res && res.ok ? (res.mood || {}) : {};
-            if (!Object.keys(mood).length) return;
-
-            const moodName = mood.current_mood || '平静';
-            const intensity = mood.intensity || 0;
-
-            const canvas = document.querySelector('#chart-mood canvas');
-            if (canvas) {
-                this._drawBarChart(canvas, [moodName], [intensity], 'var(--accent-red)');
-            }
-
-            this._setTextIfChanged('mood-name', moodName);
-            this._setTextIfChanged('mood-intensity', intensity.toFixed(2));
-
-            this._prevData['mood-name'] = moodName;
-            this._prevData['mood-intensity'] = intensity;
-        } catch (e) { console.error('Charts: mood update failed', e); }
-    },
-
-    /** 主动对话更新 */
-    _updateProactive(res) {
-        try {
-            const proactive = res && res.ok ? (res.proactive || {}) : {};
-            const filtered = this._filterProactiveBySession(proactive);
-            if (!Object.keys(filtered).length) return;
-
-            const { totalSuccess, totalFailure, totalCooldown, rate, avgScore } = this._calcProactive(filtered);
-            const key = `${totalSuccess},${totalFailure},${totalCooldown}`;
-
-            const canvas = document.querySelector('#chart-proactive canvas');
-            if (canvas) {
-                this._drawBarChart(canvas, ['成功', '失败', '冷却中'], [totalSuccess, totalFailure, totalCooldown], 'var(--accent-green)');
-                this._prevData['pro-data'] = key;
-            }
-
-            this._setTextIfChanged('pro-total', totalSuccess + totalFailure);
-            this._setTextIfChanged('pro-rate', rate + '%');
-            this._setTextIfChanged('pro-score', avgScore);
-        } catch (e) { console.error('Charts: proactive update failed', e); }
     },
 
     // ==================== 辅助方法 ====================
@@ -502,50 +304,9 @@ const Charts = {
     _probLabelsValues(d) {
         const labels = ['基础概率'];
         const values = [d.initial_probability || 0];
-        if ((d.mode || 'traditional') === 'traditional') {
-            labels.push('回复后概率');
-            values.push(d.after_reply_probability || 0);
-        }
-        if (d.frequency_adjusted_probability !== undefined) {
-            labels.push('频率调整');
-            values.push(d.frequency_adjusted_probability || 0);
-        }
-        if (d.temp_boost) {
-            labels.push('临时提升');
-            values.push(d.temp_boost.value || 0);
-        }
+        labels.push('回复后概率');
+        values.push(d.after_reply_probability || 0);
         return { labels, values };
-    },
-
-    /** 按当前选中会话过滤主动对话数据（key 格式匹配，兼容复合/非复合 key） */
-    _filterProactiveBySession(proactive) {
-        if (!this._session) return proactive;
-        const sessionParts = this._session.split('_');
-        const targetCid = sessionParts.length >= 3 ? sessionParts.slice(2).join('_') : this._session;
-
-        for (const [key, state] of Object.entries(proactive)) {
-            if (key === this._session) return { [key]: state };
-            const keyParts = key.split('_');
-            const keyCid = keyParts.length >= 3 ? keyParts.slice(2).join('_') : key;
-            if (keyCid === targetCid) return { [key]: state };
-        }
-        return {};
-    },
-
-    /** 计算主动对话汇总 */
-    _calcProactive(proactive) {
-        let totalSuccess = 0, totalFailure = 0, totalCooldown = 0, totalScore = 0, sessionCount = 0;
-        for (const state of Object.values(proactive)) {
-            totalSuccess += state.total_successes || 0;
-            totalFailure += state.total_failures || 0;
-            if (state.cooldown_until > Date.now() / 1000) totalCooldown++;
-            totalScore += state.interaction_score || 0;
-            sessionCount++;
-        }
-        const total = totalSuccess + totalFailure;
-        const rate = total > 0 ? ((totalSuccess / total) * 100).toFixed(1) : '0.0';
-        const avgScore = sessionCount > 0 ? (totalScore / sessionCount).toFixed(1) : '-';
-        return { totalSuccess, totalFailure, totalCooldown, rate, avgScore };
     },
 
     /** 创建图表卡片骨架，cardId 用于原地更新时定位 canvas */
