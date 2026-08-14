@@ -107,9 +107,28 @@ SYSTEM_DECISION_PROMPT 保留但删除引用已删功能的段落（判断记录
 
 ## 六、验收标准（来自交接文档）
 
-- [ ] py_compile 全通过
-- [ ] 无 mood/attention/proactive/private/typo/typing/humanize/fatigue/wait_window 残留 import
-- [ ] main.py 方法数 < 60
-- [ ] 配置项 < 100
-- [ ] 群聊 system_prompt 只含人格 + 平台内容（不含插件行为指令）
-- [ ] 保留功能逐项核对
+- [x] py_compile 全通过
+- [x] 无 mood/attention/proactive/private/typo/typing/humanize/fatigue/wait_window 残留 import
+- [x] main.py 方法数 58（< 60）
+- [x] 配置项 94（< 100）
+- [x] 群聊 system_prompt 只含人格 + 平台内容（不含插件行为指令，单元测试断言）
+- [x] 保留功能逐项核对
+
+## 七、版本管理与发布规则（强制）
+
+> ⚠️ **每次代码变更（修复/功能/文档）提交前，必须同步更新版本号**，否则拒绝提交。
+
+1. **版本号三处必须同步更新**：
+   - metadata.yaml 的 version 字段（AstrBot 安装/展示用）
+   - main.py 的 @register(...) 装饰器版本参数（AstrBot 运行时注册用）
+   - CHANGELOG.md 顶部新增对应版本条目（记录变更内容）
+2. **版本号规则**（V主.次.补丁-lite）：
+   - 修复 bug / 兼容性问题 → 补丁号 +1（如 V2.0.1-lite）
+   - 新增功能 → 次版本号 +1（如 V2.1.0-lite）
+   - 破坏性重构 / 重大变更 → 主版本号 +1（如 V3.0.0-lite）
+3. **发布流程**：
+   - 修改代码 → 本地验证（py_compile + pytest）→ 更新版本号三处 → 更新 CHANGELOG → 提交推送
+   - 每次推送后，用户侧在 AstrBot 中更新插件即可获得新版本
+4. **历史教训**（真实事故记录）：
+   - V2.0.0-lite 发布后连续两次修复（EventMessageType 兼容、配置面板提供商选择器）均未升版本号，
+     导致用户无法从版本号判断自己运行的是否为最新代码。自 V2.0.1-lite 起强制执行本规则。
