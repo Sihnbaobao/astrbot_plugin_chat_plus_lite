@@ -1,10 +1,4 @@
 {
-    "_gcp_section_basic": {
-        "description": "═══════════════ 基础设置 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 基础设置 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "enable_group_chat": {
         "description": "🔘 启用群聊功能",
         "type": "bool",
@@ -22,12 +16,6 @@
         "type": "list",
         "default": [],
         "hint": "在哪些群组中启用此插件。留空则在所有群聊中启用；填写群号则只在指定群组中启用"
-    },
-    "_gcp_section_probability": {
-        "description": "═══════════════ 概率筛选（读空气概率） ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 概率筛选（读空气概率） ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "initial_probability": {
         "description": "初始读空气概率",
@@ -65,17 +53,12 @@
         "default": 0.8,
         "hint": "当启用概率硬性限制时，所有主动回复功能的最终概率不会高于此值（范围0-1）。建议0.6-0.9。例如0.8表示即使AI再活跃/兴奋，回复概率也不会超过80%"
     },
-    "_gcp_section_decision": {
-        "description": "═══════════════ AI 读空气判断（DecisionAI） ═══════════════",
-        "type": "string",
-        "default": "═══════════════ AI 读空气判断（DecisionAI） ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "decision_ai_provider_id": {
         "description": "读空气AI提供商",
         "type": "string",
         "default": "",
-        "hint": "用于判断是否回复的AI提供商，留空则使用默认提供商。同时也是主动对话AI预判断、频率动态调整AI使用的提供商"
+        "hint": "用于判断是否回复的AI提供商，留空则使用默认提供商",
+        "_special": "select_provider"
     },
     "decision_ai_include_persona": {
         "description": "读空气AI自动包含人格",
@@ -105,12 +88,6 @@
         ],
         "hint": "选择额外提示词的应用方式：\n• append（拼接）：在默认系统提示词末尾追加你的补充说明，两者共同生效\n• override（覆盖）：完全替换默认系统提示词，只使用你填写的额外提示词（此时额外提示词不能为空）\n\n⚠️ 注意：无论哪种模式，以下内容都不受影响、不可覆盖，始终由系统按配置动态追加：\n  - 判断型AI人格注入说明（会根据是否包含人格、以及是否指定了判断专用人格而变化）\n  - [系统信息-当前发送者] 发送者姓名和ID\n  - [系统信息-主动对话上下文] 主动对话后的回复上下文\n  - [系统信息-时间与活跃度] 当前时间和活跃度（需开启动态时间段）\n  - [系统信息-关键词触发] 匹配到的关键词（关键词触发时）\n  - [系统信息-兴趣话题] 兴趣话题关键词（需开启拟人增强）\n  - [系统信息-对话疲劳] 连续对话轮次（需开启对话疲劳）\n  - [系统信息-回复密度] 最近回复建议（需开启回复密度限制）\n  - [系统信息-最近未接上对话] 某些场景下，提醒AI更关注最近上下文但不要强行续话\n\n说明：Smart 批次回复提示增强只作用于回复阶段，不会改变这里的读空气判断主体。即使 Smart 模式吸收了多条批次消息，读空气AI仍以当前消息发送者作为主要判断对象。\n\n说明：在 Web 面板中，可在下方对应配置项区域查看默认系统提示词预览；传统配置页面不会显示这段预览。如需查看默认正文，建议到 Web 端对应配置项处查看。"
     },
-    "_gcp_section_reply": {
-        "description": "═══════════════ 回复设置 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 回复设置 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "reply_ai_extra_prompt": {
         "description": "回复AI额外提示词",
         "type": "text",
@@ -139,12 +116,6 @@
         "default": true,
         "hint": "是否在消息中插入发送者ID和名字"
     },
-    "_gcp_section_context": {
-        "description": "═══════════════ 上下文与消息缓存 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 上下文与消息缓存 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "max_context_messages": {
         "description": "最大上下文消息数",
         "type": "int",
@@ -163,12 +134,6 @@
         "default": 1800,
         "hint": "【上下文连续性】缓存消息的最大保留时间。如果长时间没有触发AI回复，超过此时间的缓存消息会被自动清理（认为已过时）。默认1800秒(30分钟)，建议600-3600秒。⚠️系统保护上限7200秒(2小时)"
     },
-    "_gcp_section_forward": {
-        "description": "═══════════════ 转发消息解析 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 转发消息解析 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "enable_forward_message_parsing": {
         "description": "📦 启用转发消息解析",
         "type": "bool",
@@ -180,12 +145,6 @@
         "type": "int",
         "default": 3,
         "hint": "【v1.2.0新增·需启用转发消息解析】控制嵌套转发（转发消息中包含的转发消息）的最大解析深度。\n\n⚙️ 配置说明：\n• 0：不展开嵌套转发（外层仍会解析为单条文本，内层改为占位式降级）\n• 1-3：推荐范围，平衡解析深度与 API 消耗\n• 4-10：深度解析，适合需要尽量展开复杂 QQ 嵌套转发的场景，但 API 调用次数可能较多\n\n⚠️ 系统硬上限：10层。每条消息的 API 调用总次数上限为30次，超出则停止递归并用占位符替代。\n💡 建议：默认3层足够大多数场景。嵌套转发在实际使用中很少超过2-3层"
-    },
-    "_gcp_section_image": {
-        "description": "═══════════════ 图片与多媒体 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 图片与多媒体 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "enable_image_processing": {
         "description": "🖼️ 允许处理图片（通过概率筛选的消息）",
@@ -209,7 +168,8 @@
         "description": "图片转文字AI提供商",
         "type": "string",
         "default": "",
-        "hint": "用于图片转文字的AI提供商，留空则直接传递图片，请确认接下来的读空气AI和最终回复决定的AI(也就是你在平台设置的默认回复用的AI)都是多模态AI"
+        "hint": "用于图片转文字的AI提供商，留空则直接传递图片给多模态AI（需确认最终回复AI支持多模态）",
+        "_special": "select_provider"
     },
     "image_to_text_prompt": {
         "description": "图片转文字提示词",
@@ -246,12 +206,6 @@
         "type": "int",
         "default": 50,
         "hint": "【v1.2.0新增】等待平台处理图片时，每次检查的间隔时间（毫秒）。值越小检查越频繁，响应越快但CPU开销略高。默认50毫秒。建议30-100毫秒"
-    },
-    "_gcp_section_memory": {
-        "description": "═══════════════ 记忆注入（livingmemory） ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 记忆注入（livingmemory） ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "enable_memory_injection": {
         "description": "启用强制记忆植入",
@@ -309,12 +263,6 @@
         ],
         "hint": "【仅在memory_plugin_mode=livingmemory或auto检测到LivingMemory时生效】控制插件如何获取当前人格ID，以兼容不同版本的 AstrBot / LivingMemory 组合。\n\n• auto（推荐）= 依次尝试新版 resolve_selected_persona → 旧版 get_default_persona_v3 → 更早期 get_personas_by_key，自动兼容新老版本\n• resolver_only = 只使用新版 resolve_selected_persona，适合当前新架构排查\n• legacy_only = 只使用旧接口链（get_default_persona_v3 / get_personas_by_key），适合老版本兼容\n• off = 不传 persona_id 给 LivingMemory，只保留 session_id 隔离。仅建议在人格管理接口异常且需要临时兜底时使用\n\n💡 这是一层兼容开关，不影响 LivingMemory 的 memory_engine 架构版本；上方 livingmemory_version 仍用于选择 v1/v2 插件初始化路径。"
     },
-    "_gcp_section_keyword": {
-        "description": "═══════════════ 关键词触发与黑名单 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 关键词触发与黑名单 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "trigger_keywords": {
         "description": "触发关键词列表",
         "type": "list",
@@ -344,12 +292,6 @@
         "type": "list",
         "default": [],
         "hint": "【v1.0.7新增】需要屏蔽的用户ID列表。这些用户的消息将被本插件忽略，但不影响其他插件处理。留空则不屏蔽任何用户"
-    },
-    "_gcp_section_command": {
-        "description": "═══════════════ 指令过滤与重置指令 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 指令过滤与重置指令 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "enable_command_filter": {
         "description": "启用指令标识过滤",
@@ -395,12 +337,6 @@
         "default": [],
         "hint": "可配置多个用户ID，只有在此列表中的用户才能触发gcp_reset_here重置指令。留空=允许所有用户使用。仅在群聊中生效。"
     },
-    "_gcp_section_at": {
-        "description": "═══════════════ @消息处理 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ @消息处理 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "enable_ignore_at_others": {
         "description": "启用忽略@他人消息功能",
         "type": "bool",
@@ -424,12 +360,6 @@
             "probability_boost"
         ],
         "hint": "仅在未启用'忽略@全体成员消息功能'时生效。normal=按普通消息处理；skip_probability=跳过概率筛选但保留读空气AI；skip_all=跳过概率筛选和读空气AI，直接进入回复流程；probability_boost=不跳过筛选，但只对当前这条@全体成员消息临时提升概率。默认skip_probability。此配置不受@他人过滤影响"
-    },
-    "_gcp_section_poke": {
-        "description": "═══════════════ 戳一戳 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 戳一戳 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "poke_message_mode": {
         "description": "戳一戳消息处理模式",
@@ -496,12 +426,6 @@
         "default": [],
         "hint": "【群聊白名单】只有在此列表中的群聊才允许使用戳一戳相关功能（包括：处理戳一戳消息、收到戳一戳后反戳、回复后戳一戳、戳过对方追踪提示、自动保留戳一戳历史事件）。留空则所有群聊都允许；填写群号则只在指定群组中启用戳一戳功能。注意：此白名单不影响防伪造戳一戳的过滤功能（即过滤用户手动输入的\"[Poke:poke]\"标识符）"
     },
-    "_gcp_section_duplicate": {
-        "description": "═══════════════ 回复去重 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 回复去重 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "enable_duplicate_filter": {
         "description": "🔄 启用AI重复消息拦截",
         "type": "bool",
@@ -519,12 +443,6 @@
         "type": "int",
         "default": 1800,
         "hint": "【需启用时效性判断】消息发送后多长时间内会被用于重复检测。超过此时间的消息不参与重复判断。默认1800秒(30分钟)。建议300-7200秒。例如设置600秒，则10分钟前发送的消息不会被用于重复检测"
-    },
-    "_gcp_section_concurrent": {
-        "description": "═══════════════ 并发处理（Smart） ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 并发处理（Smart） ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "concurrent_mode": {
         "description": "🔄 并发消息处理模式",
@@ -547,12 +465,6 @@
         "type": "int",
         "default": 20,
         "hint": "仅在 concurrent_mode=smart 时生效。单批次最多吸收多少条后续消息进入合并。达到此数量后停止吸收，其余消息留在待合并池由下一批次处理。设置范围 1-50，默认 20。配合合并超时时间，两者中任一先触发即停止合并。"
-    },
-    "_gcp_section_filter": {
-        "description": "═══════════════ 内容过滤 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ 内容过滤 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "enable_output_content_filter": {
         "description": "🧹 启用输出内容过滤",
@@ -589,12 +501,6 @@
         ],
         "hint": "【保存过滤规则】格式与输出过滤完全相同，底层执行逻辑也完全一致：\n\n1️⃣ 范围过滤 A*B — 循环匹配，移除A到B之间所有内容（含标记）\n2️⃣ 头部过滤 {{>*B — 单次匹配，从开头到B（含）全部移除\n3️⃣ 尾部过滤 A*>}} — 单次匹配，从A（含）到末尾全部移除\n\n📌 执行行为（与输出过滤一致）：\n• 规则按列表顺序逐条执行，后一条在前一条的结果上继续。\n• Range模式内循环匹配直到无匹配；Head/Tail只匹配第一个标记。\n• 规则顺序会影响最终效果，建议大范围规则在前。\n\n💡 典型场景：\n• 输出保留思考过程、保存时过滤 → 只在save规则中配置\n• 输出过滤思考过程、保存时保留 → 只在output规则中配置\n• 两者都过滤 → 两套规则各自配置（可以相同也可以不同）\n\n📝 下方default中已提供常见示例，可直接使用或按需修改。"
     },
-    "_gcp_section_web": {
-        "description": "═══════════════ Web 配置面板 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ Web 配置面板 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
-    },
     "enable_web_panel": {
         "description": "🌐 启用 Web 配置面板",
         "type": "bool",
@@ -629,12 +535,6 @@
             "force_standard"
         ],
         "hint": "控制插件如何识别运行环境：\n\n• auto（推荐）：自动检测是否运行在桌面端。检测依据：①环境变量 ASTRBOT_DESKTOP_CLIENT=1 ②数据根目录为 ~/.astrbot ③进程树中存在 Tauri 父进程。首次检测成功后会自动写入本配置项记录结果\n\n• force_desktop：强制以桌面端模式运行。适用于自动检测失败但确实在使用桌面端的情况。开启后：重启指令会附加桌面端提示，日志中输出额外警告\n\n• force_standard：强制以标准版模式运行。适用于非桌面端环境或不需要桌面端兼容提示的场景"
-    },
-    "_gcp_section_web_security": {
-        "description": "═══════════════ Web 面板安全 ═══════════════",
-        "type": "string",
-        "default": "═══════════════ Web 面板安全 ═══════════════",
-        "hint": "分区标题（不可修改，仅用于界面分组展示）"
     },
     "web_panel_ip_mode": {
         "description": "🌐 Web 面板 IP 访问模式",
