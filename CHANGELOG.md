@@ -1,5 +1,14 @@
 ## 📝 更新日志
 
+### V2.0.4-lite (2026-08-15)
+
+**💬 Web 面板显示读空气判断提示词（接线原版预留的提示词预览功能）**
+
+- **修复**：原版预留的提示词预览功能（config-editor 的 promptDataRef 渲染 + tech-tree 的 renderPromptPreview + prompt-data.js 数据）因 _conf_schema.json 从未配置 promptDataRef 字段而未生效
+- **接线**：decision_ai_extra_prompt 增加 promptDataRef=decision-ai，reply_ai_extra_prompt 增加 promptDataRef=reply-ai——打开「AI读空气决策」节点配置面板时，可在「读空气AI额外提示词」下方折叠查看完整默认判断提示词；打开「AI回复生成」节点可查看回复AI说明
+- **文案**：同步更新两个配置项的 hint（清除已删功能引用，说明重构后回复AI不注入行为指令）
+- **✅ 验证**：JSON 有效；PromptData 数据完整性运行时验证通过
+
 ### V2.0.3-lite (2026-08-15)
 
 **🐛 修复：科技树空白（flow-data.js 查询方法丢失）**
