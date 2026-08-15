@@ -1,5 +1,13 @@
 ## 📝 更新日志
 
+### V2.0.3-lite (2026-08-15)
+
+**🐛 修复：科技树空白（flow-data.js 查询方法丢失）**
+
+- **问题**：V2.0.2-lite 重写 flow-data.js 时丢失了尾部查询方法（getNodeById / getStageById / getPipelineById / getStepContext / getAllNodes / findNodeByKey）及 FlowData.init() 调用，导致 tech-tree.js 渲染时调用不存在的方法，科技树显示空白
+- **修复**：恢复全部查询方法并补回 init() 调用
+- **✅ 验证**：node --check 通过；运行时验证 22 节点 / 7 阶段 / 查询方法全部可用 / findNodeByKey 命中配置键正常
+
 ### V2.0.2-lite (2026-08-15)
 
 **Web 面板全面清理（移除已删除功能的所有前端痕迹）**

@@ -399,4 +399,67 @@ const FlowData = {
             ]
         };
     }
+,
+
+    // ==================== 查询方法（兼容 ConfigEditor / TechTree） ====================
+
+    /** 根据 ID 获取步骤（节点）数据 */
+    getNodeById(id) {
+        return this._nodeMap[id] || null;
+    },
+
+    /** 根据 ID 获取阶段 */
+    getStageById(id) {
+        return this._stageMap[id] || null;
+    },
+
+    /** 根据 ID 获取流水线 */
+    getPipelineById(id) {
+        return this.pipelines.find(p => p.id === id) || null;
+    },
+
+    /** 获取步骤所属的阶段和流水线 */
+    getStepContext(stepId) {
+        for (const pipeline of this.pipelines) {
+            for (const stage of pipeline.stages) {
+                for (const step of stage.steps) {
+                    if (step.id === stepId) {
+                        return { step, stage, pipeline };
+                    }
+                }
+            }
+        }
+        return null;
+    },
+
+    /** 获取所有步骤的扁平列表（兼容旧 getAllNodes） */
+    getAllNodes() {
+        const all = [];
+        for (const pipeline of this.pipelines) {
+            for (const stage of pipeline.stages) {
+                for (const step of stage.steps) {
+                    all.push({ ...step, stageId: stage.id, pipelineId: pipeline.id });
+                }
+            }
+        }
+        return all;
+    },
+
+    /** 根据配置key查找所属步骤（兼容旧 findNodeByKey） */
+    findNodeByKey(key) {
+        for (const pipeline of this.pipelines) {
+            for (const stage of pipeline.stages) {
+                for (const step of stage.steps) {
+                    if (step.keys && step.keys.includes(key)) {
+                        return { node: step, flow: { id: pipeline.id, name: pipeline.name } };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
 };
+
+// 初始化
+FlowData.init();

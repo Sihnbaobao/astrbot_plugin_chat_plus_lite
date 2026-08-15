@@ -1,6 +1,6 @@
 # 项目结构说明
 
-> ⚠️ 本文档描述的是旧版（V1.2.x）结构。当前分支为 refactor-lite（V2.0.2-lite）精简重构版：
+> ⚠️ 本文档描述的是旧版（V1.2.x）结构。当前分支为 refactor-lite（V2.0.3-lite）精简重构版：
 > 已删除 private_chat/ 目录及 utils/ 下的 attention_manager、cooldown_manager、mood_tracker、
 > proactive_chat_manager、typo_generator、typing_simulator、humanize_mode、frequency_adjuster、
 > message_quality_scorer、reply_density_manager、time_period_manager、system_prompt_rewriter、
