@@ -113,7 +113,7 @@ const PromptData = {
 
     'reply-ai': {
         title: '回复AI 说明（重构版：不再注入行为指令）',
-        desc: 'V2.0.0-lite 重构后，回复AI不再注入任何系统行为指令（原 SYSTEM_REPLY_PROMPT 约100行已删除）。\n\n当前回复请求的组成：\n  · system_prompt：只含人格设定（persona_manager 原样输出）\n  · prompt：只含纯上下文（历史消息 + [时间] 昵称(ID): 消息 发送者标注）+ 一行"请直接输出你的回复"结尾\n  · 其他插件（emotionai、livingmemory 等）通过 on_llm_request 钩子注入的内容会保留\n\n【append 模式】你的"额外提示词"将追加在上下文末尾。\n【override 模式】你的"额外提示词"将完全替换上下文内容。\n\n这样群聊里 AI 看到的指令与私聊几乎相同，只多"谁在说话"的必要信息——人格表现不再被插件改变。',
+        desc: 'V2.0.0-lite 重构后，回复AI不再注入任何系统行为指令（原 SYSTEM_REPLY_PROMPT 约100行已删除）。\n\n当前回复请求的组成：\n  · system_prompt：只含人格设定（persona_manager 原样输出）\n  · prompt：只含纯上下文（历史消息 + [时间] 昵称(ID): 消息 发送者标注）+ 一行"请直接输出你的回复"结尾（含一行防机械复读引导：不约束说话风格，仅避免复述对方措辞与固定句式开头）\n  · 其他插件（emotionai、livingmemory 等）通过 on_llm_request 钩子注入的内容会保留\n\n【append 模式】你的"额外提示词"将追加在上下文末尾。\n【override 模式】你的"额外提示词"将完全替换上下文内容。\n\n这样群聊里 AI 看到的指令与私聊几乎相同，只多"谁在说话"的必要信息——人格表现不再被插件改变。唯一新增的一行防复读引导用于避免「XXX啊」这类机械回声，不改变说话风格。',
         content: '（本版本不再注入回复行为指令。system_prompt 只含人格设定；prompt 只含带发送者标注的纯上下文。详见上方说明。）'
     }
 };
