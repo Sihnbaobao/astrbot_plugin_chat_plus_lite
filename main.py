@@ -29,7 +29,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者: Him666233（原作者）／重构维护: Sihnbaobao
-版本: V2.1.1-lite
+版本: V2.2.0-lite
 本插件为 astrbot_plugin_group_chat_plus（Him666233）的 AGPL-3.0 精简重构派生作品，
 重新发布为独立插件 astrbot_plugin_chat_plus_lite。
 """
@@ -93,7 +93,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Him666233",
     "一个以AI读空气为主的群聊聊天效果增强插件（精简重构版）",
-    "V2.1.1-lite",
+    "V2.2.0-lite",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(Star):
@@ -122,169 +122,172 @@ class ChatPlus(Star):
         self.context = context
         self.config = config
 
+        # V2.2.0：旧版平铺配置 → 分组结构一次性迁移（必须先于所有配置读取）
+        self._migrate_legacy_flat_config()
+
         # ========== 基础配置 ==========
-        self.enable_group_chat = config.get("enable_group_chat", True)
-        self.debug_mode = config.get("enable_debug_log", False)
-        self.enabled_groups = config.get("enabled_groups", [])
+        self.enable_group_chat = self._cfg("enable_group_chat", True)
+        self.debug_mode = self._cfg("enable_debug_log", False)
+        self.enabled_groups = self._cfg("enabled_groups", [])
 
         # ========== 概率相关配置 ==========
-        self.initial_probability = config.get("initial_probability", 0.02)
-        self.after_reply_probability = config.get("after_reply_probability", 0.8)
-        self.probability_duration = config.get("probability_duration", 120)
+        self.initial_probability = self._cfg("initial_probability", 0.02)
+        self.after_reply_probability = self._cfg("after_reply_probability", 0.8)
+        self.probability_duration = self._cfg("probability_duration", 120)
 
         # ========== 决策AI（读空气）配置 ==========
-        self.decision_ai_provider_id = config.get("decision_ai_provider_id", "")
-        self.decision_ai_include_persona = config.get(
+        self.decision_ai_provider_id = self._cfg("decision_ai_provider_id", "")
+        self.decision_ai_include_persona = self._cfg(
             "decision_ai_include_persona", True
         )
-        self.decision_ai_persona_name = config.get("decision_ai_persona_name", "")
-        self.decision_ai_extra_prompt = config.get("decision_ai_extra_prompt", "")
-        self.decision_ai_timeout = config.get("decision_ai_timeout", 30)
-        self.decision_ai_prompt_mode = config.get("decision_ai_prompt_mode", "append")
-        self.decision_ai_reply_tendency = config.get(
+        self.decision_ai_persona_name = self._cfg("decision_ai_persona_name", "")
+        self.decision_ai_extra_prompt = self._cfg("decision_ai_extra_prompt", "")
+        self.decision_ai_timeout = self._cfg("decision_ai_timeout", 30)
+        self.decision_ai_prompt_mode = self._cfg("decision_ai_prompt_mode", "append")
+        self.decision_ai_reply_tendency = self._cfg(
             "decision_ai_reply_tendency", "persona"
         )
-        self.enable_decision_ai_reasoning = config.get(
+        self.enable_decision_ai_reasoning = self._cfg(
             "enable_decision_ai_reasoning", False
         )
-        self.decision_ai_reasoning_log = config.get("decision_ai_reasoning_log", False)
-        self.decision_ai_reasoning_log_mode = config.get(
+        self.decision_ai_reasoning_log = self._cfg("decision_ai_reasoning_log", False)
+        self.decision_ai_reasoning_log_mode = self._cfg(
             "decision_ai_reasoning_log_mode", "processed"
         )
-        self.judgment_reasoning_start_marker = config.get(
+        self.judgment_reasoning_start_marker = self._cfg(
             "judgment_reasoning_start_marker", "[[GCP_REASONING_START]]"
         )
-        self.judgment_reasoning_end_marker = config.get(
+        self.judgment_reasoning_end_marker = self._cfg(
             "judgment_reasoning_end_marker", "[[GCP_REASONING_END]]"
         )
 
         # ========== 回复配置 ==========
-        self.reply_ai_extra_prompt = config.get("reply_ai_extra_prompt", "")
-        self.reply_ai_prompt_mode = config.get("reply_ai_prompt_mode", "append")
-        self.include_timestamp = config.get("include_timestamp", True)
-        self.include_sender_info = config.get("include_sender_info", True)
+        self.reply_ai_extra_prompt = self._cfg("reply_ai_extra_prompt", "")
+        self.reply_ai_prompt_mode = self._cfg("reply_ai_prompt_mode", "append")
+        self.include_timestamp = self._cfg("include_timestamp", True)
+        self.include_sender_info = self._cfg("include_sender_info", True)
 
         # ========== 上下文配置 ==========
-        self.max_context_messages = config.get("max_context_messages", -1)
-        self.custom_storage_max_messages = config.get("custom_storage_max_messages", 500)
-        self.pending_cache_max_count = config.get("pending_cache_max_count", 10)
-        self.pending_cache_ttl_seconds = config.get("pending_cache_ttl_seconds", 1800)
+        self.max_context_messages = self._cfg("max_context_messages", -1)
+        self.custom_storage_max_messages = self._cfg("custom_storage_max_messages", 500)
+        self.pending_cache_max_count = self._cfg("pending_cache_max_count", 10)
+        self.pending_cache_ttl_seconds = self._cfg("pending_cache_ttl_seconds", 1800)
 
         # ========== 转发/入群解析配置 ==========
-        self.enable_forward_message_parsing = config.get(
+        self.enable_forward_message_parsing = self._cfg(
             "enable_forward_message_parsing", False
         )
-        self.forward_max_nesting_depth = config.get("forward_max_nesting_depth", 3)
-        self.enable_welcome_message_parsing = config.get(
+        self.forward_max_nesting_depth = self._cfg("forward_max_nesting_depth", 3)
+        self.enable_welcome_message_parsing = self._cfg(
             "enable_welcome_message_parsing", False
         )
-        self.welcome_message_mode = config.get("welcome_message_mode", "skip_probability")
+        self.welcome_message_mode = self._cfg("welcome_message_mode", "skip_probability")
 
         # ========== 图片处理配置 ==========
-        self.enable_image_processing = config.get("enable_image_processing", False)
-        self.image_to_text_scope = config.get("image_to_text_scope", "mention_only")
-        self.image_to_text_provider_id = config.get("image_to_text_provider_id", "")
-        self.image_to_text_prompt = config.get(
+        self.enable_image_processing = self._cfg("enable_image_processing", False)
+        self.image_to_text_scope = self._cfg("image_to_text_scope", "mention_only")
+        self.image_to_text_provider_id = self._cfg("image_to_text_provider_id", "")
+        self.image_to_text_prompt = self._cfg(
             "image_to_text_prompt", "请详细描述这张图片的内容"
         )
-        self.image_to_text_timeout = config.get("image_to_text_timeout", 60)
-        self.max_images_per_message = config.get("max_images_per_message", 10)
-        self.enable_image_description_cache = config.get(
+        self.image_to_text_timeout = self._cfg("image_to_text_timeout", 60)
+        self.max_images_per_message = self._cfg("max_images_per_message", 10)
+        self.enable_image_description_cache = self._cfg(
             "enable_image_description_cache", False
         )
-        self.image_description_cache_max_entries = config.get(
+        self.image_description_cache_max_entries = self._cfg(
             "image_description_cache_max_entries", 500
         )
-        self.gcp_clear_image_cache_allowed_user_ids = config.get(
+        self.gcp_clear_image_cache_allowed_user_ids = self._cfg(
             "gcp_clear_image_cache_allowed_user_ids", []
         )
-        self.platform_image_caption_max_wait = config.get(
+        self.platform_image_caption_max_wait = self._cfg(
             "platform_image_caption_max_wait", 2.0
         )
-        self.platform_image_caption_retry_interval = config.get(
+        self.platform_image_caption_retry_interval = self._cfg(
             "platform_image_caption_retry_interval", 50
         )
-        self.platform_image_caption_fast_check_count = config.get(
+        self.platform_image_caption_fast_check_count = self._cfg(
             "platform_image_caption_fast_check_count", 5
         )
-        self.probability_filter_cache_delay = config.get(
+        self.probability_filter_cache_delay = self._cfg(
             "probability_filter_cache_delay", 500
         )
 
         # ========== 表情包标记配置 ==========
-        self.enable_emoji_filter = config.get("enable_emoji_filter", False)
-        self.emoji_probability_decay = config.get("emoji_probability_decay", 0.7)
-        self.emoji_decay_min_probability = config.get(
+        self.enable_emoji_filter = self._cfg("enable_emoji_filter", False)
+        self.emoji_probability_decay = self._cfg("emoji_probability_decay", 0.7)
+        self.emoji_decay_min_probability = self._cfg(
             "emoji_decay_min_probability", 0.1
         )
 
         # ========== 记忆注入配置（livingmemory） ==========
-        self.enable_memory_injection = config.get("enable_memory_injection", False)
-        self.memory_plugin_mode = config.get("memory_plugin_mode", "auto")
-        self.memory_insertion_timing = config.get(
+        self.enable_memory_injection = self._cfg("enable_memory_injection", False)
+        self.memory_plugin_mode = self._cfg("memory_plugin_mode", "auto")
+        self.memory_insertion_timing = self._cfg(
             "memory_insertion_timing", "post_decision"
         )
-        self.livingmemory_top_k = config.get("livingmemory_top_k", 5)
-        self.livingmemory_version = config.get("livingmemory_version", "auto")
-        self.livingmemory_persona_compat_mode = config.get(
+        self.livingmemory_top_k = self._cfg("livingmemory_top_k", 5)
+        self.livingmemory_version = self._cfg("livingmemory_version", "auto")
+        self.livingmemory_persona_compat_mode = self._cfg(
             "livingmemory_persona_compat_mode", "auto"
         )
 
         # ========== 关键词/黑名单配置 ==========
-        self.trigger_keywords = config.get("trigger_keywords", [])
-        self.blacklist_keywords = config.get("blacklist_keywords", [])
-        self.keyword_smart_mode = config.get("keyword_smart_mode", False)
-        self.enable_user_blacklist = config.get("enable_user_blacklist", False)
-        self.blacklist_user_ids = config.get("blacklist_user_ids", [])
+        self.trigger_keywords = self._cfg("trigger_keywords", [])
+        self.blacklist_keywords = self._cfg("blacklist_keywords", [])
+        self.keyword_smart_mode = self._cfg("keyword_smart_mode", False)
+        self.enable_user_blacklist = self._cfg("enable_user_blacklist", False)
+        self.blacklist_user_ids = self._cfg("blacklist_user_ids", [])
 
         # ========== 指令过滤配置 ==========
-        self.enable_command_filter = config.get("enable_command_filter", True)
-        self.command_prefixes = config.get("command_prefixes", ["/", "!", "#"])
-        self.enable_full_command_detection = config.get(
+        self.enable_command_filter = self._cfg("enable_command_filter", True)
+        self.command_prefixes = self._cfg("command_prefixes", ["/", "!", "#"])
+        self.enable_full_command_detection = self._cfg(
             "enable_full_command_detection", False
         )
-        self.full_command_list = config.get("full_command_list", ["new", "help", "reset"])
-        self.enable_command_prefix_match = config.get(
+        self.full_command_list = self._cfg("full_command_list", ["new", "help", "reset"])
+        self.enable_command_prefix_match = self._cfg(
             "enable_command_prefix_match", False
         )
-        self.command_prefix_match_list = config.get("command_prefix_match_list", [])
-        self.plugin_gcp_reset_allowed_user_ids = config.get(
+        self.command_prefix_match_list = self._cfg("command_prefix_match_list", [])
+        self.plugin_gcp_reset_allowed_user_ids = self._cfg(
             "plugin_gcp_reset_allowed_user_ids", []
         )
-        self.plugin_gcp_reset_here_allowed_user_ids = config.get(
+        self.plugin_gcp_reset_here_allowed_user_ids = self._cfg(
             "plugin_gcp_reset_here_allowed_user_ids", []
         )
 
         # ========== @消息过滤配置 ==========
-        self.enable_ignore_at_others = config.get("enable_ignore_at_others", False)
-        self.ignore_at_others_mode = config.get("ignore_at_others_mode", "strict")
-        self.enable_ignore_at_all = config.get("enable_ignore_at_all", False)
+        self.enable_ignore_at_others = self._cfg("enable_ignore_at_others", False)
+        self.ignore_at_others_mode = self._cfg("ignore_at_others_mode", "strict")
+        self.enable_ignore_at_all = self._cfg("enable_ignore_at_all", False)
         self.ignore_at_all_enabled = self.enable_ignore_at_all
-        self.at_all_message_mode = config.get("at_all_message_mode", "skip_probability")
-        self.at_all_probability_boost_value = config.get(
+        self.at_all_message_mode = self._cfg("at_all_message_mode", "skip_probability")
+        self.at_all_probability_boost_value = self._cfg(
             "at_all_probability_boost_value", 0.3
         )
 
         # ========== 戳一戳配置 ==========
-        self.poke_message_mode = config.get("poke_message_mode", "bot_only")
-        self.poke_bot_skip_probability = config.get("poke_bot_skip_probability", True)
-        self.poke_bot_probability_boost_reference = config.get(
+        self.poke_message_mode = self._cfg("poke_message_mode", "bot_only")
+        self.poke_bot_skip_probability = self._cfg("poke_bot_skip_probability", True)
+        self.poke_bot_probability_boost_reference = self._cfg(
             "poke_bot_probability_boost_reference", 0.3
         )
-        self.poke_after_reply_enabled = config.get("enable_poke_after_reply", False)
-        self.poke_after_reply_probability = config.get(
+        self.poke_after_reply_enabled = self._cfg("enable_poke_after_reply", False)
+        self.poke_after_reply_probability = self._cfg(
             "poke_after_reply_probability", 0.15
         )
-        self.poke_after_reply_delay = config.get("poke_after_reply_delay", 0.5)
-        self.poke_trace_enabled = config.get("enable_poke_trace_prompt", False)
-        self.poke_trace_max_tracked_users = config.get(
+        self.poke_after_reply_delay = self._cfg("poke_after_reply_delay", 0.5)
+        self.poke_trace_enabled = self._cfg("enable_poke_trace_prompt", False)
+        self.poke_trace_max_tracked_users = self._cfg(
             "poke_trace_max_tracked_users", 5
         )
-        self.poke_trace_ttl_seconds = config.get("poke_trace_ttl_seconds", 300)
-        self.poke_enabled_groups = [str(g) for g in config.get("poke_enabled_groups", [])]
+        self.poke_trace_ttl_seconds = self._cfg("poke_trace_ttl_seconds", 300)
+        self.poke_enabled_groups = [str(g) for g in self._cfg("poke_enabled_groups", [])]
 
         # 反戳概率（0=禁用，1=必定反戳并丢弃本插件处理）
-        raw_reverse_prob = config.get("poke_reverse_on_poke_probability", 0)
+        raw_reverse_prob = self._cfg("poke_reverse_on_poke_probability", 0)
         try:
             reverse_prob = float(raw_reverse_prob)
         except (TypeError, ValueError):
@@ -292,50 +295,50 @@ class ChatPlus(Star):
         self.poke_reverse_on_poke_probability = max(0.0, min(1.0, reverse_prob))
 
         # ========== 去重过滤配置 ==========
-        self.enable_duplicate_filter = config.get("enable_duplicate_filter", True)
-        self.duplicate_filter_check_count = config.get(
+        self.enable_duplicate_filter = self._cfg("enable_duplicate_filter", True)
+        self.duplicate_filter_check_count = self._cfg(
             "duplicate_filter_check_count", 5
         )
-        self.enable_duplicate_time_limit = config.get(
+        self.enable_duplicate_time_limit = self._cfg(
             "enable_duplicate_time_limit", True
         )
-        self.duplicate_filter_time_limit = config.get(
+        self.duplicate_filter_time_limit = self._cfg(
             "duplicate_filter_time_limit", 1800
         )
 
         # ========== 并发/Smart配置 ==========
-        self.concurrent_mode = config.get("concurrent_mode", "legacy")
-        self.concurrent_wait_max_loops = config.get("concurrent_wait_max_loops", 10)
-        self.concurrent_wait_interval = config.get("concurrent_wait_interval", 1)
-        self.enable_smart_batch_reply_hint = config.get(
+        self.concurrent_mode = self._cfg("concurrent_mode", "legacy")
+        self.concurrent_wait_max_loops = self._cfg("concurrent_wait_max_loops", 10)
+        self.concurrent_wait_interval = self._cfg("concurrent_wait_interval", 1)
+        self.enable_smart_batch_reply_hint = self._cfg(
             "enable_smart_batch_reply_hint", True
         )
-        self.smart_concurrent_merge_wait = config.get("smart_concurrent_merge_wait", 30)
-        self.smart_concurrent_max_batch_size = config.get(
+        self.smart_concurrent_merge_wait = self._cfg("smart_concurrent_merge_wait", 30)
+        self.smart_concurrent_max_batch_size = self._cfg(
             "smart_concurrent_max_batch_size", 20
         )
-        self.smart_concurrent_claim_delay = config.get(
+        self.smart_concurrent_claim_delay = self._cfg(
             "smart_concurrent_claim_delay", 0.3
         )
 
         # ========== 内容过滤配置 ==========
-        self.enable_output_content_filter = config.get(
+        self.enable_output_content_filter = self._cfg(
             "enable_output_content_filter", False
         )
-        self.output_content_filter_rules = config.get("output_content_filter_rules", [])
-        self.enable_save_content_filter = config.get("enable_save_content_filter", False)
-        self.save_content_filter_rules = config.get("save_content_filter_rules", [])
+        self.output_content_filter_rules = self._cfg("output_content_filter_rules", [])
+        self.enable_save_content_filter = self._cfg("enable_save_content_filter", False)
+        self.save_content_filter_rules = self._cfg("save_content_filter_rules", [])
 
         # ========== 性能警告阈值 ==========
-        self.reply_timeout_warning_threshold = config.get(
+        self.reply_timeout_warning_threshold = self._cfg(
             "reply_timeout_warning_threshold", 120
         )
-        self.reply_generation_timeout_warning = config.get(
+        self.reply_generation_timeout_warning = self._cfg(
             "reply_generation_timeout_warning", 60
         )
 
         # ========== 桌面端模式（AstrBot Desktop 兼容） ==========
-        self.desktop_mode_setting = config.get("desktop_mode", "auto")
+        self.desktop_mode_setting = self._cfg("desktop_mode", "auto")
 
         # ========== 数据目录 ==========
         try:
@@ -430,7 +433,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.1.1-lite（精简重构版）")
+        logger.info("群聊增强插件已加载 - V2.2.0-lite（精简重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -473,6 +476,88 @@ class ChatPlus(Star):
     # V2.1.0：独立 Web 面板已移除，管理界面改为 AstrBot 插件页
     # （Dashboard 内嵌 iframe），后端 API 由此注册。
     # ============================================================
+
+    # ============================================================
+    # 配置访问兼容层（V2.2.0 配置分组：_conf_schema.json 按功能分栏）
+    # 旧版平铺配置会在首次加载时自动迁移到分组结构。
+    # ============================================================
+
+    def _migrate_legacy_flat_config(self):
+        """V2.2.0：旧版平铺配置 → 分组结构一次性迁移（需在读取配置前调用）。"""
+        try:
+            schema = getattr(self.config, "schema", None) or {}
+            groups = {
+                gname: meta.get("items", {})
+                for gname, meta in schema.items()
+                if isinstance(meta, dict)
+                and meta.get("type") == "object"
+                and isinstance(meta.get("items"), dict)
+            }
+            if not groups:
+                return
+            # 已处于分组结构（分组内已有数据）则跳过
+            has_group_data = any(
+                isinstance(self.config.get(g), dict) and self.config.get(g)
+                for g in groups
+            )
+            if has_group_data:
+                return
+            migrated = 0
+            for gname, items in groups.items():
+                sub = {}
+                for key in items:
+                    if key in self.config:
+                        sub[key] = self.config[key]
+                        migrated += 1
+                if sub:
+                    self.config[gname] = sub
+            for items in groups.values():
+                for key in items:
+                    if key in self.config:
+                        del self.config[key]
+            if migrated:
+                self.config.save_config()
+                logger.info(f"⚙️ 配置已迁移到分组结构（{migrated} 项）")
+        except Exception as e:
+            logger.warning(f"⚙️ 配置迁移失败（继续使用默认值）: {e}")
+
+    def _cfg(self, key, default=None):
+        """按分组结构读取配置；schema 外的键回退到平铺读取。"""
+        try:
+            schema = getattr(self.config, "schema", None) or {}
+            for gname, gmeta in schema.items():
+                if (
+                    isinstance(gmeta, dict)
+                    and isinstance(gmeta.get("items"), dict)
+                    and key in gmeta["items"]
+                ):
+                    gval = self.config.get(gname)
+                    if isinstance(gval, dict) and key in gval:
+                        return gval[key]
+                    return default
+        except Exception:
+            pass
+        return self.config.get(key, default)
+
+    def _set_cfg(self, key, value):
+        """按分组结构写入配置；schema 外的键回退到平铺写入。"""
+        try:
+            schema = getattr(self.config, "schema", None) or {}
+            for gname, gmeta in schema.items():
+                if (
+                    isinstance(gmeta, dict)
+                    and isinstance(gmeta.get("items"), dict)
+                    and key in gmeta["items"]
+                ):
+                    gval = self.config.get(gname)
+                    if not isinstance(gval, dict):
+                        gval = {}
+                        self.config[gname] = gval
+                    gval[key] = value
+                    return
+        except Exception:
+            pass
+        self.config[key] = value
 
     _PLUGIN_NAME = "astrbot_plugin_chat_plus_lite"
 
@@ -561,7 +646,7 @@ class ChatPlus(Star):
 
         values = {}
         for key, attr in self._PAGE_EDITABLE_KEYS.items():
-            values[key] = self.config.get(key, getattr(self, attr, None))
+            values[key] = self._cfg(key, getattr(self, attr, None))
 
         prob_status = getattr(ProbabilityManager, "_probability_status", {}) or {}
         runtime = {
@@ -573,7 +658,7 @@ class ChatPlus(Star):
         }
         return json_response(
             {
-                "version": "V2.1.1-lite",
+                "version": "V2.2.0-lite",
                 "values": values,
                 "runtime": runtime,
             }
@@ -598,7 +683,7 @@ class ChatPlus(Star):
                 skipped.append(key)
                 continue
             try:
-                self.config[key] = value
+                self._set_cfg(key, value)
             except Exception:
                 skipped.append(key)
                 continue
@@ -708,9 +793,9 @@ class ChatPlus(Star):
     @filter.on_platform_loaded()
     async def on_platform_loaded(self):
         """平台加载完成后，发送重启完成提示（gcp_reset 后使用）。"""
-        restart_umo = self.config.get("restart_umo")
-        platform_id = self.config.get("platform_id")
-        restart_start_ts = self.config.get("restart_start_ts")
+        restart_umo = self._cfg("restart_umo")
+        platform_id = self._cfg("platform_id")
+        restart_start_ts = self._cfg("restart_start_ts")
         if not restart_umo or not platform_id or not restart_start_ts:
             return
 
