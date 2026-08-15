@@ -29,7 +29,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者: Him666233（原作者）／重构维护: Sihnbaobao
-版本: V2.4.2-lite
+版本: V2.5.0-lite
 本插件为 astrbot_plugin_group_chat_plus（Him666233）的 AGPL-3.0 精简重构派生作品，
 重新发布为独立插件 astrbot_plugin_chat_plus_lite。
 """
@@ -93,7 +93,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Him666233",
     "一个以AI读空气为主的群聊聊天效果增强插件（精简重构版）",
-    "V2.4.2-lite",
+    "V2.5.0-lite",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(Star):
@@ -433,7 +433,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.4.2-lite（精简重构版）")
+        logger.info("群聊增强插件已加载 - V2.5.0-lite（精简重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -561,62 +561,74 @@ class ChatPlus(Star):
 
     _PLUGIN_NAME = "astrbot_plugin_chat_plus_lite"
 
-    # 插件页可编辑的配置键（键名 -> 实例属性名）
-    _PAGE_EDITABLE_KEYS = {
-        "enable_group_chat": "enable_group_chat",
+    # ============================================================
+    # 插件页配置源（V2.5.0：100% 覆盖——schema 驱动 + 隐藏键补充）
+    # _schema_groups() 从 _conf_schema.json 动态读取分组与字段定义，
+    # 插件页渲染与 AstrBot 配置页完全一致；_EXTRA_KEYS 收纳 main.py
+    # 有读取但 schema 未展示的隐藏参数。
+    # ============================================================
+
+    # schema 键 → 实例属性名 的例外映射（多数键名与属性名相同）
+    _ATTR_MAP = {
+        "desktop_mode": "desktop_mode_setting",
         "enable_debug_log": "debug_mode",
-        "initial_probability": "initial_probability",
-        "after_reply_probability": "after_reply_probability",
-        "probability_duration": "probability_duration",
-        "decision_ai_reply_tendency": "decision_ai_reply_tendency",
-        "decision_ai_prompt_mode": "decision_ai_prompt_mode",
-        "decision_ai_extra_prompt": "decision_ai_extra_prompt",
-        "decision_ai_timeout": "decision_ai_timeout",
-        "decision_ai_include_persona": "decision_ai_include_persona",
-        "decision_ai_reasoning_log": "decision_ai_reasoning_log",
-        "enable_decision_ai_reasoning": "enable_decision_ai_reasoning",
-        "reply_ai_prompt_mode": "reply_ai_prompt_mode",
-        "reply_ai_extra_prompt": "reply_ai_extra_prompt",
-        "include_timestamp": "include_timestamp",
-        "include_sender_info": "include_sender_info",
-        "max_context_messages": "max_context_messages",
-        "enable_forward_message_parsing": "enable_forward_message_parsing",
-        "forward_max_nesting_depth": "forward_max_nesting_depth",
-        "enable_image_processing": "enable_image_processing",
-        "image_to_text_scope": "image_to_text_scope",
-        "max_images_per_message": "max_images_per_message",
-        "enable_emoji_filter": "enable_emoji_filter",
-        "emoji_probability_decay": "emoji_probability_decay",
-        "emoji_decay_min_probability": "emoji_decay_min_probability",
-        "enable_memory_injection": "enable_memory_injection",
-        "memory_plugin_mode": "memory_plugin_mode",
-        "livingmemory_top_k": "livingmemory_top_k",
-        "keyword_smart_mode": "keyword_smart_mode",
-        "trigger_keywords": "trigger_keywords",
-        "blacklist_keywords": "blacklist_keywords",
-        "enable_user_blacklist": "enable_user_blacklist",
-        "blacklist_user_ids": "blacklist_user_ids",
-        "enable_command_filter": "enable_command_filter",
-        "enable_ignore_at_others": "enable_ignore_at_others",
-        "enable_ignore_at_all": "enable_ignore_at_all",
-        "poke_message_mode": "poke_message_mode",
-        "poke_bot_skip_probability": "poke_bot_skip_probability",
-        "enable_poke_after_reply": "enable_poke_after_reply",
-        "enable_duplicate_filter": "enable_duplicate_filter",
-        "duplicate_filter_check_count": "duplicate_filter_check_count",
-        "concurrent_mode": "concurrent_mode",
-        "concurrent_wait_max_loops": "concurrent_wait_max_loops",
-        "concurrent_wait_interval": "concurrent_wait_interval",
-        "enable_smart_batch_reply_hint": "enable_smart_batch_reply_hint",
-        "smart_concurrent_merge_wait": "smart_concurrent_merge_wait",
-        "smart_concurrent_max_batch_size": "smart_concurrent_max_batch_size",
-        "smart_concurrent_claim_delay": "smart_concurrent_claim_delay",
-        "enable_output_content_filter": "enable_output_content_filter",
-        "output_content_filter_rules": "output_content_filter_rules",
-        "enable_save_content_filter": "enable_save_content_filter",
-        "save_content_filter_rules": "save_content_filter_rules",
+        "enable_poke_trace_prompt": "poke_trace_enabled",
+        "enable_poke_after_reply": "poke_after_reply_enabled",
     }
 
+    # 隐藏参数（main.py 有读取但 _conf_schema.json 未定义，插件页统一收纳）
+    _EXTRA_KEYS = {
+        "custom_storage_max_messages": "custom_storage_max_messages",
+        "decision_ai_persona_name": "decision_ai_persona_name",
+        "decision_ai_reasoning_log": "decision_ai_reasoning_log",
+        "decision_ai_reasoning_log_mode": "decision_ai_reasoning_log_mode",
+        "enable_decision_ai_reasoning": "enable_decision_ai_reasoning",
+        "judgment_reasoning_start_marker": "judgment_reasoning_start_marker",
+        "judgment_reasoning_end_marker": "judgment_reasoning_end_marker",
+        "enable_full_command_detection": "enable_full_command_detection",
+        "enable_command_prefix_match": "enable_command_prefix_match",
+        "at_all_probability_boost_value": "at_all_probability_boost_value",
+        "enable_duplicate_time_limit": "enable_duplicate_time_limit",
+        "probability_filter_cache_delay": "probability_filter_cache_delay",
+        "reply_timeout_warning_threshold": "reply_timeout_warning_threshold",
+        "reply_generation_timeout_warning": "reply_generation_timeout_warning",
+        "enable_welcome_message_parsing": "enable_welcome_message_parsing",
+        "welcome_message_mode": "welcome_message_mode",
+        "gcp_clear_image_cache_allowed_user_ids": "gcp_clear_image_cache_allowed_user_ids",
+        "ignore_at_others_mode": "ignore_at_others_mode",
+        "platform_image_caption_fast_check_count": "platform_image_caption_fast_check_count",
+        "poke_bot_probability_boost_reference": "poke_bot_probability_boost_reference",
+        "max_images_per_message": "max_images_per_message",
+    }
+
+    def _schema_groups(self):
+        """从 _conf_schema.json 动态提取分组与字段定义（与 AstrBot 配置页一致）。"""
+        try:
+            schema = getattr(self.config, "schema", None) or {}
+            groups = []
+            for gname, gmeta in schema.items():
+                if isinstance(gmeta, dict) and isinstance(gmeta.get("items"), dict):
+                    groups.append(
+                        {
+                            "id": gname,
+                            "title": gmeta.get("description") or gname,
+                            "hint": gmeta.get("hint", ""),
+                            "items": gmeta["items"],
+                        }
+                    )
+            return groups
+        except Exception:
+            return []
+
+    def _all_editable_keys(self) -> dict:
+        """全部可编辑键 → 属性名（schema 键 ∪ 隐藏键）。"""
+        mapping = {}
+        for group in self._schema_groups():
+            for key in group["items"]:
+                mapping[key] = self._ATTR_MAP.get(key, key)
+        for key, attr in self._EXTRA_KEYS.items():
+            mapping.setdefault(key, attr)
+        return mapping
     def _register_web_apis(self):
         """注册插件页 Web API（需要 AstrBot >= 4.25.3 的 Plugin Pages 支持）。"""
         try:
@@ -653,7 +665,7 @@ class ChatPlus(Star):
         from astrbot.api.web import json_response
 
         values = {}
-        for key, attr in self._PAGE_EDITABLE_KEYS.items():
+        for key, attr in self._all_editable_keys().items():
             values[key] = self._cfg(key, getattr(self, attr, None))
 
         prob_status = getattr(ProbabilityManager, "_probability_status", {}) or {}
@@ -664,10 +676,22 @@ class ChatPlus(Star):
             ),
             "processing_session_count": len(getattr(self, "processing_sessions", {})),
         }
+        groups = self._schema_groups()
+        groups.append(
+            {
+                "id": "gcp_extra",
+                "title": "🔧 高级参数",
+                "hint": "以下参数在 main.py 中有默认值但未在 AstrBot 配置页展示，可在插件页调整",
+                "items": {
+                    k: {"description": k, "type": "string"} for k in self._EXTRA_KEYS
+                },
+            }
+        )
         return json_response(
             {
-                "version": "V2.4.2-lite",
+                "version": "V2.5.0-lite",
                 "values": values,
+                "groups": groups,
                 "runtime": runtime,
             }
         )
@@ -686,8 +710,9 @@ class ChatPlus(Star):
 
         applied = []
         skipped = []
+        valid_keys = self._all_editable_keys()
         for key, value in updates.items():
-            if key not in self._PAGE_EDITABLE_KEYS:
+            if key not in valid_keys:
                 skipped.append(key)
                 continue
             try:
@@ -695,7 +720,7 @@ class ChatPlus(Star):
             except Exception:
                 skipped.append(key)
                 continue
-            setattr(self, self._PAGE_EDITABLE_KEYS[key], value)
+            setattr(self, valid_keys[key], value)
             applied.append(key)
 
         try:

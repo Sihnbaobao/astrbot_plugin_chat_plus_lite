@@ -1,85 +1,103 @@
 // Group Chat Plus Lite — 插件页控制台（卡片式/胶囊式）
 const bridge = window.AstrBotPluginPage;
 
-const state = { values: {}, runtime: {}, version: "" };
+const state = { values: {}, runtime: {}, version: "", groups: [] };
 
-/* ================= 字段定义 ================= */
-const FIELDS = {
-  enable_group_chat: { label: "群聊回复总开关", type: "bool", hint: "关闭后插件不再处理任何群聊消息" },
-  enable_debug_log: { label: "详细日志", type: "bool", hint: "调试排错用" },
-  initial_probability: { label: "初始回复概率", type: "float", min: 0, max: 1, step: 0.01, hint: "非@消息进入判断链的概率（1=全部进入读空气判断）" },
-  after_reply_probability: { label: "回复后追加概率", type: "float", min: 0, max: 1, step: 0.01, hint: "机器人刚回复后，紧接着消息的回复概率" },
-  probability_duration: { label: "概率时长(秒)", type: "int", min: 1, max: 86400, hint: "回复后概率状态的持续时间" },
-  decision_ai_reply_tendency: { label: "读空气回复倾向", type: "select", options: ["persona", "reserved", "active"], labels: { persona: "persona · 人格倾向优先", reserved: "reserved · 更克制", active: "active · 更主动" }, hint: "persona=以人格社交倾向为最高依据；reserved=只回明确需求；active=主动参与" },
-  decision_ai_prompt_mode: { label: "判断提示词模式", type: "select", options: ["append", "override"], labels: { append: "append · 拼接", override: "override · 覆盖" }, hint: "append=默认提示词+补充；override=只用自定义提示词" },
-  decision_ai_timeout: { label: "判断超时(秒)", type: "int", min: 3, max: 300, hint: "读空气AI调用的超时时间" },
-  decision_ai_include_persona: { label: "判断时注入人格", type: "bool", hint: "让判断AI按人格社交倾向判断是否回复" },
-  enable_decision_ai_reasoning: { label: "思考过程输出", type: "bool", hint: "让判断AI先输出思考过程再给 yes/no" },
-  decision_ai_reasoning_log: { label: "思考过程记日志", type: "bool", hint: "将判断思考过程写入插件日志" },
-  reply_ai_prompt_mode: { label: "回复提示词模式", type: "select", options: ["append", "override"], labels: { append: "append · 拼接", override: "override · 覆盖" }, hint: "回复内容默认由 AstrBot 人格链路生成，此处仅控制上下文拼接方式" },
-  include_timestamp: { label: "附带时间戳", type: "bool", hint: "在上下文中标注消息发送时间" },
-  include_sender_info: { label: "附带发送者信息", type: "bool", hint: "在上下文中标注谁在说话" },
-  max_context_messages: { label: "最大上下文消息数", type: "int", min: -1, max: 200, hint: "-1=不限制，0=失忆（不推荐），建议 20~30" },
-  enable_forward_message_parsing: { label: "转发消息解析", type: "bool", hint: "把群聊合并转发解析为单条可读文本" },
-  forward_max_nesting_depth: { label: "嵌套解析深度", type: "int", min: 0, max: 10, hint: "嵌套转发的最大展开深度" },
-  enable_image_processing: { label: "图片识别", type: "bool", hint: "通过概率筛选的消息中的图片转文字描述" },
-  image_to_text_scope: { label: "图片处理范围", type: "select", options: ["all", "mention_only", "at_only", "keyword_only"], labels: { all: "全部消息", mention_only: "@或关键词触发", at_only: "仅@机器人", keyword_only: "仅关键词" }, hint: "图片转文字的应用范围" },
-  max_images_per_message: { label: "单条最大图片数", type: "int", min: 1, max: 50, hint: "单条消息最多处理几张图片" },
-  enable_emoji_filter: { label: "表情包消息降权", type: "bool", hint: "纯表情包消息降低回复概率" },
-  emoji_probability_decay: { label: "表情包概率衰减", type: "float", min: 0, max: 1, step: 0.05, hint: "表情包消息的概率乘数" },
-  enable_memory_injection: { label: "记忆注入", type: "bool", hint: "调用记忆插件注入长期记忆（需已安装）" },
-  memory_plugin_mode: { label: "记忆插件模式", type: "select", options: ["auto", "legacy", "livingmemory"], labels: { auto: "auto · 自动检测", legacy: "legacy · 旧版记忆", livingmemory: "livingmemory" }, hint: "选择使用的记忆存储插件" },
-  livingmemory_top_k: { label: "记忆召回数量", type: "int", min: 1, max: 50, hint: "每次调用 LivingMemory 召回的条数" },
-  keyword_smart_mode: { label: "关键词智能模式", type: "bool", hint: "关键词触发后仍交读空气判断而非必回" },
-  enable_user_blacklist: { label: "用户黑名单", type: "bool", hint: "黑名单用户的消息不参与回复" },
-  enable_command_filter: { label: "指令过滤", type: "bool", hint: "以 / ! # 开头的指令消息不参与回复" },
-  enable_ignore_at_others: { label: "忽略@他人消息", type: "bool", hint: "@了别人但没有@机器人的消息不回复" },
-  enable_ignore_at_all: { label: "忽略@全体消息", type: "bool", hint: "@全体成员的消息不回复" },
-  poke_message_mode: { label: "戳一戳模式", type: "select", options: ["ignore", "bot_only", "all"], labels: { ignore: "ignore · 忽略", bot_only: "bot_only · 仅被戳", all: "all · 全部" }, hint: "戳一戳消息的处理范围" },
-  poke_bot_skip_probability: { label: "被戳直接回复", type: "bool", hint: "被戳时跳过概率筛选直接判断" },
-  enable_poke_after_reply: { label: "回复后戳回去", type: "bool", hint: "AI 回复后反戳发送者" },
-  enable_duplicate_filter: { label: "防复读", type: "bool", hint: "过滤内容重复的回复" },
-  duplicate_filter_check_count: { label: "复读检查条数", type: "int", min: 1, max: 50, hint: "检查最近几条消息是否重复" },
-  concurrent_mode: { label: "并发模式", type: "select", options: ["legacy", "smart"], labels: { legacy: "legacy · 传统", smart: "smart · 智能合并" }, hint: "smart=合并短时间内的多条消息批量处理" },
-  concurrent_wait_max_loops: { label: "等待最大轮询次数", type: "int", min: 1, max: 60, hint: "Smart 并发等待的轮询上限" },
-  concurrent_wait_interval: { label: "轮询间隔(秒)", type: "float", min: 0.1, max: 10, step: 0.1, hint: "Smart 并发等待的轮询间隔" },
-  enable_smart_batch_reply_hint: { label: "批次合并提示", type: "bool", hint: "合并处理时在上下文标注批次说明" },
-  smart_concurrent_merge_wait: { label: "合并等待(秒)", type: "int", min: 1, max: 300, hint: "等待多久内到达的消息合并处理" },
-  smart_concurrent_max_batch_size: { label: "最大批次数", type: "int", min: 1, max: 100, hint: "单次合并最多处理多少条消息" },
-  smart_concurrent_claim_delay: { label: "抢占延迟(秒)", type: "float", min: 0, max: 10, step: 0.1, hint: "消息进入合并窗口的延迟" },
-  enable_output_content_filter: { label: "输出内容过滤", type: "bool", hint: "按规则过滤 AI 回复内容" },
-  enable_save_content_filter: { label: "保存内容过滤", type: "bool", hint: "按规则过滤写入历史的 AI 内容" },
-  emoji_decay_min_probability: { label: "表情包最低概率", type: "float", min: 0, max: 1, step: 0.05, hint: "表情包衰减后的概率下限，防止完全不理表情包" },
-  trigger_keywords: { label: "触发关键词列表", type: "list", hint: "每行一个关键词，命中即跳过概率筛选（智能模式仍走读空气判断）" },
-  blacklist_keywords: { label: "黑名单关键词", type: "list", hint: "每行一个关键词，命中直接不回复" },
-  blacklist_user_ids: { label: "黑名单用户ID", type: "list", hint: "每行一个用户ID（QQ号），这些用户的消息不参与回复" },
-  output_content_filter_rules: { label: "输出过滤规则", type: "list", hint: "每行一条规则：范围 A*B / 头部 {{>*B / 尾部 A*>}}" },
-  save_content_filter_rules: { label: "保存过滤规则", type: "list", hint: "每行一条规则，作用于写入历史的 AI 内容" },
+/* ================= 隐藏参数定义（不在 _conf_schema.json，插件页补充收纳） ================= */
+const EXTRA_META = {
+  custom_storage_max_messages: { label: "自建存储最大消息数", type: "int", min: 10, hint: "插件自建历史存储的最大消息条数" },
+  decision_ai_persona_name: { label: "判断指定人格", type: "string", hint: "留空=使用当前人格" },
+  decision_ai_reasoning_log: { label: "思考过程写日志", type: "bool", hint: "将读空气判断的思考过程写入插件日志" },
+  decision_ai_reasoning_log_mode: { label: "思考日志模式", type: "string", hint: "console / file" },
+  enable_decision_ai_reasoning: { label: "判断输出思考过程", type: "bool", hint: "让判断AI先输出思考再给 yes/no" },
+  judgment_reasoning_start_marker: { label: "思考开始标记", type: "string", hint: "解析思考过程的起始标记" },
+  judgment_reasoning_end_marker: { label: "思考结束标记", type: "string", hint: "解析思考过程的结束标记" },
+  enable_full_command_detection: { label: "完整指令检测", type: "bool", hint: "识别完整指令列表中的指令" },
+  enable_command_prefix_match: { label: "指令前缀匹配", type: "bool", hint: "按前缀匹配指令" },
+  at_all_probability_boost_value: { label: "@全体概率加成", type: "float", min: 0, max: 1, step: 0.01, hint: "@全体成员消息的临时概率提升值" },
+  enable_duplicate_time_limit: { label: "复读时效限制", type: "bool", hint: "重复检测附带时效窗口" },
+  probability_filter_cache_delay: { label: "概率过滤缓存延迟(ms)", type: "int", min: 0, hint: "概率过滤阶段的缓存延迟" },
+  reply_timeout_warning_threshold: { label: "回复超时告警阈值(秒)", type: "int", min: 1, hint: "超过该时长输出告警日志" },
+  reply_generation_timeout_warning: { label: "回复生成超时告警(秒)", type: "int", min: 1, hint: "生成回复阶段的超时告警" },
+  enable_welcome_message_parsing: { label: "新成员入群解析", type: "bool", hint: "解析新成员入群消息" },
+  welcome_message_mode: { label: "欢迎消息模式", type: "string", hint: "处理新成员消息的方式" },
+  gcp_clear_image_cache_allowed_user_ids: { label: "允许清图缓存的用户", type: "list", hint: "每行一个用户ID" },
+  ignore_at_others_mode: { label: "忽略@他人模式", type: "string", hint: "strict / loose" },
+  platform_image_caption_fast_check_count: { label: "平台图述快速检查次数", type: "int", min: 1, hint: "快速检查平台图片描述的最大次数" },
+  poke_bot_probability_boost_reference: { label: "被戳概率加成参考", type: "float", min: 0, max: 1, step: 0.01, hint: "被戳时概率加成的参考值" },
+  max_images_per_message: { label: "单条消息最大图片数", type: "int", min: 1, max: 50, hint: "单条消息最多处理几张图片" },
 };
 
-/* ================= 流水线阶段 =================
-   master：主开关键（null=该环节常驻启用，不存在"关闭"状态） */
-const STAGES = [
-  { id: "probability", icon: "🎲", title: "概率筛选", master: null, keys: ["initial_probability", "after_reply_probability", "probability_duration"], summary: (v) => `初始 ${v.initial_probability ?? "-"} · 回复后 ${v.after_reply_probability ?? "-"}` },
-  { id: "command", icon: "🎛️", title: "指令&关键词", master: null, keys: ["enable_command_filter", "keyword_smart_mode", "trigger_keywords"], summary: (v) => `指令${v.enable_command_filter ? "开" : "关"} · 关键词${(v.trigger_keywords || []).length}条` },
-  { id: "at", icon: "📢", title: "@必回处理", master: null, keys: ["enable_ignore_at_others", "enable_ignore_at_all"], summary: (v) => [v.enable_ignore_at_others ? "忽略@他人" : null, v.enable_ignore_at_all ? "忽略@全体" : null].filter(Boolean).join(" / ") || "默认全部处理" },
-  { id: "decision", icon: "🧠", title: "读空气AI判断", master: null, keys: ["decision_ai_reply_tendency", "decision_ai_prompt_mode", "decision_ai_timeout", "decision_ai_include_persona", "enable_decision_ai_reasoning", "decision_ai_reasoning_log"], summary: (v) => `倾向 ${v.decision_ai_reply_tendency ?? "persona"} · ${v.decision_ai_timeout ?? "-"}s` },
-  { id: "reply", icon: "💬", title: "回复生成", master: null, keys: ["reply_ai_prompt_mode", "include_timestamp", "include_sender_info", "max_context_messages"], summary: (v) => v.max_context_messages === -1 ? "上下文不限" : v.max_context_messages === 0 ? "无上下文" : (v.max_context_messages ?? "-") + " 条" },
-];
+/* ================= 分组主开关（卡片"已启用/已关闭"徽章判定） ================= */
+const MASTERS = {
+  gcp_section_basic: "enable_group_chat",
+  gcp_section_probability: null,
+  gcp_section_decision: null,
+  gcp_section_reply: null,
+  gcp_section_forward: "enable_forward_message_parsing",
+  gcp_section_image: "enable_image_processing",
+  gcp_section_memory: "enable_memory_injection",
+  gcp_section_keyword: null,
+  gcp_section_filter: { any: ["enable_user_blacklist", "enable_command_filter", "enable_ignore_at_others", "enable_ignore_at_all"] },
+  gcp_section_emoji: "enable_emoji_filter",
+  gcp_section_poke: { key: "poke_message_mode", neq: "ignore" },
+  gcp_section_duplicate: "enable_duplicate_filter",
+  gcp_section_concurrent: null,
+  gcp_section_content_filter: { any: ["enable_output_content_filter", "enable_save_content_filter"] },
+  gcp_extra: null,
+};
 
-/* ================= 功能卡片 =================
-   master：主开关键（决定卡片"已启用/已关闭"徽章） */
-const CARDS = [
-  { id: "image", icon: "🖼️", name: "图片识别", master: "enable_image_processing", keys: ["enable_image_processing", "image_to_text_scope", "max_images_per_message"], summary: (v) => `范围 ${v.image_to_text_scope ?? "-"}` },
-  { id: "forward", icon: "🔁", name: "转发解析", master: "enable_forward_message_parsing", keys: ["enable_forward_message_parsing", "forward_max_nesting_depth"], summary: (v) => `嵌套深度 ${v.forward_max_nesting_depth ?? "-"}` },
-  { id: "blacklist", icon: "🚫", name: "黑名单", master: "enable_user_blacklist", keys: ["enable_user_blacklist", "blacklist_user_ids", "blacklist_keywords"], summary: (v) => `用户${(v.blacklist_user_ids || []).length} · 关键词${(v.blacklist_keywords || []).length}` },
-  { id: "memory", icon: "🧠", name: "记忆注入", master: "enable_memory_injection", keys: ["enable_memory_injection", "memory_plugin_mode", "livingmemory_top_k"], summary: (v) => `${v.memory_plugin_mode ?? "-"} · top${v.livingmemory_top_k ?? "-"}` },
-  { id: "emoji", icon: "😀", name: "表情包降权", master: "enable_emoji_filter", keys: ["enable_emoji_filter", "emoji_probability_decay", "emoji_decay_min_probability"], summary: (v) => `衰减 ${v.emoji_probability_decay ?? "-"} · 下限 ${v.emoji_decay_min_probability ?? "-"}` },
-  { id: "poke", icon: "👆", name: "戳一戳", master: { key: "poke_message_mode", neq: "ignore" }, keys: ["poke_message_mode", "poke_bot_skip_probability", "enable_poke_after_reply"], summary: (v) => `${v.poke_message_mode ?? "-"} · 反戳${v.enable_poke_after_reply ? "开" : "关"}` },
-  { id: "duplicate", icon: "🔎", name: "防复读", master: "enable_duplicate_filter", keys: ["enable_duplicate_filter", "duplicate_filter_check_count"], summary: (v) => `检查 ${v.duplicate_filter_check_count ?? "-"} 条` },
-  { id: "smart", icon: "⚡", name: "Smart并发", master: null, keys: ["concurrent_mode", "concurrent_wait_max_loops", "concurrent_wait_interval", "enable_smart_batch_reply_hint", "smart_concurrent_merge_wait", "smart_concurrent_max_batch_size", "smart_concurrent_claim_delay"], summary: (v) => `${v.concurrent_mode ?? "legacy"} · 合并 ${v.smart_concurrent_merge_wait ?? "-"}s` },
-  { id: "filter", icon: "✂️", name: "内容过滤", master: { any: ["enable_output_content_filter", "enable_save_content_filter"] }, keys: ["enable_output_content_filter", "output_content_filter_rules", "enable_save_content_filter", "save_content_filter_rules"], summary: (v) => [v.enable_output_content_filter ? "输出" : null, v.enable_save_content_filter ? "保存" : null].filter(Boolean).join("+") || "未启用" },
+/* ================= 流水线环节（常驻启用）→ 分组映射 ================= */
+const STAGE_ORDER = [
+  { id: "probability", icon: "🎲", title: "概率筛选" },
+  { id: "command", icon: "🎛️", title: "指令&关键词" },
+  { id: "at", icon: "📢", title: "@必回处理" },
+  { id: "decision", icon: "🧠", title: "读空气AI判断" },
+  { id: "reply", icon: "💬", title: "回复生成" },
 ];
+const STAGE_GROUPS = {
+  probability: ["gcp_section_probability"],
+  command: ["gcp_section_keyword", "gcp_section_filter"],
+  at: ["gcp_section_filter"],
+  decision: ["gcp_section_decision"],
+  reply: ["gcp_section_reply"],
+};
+
+/* ================= 分组摘要（卡片副标题） ================= */
+function groupSummary(gid, keys) {
+  const v = state.values;
+  switch (gid) {
+    case "gcp_section_basic": return `总开关${v.enable_group_chat ? "开" : "关"} · ${(v.enabled_groups || []).length} 个群`;
+    case "gcp_section_probability": return `初始 ${v.initial_probability ?? "-"}`;
+    case "gcp_section_decision": return `倾向 ${v.decision_ai_reply_tendency ?? "persona"} · 超时 ${v.decision_ai_timeout ?? "-"}s`;
+    case "gcp_section_reply": return `上下文 ${v.max_context_messages ?? "-"} 条`;
+    case "gcp_section_forward": return `嵌套深度 ${v.forward_max_nesting_depth ?? "-"}`;
+    case "gcp_section_image": return `范围 ${v.image_to_text_scope ?? "-"}`;
+    case "gcp_section_memory": return `${v.memory_plugin_mode ?? "-"} · top${v.livingmemory_top_k ?? "-"}`;
+    case "gcp_section_keyword": return `触发关键词 ${(v.trigger_keywords || []).length} 条`;
+    case "gcp_section_filter": return `黑名单 ${(v.blacklist_user_ids || []).length} 人`;
+    case "gcp_section_emoji": return `衰减 ${v.emoji_probability_decay ?? "-"}`;
+    case "gcp_section_poke": return `模式 ${v.poke_message_mode ?? "-"}`;
+    case "gcp_section_duplicate": return `检查 ${v.duplicate_filter_check_count ?? "-"} 条`;
+    case "gcp_section_concurrent": return `${v.concurrent_mode ?? "legacy"} · 合并 ${v.smart_concurrent_merge_wait ?? "-"}s`;
+    case "gcp_section_content_filter": return `输出${v.enable_output_content_filter ? "开" : "关"}`;
+    case "gcp_extra": return `${keys.length} 项高级参数`;
+    default: return `${keys.length} 项配置`;
+  }
+}
+
+/* 分组字段元数据（由 status 返回的 schema 分组动态构建 + EXTRA_META 补充） */
+const META = {};
+function buildMeta(groups) {
+  Object.keys(META).forEach((k) => delete META[k]);
+  (groups || []).forEach((g) => {
+    Object.entries(g.items || {}).forEach(([k, m]) => {
+      META[k] = { label: m.description || k, type: m.type || "string", options: m.options || null, hint: m.hint || "" };
+    });
+  });
+  Object.assign(META, EXTRA_META);
+}
+
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -118,20 +136,25 @@ function isMasterOn(master) {
   return true;
 }
 
-function stageState(stage) {
-  return isMasterOn(stage.master);
+function stageSummary(stageId) {
+  const v = state.values;
+  if (stageId === "probability") return `初始 ${v.initial_probability ?? "-"}`;
+  if (stageId === "command") return `关键词${(v.trigger_keywords || []).length}条`;
+  if (stageId === "at") return `忽略@他人${v.enable_ignore_at_others ? "开" : "关"}`;
+  if (stageId === "decision") return `倾向 ${v.decision_ai_reply_tendency ?? "persona"}`;
+  if (stageId === "reply") return `上下文 ${v.max_context_messages ?? "-"}条`;
+  return "";
 }
 
 function renderPipeline() {
-  $("#pipeline").innerHTML = STAGES.map((s, idx) => {
-    const on = stageState(s);
+  $("#pipeline").innerHTML = STAGE_ORDER.map((s, idx) => {
     const html = `
       <div class="capsule" data-stage="${s.id}" role="button" tabindex="0">
         <span class="num">${idx + 1}</span>
         <div class="cap-name">${s.icon} ${s.title}</div>
-        <div class="cap-state"><span class="dot ${on ? "on" : "off"}"></span>${esc(s.summary(state.values))}</div>
+        <div class="cap-state"><span class="dot on"></span>${esc(stageSummary(s.id))}</div>
       </div>`;
-    return idx < STAGES.length - 1 ? html + `<div class="arrow">→</div>` : html;
+    return idx < STAGE_ORDER.length - 1 ? html + `<div class="arrow">→</div>` : html;
   }).join("");
   $("#pipeline").querySelectorAll(".capsule").forEach((el) => {
     el.addEventListener("click", () => toggleStagePanel(el.dataset.stage, el));
@@ -140,20 +163,23 @@ function renderPipeline() {
 }
 
 function cardOn(card) {
-  return isMasterOn(card.master);
+  return isMasterOn(MASTERS[card.id]);
 }
 
 function renderCards() {
-  $("#cards").innerHTML = CARDS.map((c) => {
-    const on = cardOn(c);
+  $("#cards").innerHTML = (state.groups || []).map((g) => {
+    const on = cardOn(g);
+    const keys = Object.keys(g.items || {});
+    const emoji = (g.title || "").match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}][\u{FE0F}]?/u)?.[0] || "📦";
+    const name = (g.title || g.id).replace(emoji, "").replace(/^\s+/, "").trim() || g.id;
     return `
-      <div class="card" data-card="${c.id}" role="button" tabindex="0">
+      <div class="card" data-card="${g.id}" role="button" tabindex="0">
         <div class="card-head">
-          <span class="icon">${c.icon}</span>
-          <span class="name">${c.name}</span>
+          <span class="icon">${emoji}</span>
+          <span class="name">${esc(name)}</span>
           <span class="badge ${on ? "on" : "off"}">${on ? "已启用" : "已关闭"}</span>
         </div>
-        <div class="card-summary">${esc(c.summary(state.values))}</div>
+        <div class="card-summary">${esc(groupSummary(g.id, keys))}</div>
       </div>`;
   }).join("");
   $("#cards").querySelectorAll(".card").forEach((el) => {
@@ -164,7 +190,7 @@ function renderCards() {
 
 /* ================= 编辑面板 ================= */
 function fieldControl(key) {
-  const def = FIELDS[key];
+  const def = META[key] || { label: key, type: "string" };
   const val = state.values[key];
   const title = `<div class="field-title">${esc(def.label)}</div>`;
   const hint = def.hint ? `<div class="field-hint">${esc(def.hint)}</div>` : "";
@@ -176,8 +202,8 @@ function fieldControl(key) {
         ${hint}
       </div>`;
   }
-  if (def.type === "select") {
-    const opts = (def.options || []).map((o) => `<option value="${esc(o)}" ${String(val) === String(o) ? "selected" : ""}>${esc((def.labels && def.labels[o]) || o)}</option>`).join("");
+  if (def.type === "select" || (def.options && def.options.length)) {
+    const opts = (def.options || []).map((o) => `<option value="${esc(o)}" ${String(val) === String(o) ? "selected" : ""}>${esc(o)}</option>`).join("");
     return `
       <div class="field">
         ${title}
@@ -201,6 +227,14 @@ function fieldControl(key) {
       <div class="field">
         ${title}
         <input type="number" data-key="${key}" value="${esc(val)}" min="${def.min ?? ""}" max="${def.max ?? ""}" step="${step}" />
+        ${hint}
+      </div>`;
+  }
+  if (def.type === "text") {
+    return `
+      <div class="field">
+        ${title}
+        <textarea data-key="${key}" rows="5">${esc(val)}</textarea>
         ${hint}
       </div>`;
   }
@@ -228,7 +262,7 @@ function buildPanel(title, keys, onSave) {
     const updates = {};
     wrap.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
-      const def = FIELDS[key];
+      const def = META[key] || { type: "string" };
       if (def.type === "bool") updates[key] = el.checked;
       else if (def.type === "int") updates[key] = parseInt(el.value, 10);
       else if (def.type === "float") updates[key] = parseFloat(el.value);
@@ -280,27 +314,34 @@ function closeActive() {
   activePanel = null;
 }
 
+function groupById(gid) {
+  return (state.groups || []).find((g) => g.id === gid);
+}
+
 function toggleStagePanel(stageId, el) {
-  const stage = STAGES.find((s) => s.id === stageId);
-  if (!stage) return;
   if (activePanel && activePanel.el === el) { closeActive(); return; }
   closeActive();
   stageWrapEl.innerHTML = "";
-  stageWrapEl.appendChild(buildPanel(`${stage.icon} ${stage.title} · 配置`, stage.keys));
+  const gids = STAGE_GROUPS[stageId] || [];
+  gids.forEach((gid) => {
+    const g = groupById(gid);
+    if (!g) return;
+    stageWrapEl.appendChild(buildPanel(`${g.title} · 配置`, Object.keys(g.items || {})));
+  });
   el.classList.add("active");
   activePanel = { el, wrap: stageWrapEl, key: "stage", id: stageId };
   stageWrapEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function toggleCardPanel(cardId, el) {
-  const card = CARDS.find((c) => c.id === cardId);
-  if (!card) return;
+function toggleCardPanel(groupId, el) {
+  const g = groupById(groupId);
+  if (!g) return;
   if (activePanel && activePanel.el === el) { closeActive(); return; }
   closeActive();
   cardWrapEl.innerHTML = "";
-  cardWrapEl.appendChild(buildPanel(`${card.icon} ${card.name} · 配置`, card.keys));
+  cardWrapEl.appendChild(buildPanel(`${g.title} · 配置`, Object.keys(g.items || {})));
   el.classList.add("active");
-  activePanel = { el, wrap: cardWrapEl, key: "card", id: cardId };
+  activePanel = { el, wrap: cardWrapEl, key: "card", id: groupId };
   cardWrapEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -394,6 +435,8 @@ async function loadStatus() {
     state.version = data.version || "";
     state.values = data.values || {};
     state.runtime = data.runtime || {};
+    state.groups = data.groups || [];
+    buildMeta(state.groups);
     renderAll();
   } catch (err) {
     $("#mainSwitch").textContent = "状态加载失败：" + err.message;
