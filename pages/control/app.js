@@ -271,27 +271,62 @@ function toggleCardPanel(cardId, el) {
   cardWrapEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-/* ================= 提示词预览 ================= */
+/* ================= 提示词编辑与预览 ================= */
 async function renderPrompts() {
   try {
     const res = await bridge.apiGet("prompts");
     const data = res && res.data !== undefined ? res.data : res;
     if (!data) return;
     const modeText = (m) => (m === "override" ? "override · 自定义覆盖" : "append · 默认拼接");
-    const card = (title, icon, p) => `
-      <div class="prompt-card">
+    const modeDesc = (m) =>
+      m === "override"
+        ? "留空 = 使用默认提示词；填写后完全替换默认提示词"
+        : "留空 = 使用默认提示词；填写后追加在默认提示词之后";
+    const card = (title, icon, p, cfgKey) => `
+      <div class="prompt-card" data-prompt-card="${cfgKey}">
         <h3>${icon} ${title}</h3>
         <div class="meta">模式：${modeText(p.mode)} · ${p.has_custom ? "已配置自定义提示词" : "使用默认提示词"}</div>
-        <pre data-collapse="${title}">${esc(p.text)}</pre>
-        <button class="btn btn-ghost collapse-btn" data-target="${title}">展开 / 收起</button>
+        <div class="field" style="margin-top: 8px">
+          <label>✏️ 自定义提示词 <span class="hint">${modeDesc(p.mode)}</span></label>
+          <textarea data-prompt-edit="${cfgKey}" rows="6" placeholder="在这里输入你的自定义提示词…">${esc(p.extra)}</textarea>
+        </div>
+        <div class="save-bar" style="margin-top: 10px">
+          <span class="save-status" data-prompt-status="${cfgKey}"></span>
+          <button class="btn" data-prompt-save="${cfgKey}">保存提示词</button>
+        </div>
+        <details class="prompt-preview">
+          <summary>👁️ 生效提示词预览（拼接后全文，只读）</summary>
+          <pre>${esc(p.text)}</pre>
+        </details>
       </div>`;
     $("#promptGrid").innerHTML =
-      card("读空气判断提示词", "🧠", data.decision || { mode: "-", has_custom: false, text: "" }) +
-      card("回复生成提示词（尾部引导）", "💬", data.reply || { mode: "-", has_custom: false, text: "" });
-    $("#promptGrid").querySelectorAll(".collapse-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const pre = document.querySelector(`pre[data-collapse="${btn.dataset.target}"]`);
-        if (pre) pre.style.maxHeight = pre.style.maxHeight === "none" ? "" : "none";
+      card("读空气判断提示词", "🧠", data.decision || { mode: "append", has_custom: false, extra: "", text: "" }, "decision_ai_extra_prompt") +
+      card("回复生成提示词（尾部引导）", "💬", data.reply || { mode: "append", has_custom: false, extra: "", text: "" }, "reply_ai_extra_prompt");
+    $("#promptGrid").querySelectorAll("[data-prompt-save]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const key = btn.dataset.promptSave;
+        const ta = document.querySelector(`textarea[data-prompt-edit="${key}"]`);
+        const status = document.querySelector(`[data-prompt-status="${key}"]`);
+        if (!ta || !status) return;
+        btn.disabled = true;
+        status.textContent = "保存中…";
+        try {
+          const res = await bridge.apiPost("config/save", { updates: { [key]: ta.value } });
+          const data = res && res.data !== undefined ? res.data : res;
+          if (data && data.applied && data.applied.includes(key)) {
+            status.textContent = "✅ 已保存";
+            toast("提示词已保存", "ok");
+            await renderPrompts();
+          } else {
+            status.textContent = "保存失败：" + ((res && res.message) || "未知错误");
+            toast("提示词保存失败", "err");
+          }
+        } catch (err) {
+          status.textContent = "保存失败：" + err.message;
+          toast("提示词保存失败：" + err.message, "err");
+        } finally {
+          btn.disabled = false;
+        }
       });
     });
   } catch (err) {
