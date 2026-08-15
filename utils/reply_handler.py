@@ -3,7 +3,7 @@
 负责调用AI生成回复
 
 作者: Him666233
-版本: V2.3.0-lite（refactor-lite 重构版）
+版本: V2.4.0-lite（refactor-lite 重构版）
 
 重构要点（REFACTOR_DESIGN.md）：
 - 删除 SYSTEM_REPLY_PROMPT（约100行系统行为指令）—— 这是群聊人格漂移的最大来源

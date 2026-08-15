@@ -29,7 +29,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者: Him666233（原作者）／重构维护: Sihnbaobao
-版本: V2.3.0-lite
+版本: V2.4.0-lite
 本插件为 astrbot_plugin_group_chat_plus（Him666233）的 AGPL-3.0 精简重构派生作品，
 重新发布为独立插件 astrbot_plugin_chat_plus_lite。
 """
@@ -93,7 +93,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Him666233",
     "一个以AI读空气为主的群聊聊天效果增强插件（精简重构版）",
-    "V2.3.0-lite",
+    "V2.4.0-lite",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(Star):
@@ -433,7 +433,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.3.0-lite（精简重构版）")
+        logger.info("群聊增强插件已加载 - V2.4.0-lite（精简重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -587,11 +587,15 @@ class ChatPlus(Star):
         "max_images_per_message": "max_images_per_message",
         "enable_emoji_filter": "enable_emoji_filter",
         "emoji_probability_decay": "emoji_probability_decay",
+        "emoji_decay_min_probability": "emoji_decay_min_probability",
         "enable_memory_injection": "enable_memory_injection",
         "memory_plugin_mode": "memory_plugin_mode",
         "livingmemory_top_k": "livingmemory_top_k",
         "keyword_smart_mode": "keyword_smart_mode",
+        "trigger_keywords": "trigger_keywords",
+        "blacklist_keywords": "blacklist_keywords",
         "enable_user_blacklist": "enable_user_blacklist",
+        "blacklist_user_ids": "blacklist_user_ids",
         "enable_command_filter": "enable_command_filter",
         "enable_ignore_at_others": "enable_ignore_at_others",
         "enable_ignore_at_all": "enable_ignore_at_all",
@@ -608,7 +612,9 @@ class ChatPlus(Star):
         "smart_concurrent_max_batch_size": "smart_concurrent_max_batch_size",
         "smart_concurrent_claim_delay": "smart_concurrent_claim_delay",
         "enable_output_content_filter": "enable_output_content_filter",
+        "output_content_filter_rules": "output_content_filter_rules",
         "enable_save_content_filter": "enable_save_content_filter",
+        "save_content_filter_rules": "save_content_filter_rules",
     }
 
     def _register_web_apis(self):
@@ -660,7 +666,7 @@ class ChatPlus(Star):
         }
         return json_response(
             {
-                "version": "V2.3.0-lite",
+                "version": "V2.4.0-lite",
                 "values": values,
                 "runtime": runtime,
             }

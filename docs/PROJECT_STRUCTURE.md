@@ -1,11 +1,11 @@
 # 项目结构说明
 
-> ⚠️ 本文档描述的是旧版（V1.2.x）结构。当前分支为 refactor-lite（V2.3.0-lite）精简重构版：
+> ⚠️ 本文档描述的是旧版（V1.2.x）结构。当前分支为 refactor-lite（V2.4.0-lite）精简重构版：
 > 已删除 private_chat/ 目录及 utils/ 下的 attention_manager、cooldown_manager、mood_tracker、
 > proactive_chat_manager、typo_generator、typing_simulator、humanize_mode、frequency_adjuster、
 > message_quality_scorer、reply_density_manager、time_period_manager、system_prompt_rewriter、
 > tools_reminder 等模块。当前模块清单见 [README 项目结构](../README.md)。
-> V2.3.0-lite 起，独立 Web 面板（web/ 目录）已整体移除，管理界面迁入 pages/control/ 插件页。
+> V2.4.0-lite 起，独立 Web 面板（web/ 目录）已整体移除，管理界面迁入 pages/control/ 插件页。
 >
 > 本文档详细描述了群聊增强插件的完整文件结构及每个文件的职责。
 
@@ -32,7 +32,7 @@ astrbot_plugin_chat_plus_lite/
 │   ├── DESKTOP_COMPATIBILITY.md # AstrBot 桌面端兼容说明
 │   └── PROJECT_STRUCTURE.md    # 本文件
 │
-├── pages/                     # 🖥️ AstrBot 插件页（V2.3.0-lite 起）
+├── pages/                     # 🖥️ AstrBot 插件页（V2.4.0-lite 起）
 │   └── control/                # 管理控制台（卡片式/胶囊式）
 │       ├── index.html          # 页面骨架
 │       ├── app.js              # 交互逻辑（bridge 调用后端 API）
@@ -121,9 +121,9 @@ astrbot_plugin_chat_plus_lite/
 
 ---
 
-## pages/control/ — AstrBot 插件页管理控制台（V2.3.0-lite 起）
+## pages/control/ — AstrBot 插件页管理控制台（V2.4.0-lite 起）
 
-> 原独立 Web 面板（web/ 目录）已于 V2.3.0-lite 整体移除，管理界面改为 AstrBot 插件页。
+> 原独立 Web 面板（web/ 目录）已于 V2.4.0-lite 整体移除，管理界面改为 AstrBot 插件页。
 > 需要 AstrBot v4.25.3+（Plugin Pages 机制自动发现 pages/ 目录并挂载到 Dashboard）。
 
 ### index.html — 页面骨架

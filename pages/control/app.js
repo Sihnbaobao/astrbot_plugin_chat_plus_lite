@@ -49,28 +49,36 @@ const FIELDS = {
   smart_concurrent_claim_delay: { label: "抢占延迟(秒)", type: "float", min: 0, max: 10, step: 0.1, hint: "消息进入合并窗口的延迟" },
   enable_output_content_filter: { label: "输出内容过滤", type: "bool", hint: "按规则过滤 AI 回复内容" },
   enable_save_content_filter: { label: "保存内容过滤", type: "bool", hint: "按规则过滤写入历史的 AI 内容" },
+  emoji_decay_min_probability: { label: "表情包最低概率", type: "float", min: 0, max: 1, step: 0.05, hint: "表情包衰减后的概率下限，防止完全不理表情包" },
+  trigger_keywords: { label: "触发关键词列表", type: "list", hint: "每行一个关键词，命中即跳过概率筛选（智能模式仍走读空气判断）" },
+  blacklist_keywords: { label: "黑名单关键词", type: "list", hint: "每行一个关键词，命中直接不回复" },
+  blacklist_user_ids: { label: "黑名单用户ID", type: "list", hint: "每行一个用户ID（QQ号），这些用户的消息不参与回复" },
+  output_content_filter_rules: { label: "输出过滤规则", type: "list", hint: "每行一条规则：范围 A*B / 头部 {{>*B / 尾部 A*>}}" },
+  save_content_filter_rules: { label: "保存过滤规则", type: "list", hint: "每行一条规则，作用于写入历史的 AI 内容" },
 };
 
-/* ================= 流水线阶段 ================= */
+/* ================= 流水线阶段 =================
+   master：主开关键（null=该环节常驻启用，不存在"关闭"状态） */
 const STAGES = [
-  { id: "probability", icon: "🎲", title: "概率筛选", keys: ["initial_probability", "after_reply_probability", "probability_duration"], summary: (v) => v.initial_probability ?? "-" },
-  { id: "command", icon: "🎛️", title: "指令&关键词", keys: ["enable_command_filter", "keyword_smart_mode"], summary: (v) => (v.enable_command_filter ? "指令过滤开" : "指令过滤关") },
-  { id: "at", icon: "📢", title: "@必回处理", keys: ["enable_ignore_at_others", "enable_ignore_at_all"], summary: (v) => [v.enable_ignore_at_others ? "忽略@他人" : null, v.enable_ignore_at_all ? "忽略@全体" : null].filter(Boolean).join(" / ") || "未启用过滤" },
-  { id: "decision", icon: "🧠", title: "读空气AI判断", keys: ["decision_ai_reply_tendency", "decision_ai_prompt_mode", "decision_ai_timeout", "decision_ai_include_persona", "enable_decision_ai_reasoning", "decision_ai_reasoning_log"], summary: (v) => v.decision_ai_reply_tendency ?? "-" },
-  { id: "reply", icon: "💬", title: "回复生成", keys: ["reply_ai_prompt_mode", "include_timestamp", "include_sender_info", "max_context_messages"], summary: (v) => v.max_context_messages === -1 ? "上下文不限" : v.max_context_messages === 0 ? "无上下文" : (v.max_context_messages ?? "-") + " 条" },
+  { id: "probability", icon: "🎲", title: "概率筛选", master: null, keys: ["initial_probability", "after_reply_probability", "probability_duration"], summary: (v) => `初始 ${v.initial_probability ?? "-"} · 回复后 ${v.after_reply_probability ?? "-"}` },
+  { id: "command", icon: "🎛️", title: "指令&关键词", master: null, keys: ["enable_command_filter", "keyword_smart_mode", "trigger_keywords"], summary: (v) => `指令${v.enable_command_filter ? "开" : "关"} · 关键词${(v.trigger_keywords || []).length}条` },
+  { id: "at", icon: "📢", title: "@必回处理", master: null, keys: ["enable_ignore_at_others", "enable_ignore_at_all"], summary: (v) => [v.enable_ignore_at_others ? "忽略@他人" : null, v.enable_ignore_at_all ? "忽略@全体" : null].filter(Boolean).join(" / ") || "默认全部处理" },
+  { id: "decision", icon: "🧠", title: "读空气AI判断", master: null, keys: ["decision_ai_reply_tendency", "decision_ai_prompt_mode", "decision_ai_timeout", "decision_ai_include_persona", "enable_decision_ai_reasoning", "decision_ai_reasoning_log"], summary: (v) => `倾向 ${v.decision_ai_reply_tendency ?? "persona"} · ${v.decision_ai_timeout ?? "-"}s` },
+  { id: "reply", icon: "💬", title: "回复生成", master: null, keys: ["reply_ai_prompt_mode", "include_timestamp", "include_sender_info", "max_context_messages"], summary: (v) => v.max_context_messages === -1 ? "上下文不限" : v.max_context_messages === 0 ? "无上下文" : (v.max_context_messages ?? "-") + " 条" },
 ];
 
-/* ================= 功能卡片 ================= */
+/* ================= 功能卡片 =================
+   master：主开关键（决定卡片"已启用/已关闭"徽章） */
 const CARDS = [
-  { id: "image", icon: "🖼️", name: "图片识别", keys: ["enable_image_processing", "image_to_text_scope", "max_images_per_message"], summary: (v) => v.enable_image_processing ? `范围：${v.image_to_text_scope ?? "-"}` : "未启用" },
-  { id: "forward", icon: "🔁", name: "转发解析", keys: ["enable_forward_message_parsing", "forward_max_nesting_depth"], summary: (v) => v.enable_forward_message_parsing ? `深度 ${v.forward_max_nesting_depth ?? "-"}` : "未启用" },
-  { id: "blacklist", icon: "🚫", name: "黑名单", keys: ["enable_user_blacklist"], summary: (v) => v.enable_user_blacklist ? "已启用" : "未启用" },
-  { id: "memory", icon: "🧠", name: "记忆注入", keys: ["enable_memory_injection", "memory_plugin_mode", "livingmemory_top_k"], summary: (v) => v.enable_memory_injection ? `${v.memory_plugin_mode ?? "-"} · top${v.livingmemory_top_k ?? "-"}` : "未启用" },
-  { id: "emoji", icon: "😀", name: "表情包降权", keys: ["enable_emoji_filter", "emoji_probability_decay"], summary: (v) => v.enable_emoji_filter ? `衰减 ${v.emoji_probability_decay ?? "-"}` : "未启用" },
-  { id: "poke", icon: "👆", name: "戳一戳", keys: ["poke_message_mode", "poke_bot_skip_probability", "enable_poke_after_reply"], summary: (v) => `${v.poke_message_mode ?? "-"} · 反戳${v.enable_poke_after_reply ? "开" : "关"}` },
-  { id: "duplicate", icon: "🔎", name: "防复读", keys: ["enable_duplicate_filter", "duplicate_filter_check_count"], summary: (v) => v.enable_duplicate_filter ? `检查 ${v.duplicate_filter_check_count ?? "-"} 条` : "未启用" },
-  { id: "smart", icon: "⚡", name: "Smart并发", keys: ["concurrent_mode", "concurrent_wait_max_loops", "concurrent_wait_interval", "enable_smart_batch_reply_hint", "smart_concurrent_merge_wait", "smart_concurrent_max_batch_size", "smart_concurrent_claim_delay"], summary: (v) => `${v.concurrent_mode ?? "legacy"} · 合并 ${v.smart_concurrent_merge_wait ?? "-"}s` },
-  { id: "filter", icon: "✂️", name: "内容过滤", keys: ["enable_output_content_filter", "enable_save_content_filter"], summary: (v) => [v.enable_output_content_filter ? "输出" : null, v.enable_save_content_filter ? "保存" : null].filter(Boolean).join("+") || "未启用" },
+  { id: "image", icon: "🖼️", name: "图片识别", master: "enable_image_processing", keys: ["enable_image_processing", "image_to_text_scope", "max_images_per_message"], summary: (v) => `范围 ${v.image_to_text_scope ?? "-"}` },
+  { id: "forward", icon: "🔁", name: "转发解析", master: "enable_forward_message_parsing", keys: ["enable_forward_message_parsing", "forward_max_nesting_depth"], summary: (v) => `嵌套深度 ${v.forward_max_nesting_depth ?? "-"}` },
+  { id: "blacklist", icon: "🚫", name: "黑名单", master: "enable_user_blacklist", keys: ["enable_user_blacklist", "blacklist_user_ids", "blacklist_keywords"], summary: (v) => `用户${(v.blacklist_user_ids || []).length} · 关键词${(v.blacklist_keywords || []).length}` },
+  { id: "memory", icon: "🧠", name: "记忆注入", master: "enable_memory_injection", keys: ["enable_memory_injection", "memory_plugin_mode", "livingmemory_top_k"], summary: (v) => `${v.memory_plugin_mode ?? "-"} · top${v.livingmemory_top_k ?? "-"}` },
+  { id: "emoji", icon: "😀", name: "表情包降权", master: "enable_emoji_filter", keys: ["enable_emoji_filter", "emoji_probability_decay", "emoji_decay_min_probability"], summary: (v) => `衰减 ${v.emoji_probability_decay ?? "-"} · 下限 ${v.emoji_decay_min_probability ?? "-"}` },
+  { id: "poke", icon: "👆", name: "戳一戳", master: { key: "poke_message_mode", neq: "ignore" }, keys: ["poke_message_mode", "poke_bot_skip_probability", "enable_poke_after_reply"], summary: (v) => `${v.poke_message_mode ?? "-"} · 反戳${v.enable_poke_after_reply ? "开" : "关"}` },
+  { id: "duplicate", icon: "🔎", name: "防复读", master: "enable_duplicate_filter", keys: ["enable_duplicate_filter", "duplicate_filter_check_count"], summary: (v) => `检查 ${v.duplicate_filter_check_count ?? "-"} 条` },
+  { id: "smart", icon: "⚡", name: "Smart并发", master: null, keys: ["concurrent_mode", "concurrent_wait_max_loops", "concurrent_wait_interval", "enable_smart_batch_reply_hint", "smart_concurrent_merge_wait", "smart_concurrent_max_batch_size", "smart_concurrent_claim_delay"], summary: (v) => `${v.concurrent_mode ?? "legacy"} · 合并 ${v.smart_concurrent_merge_wait ?? "-"}s` },
+  { id: "filter", icon: "✂️", name: "内容过滤", master: { any: ["enable_output_content_filter", "enable_save_content_filter"] }, keys: ["enable_output_content_filter", "output_content_filter_rules", "enable_save_content_filter", "save_content_filter_rules"], summary: (v) => [v.enable_output_content_filter ? "输出" : null, v.enable_save_content_filter ? "保存" : null].filter(Boolean).join("+") || "未启用" },
 ];
 
 const $ = (sel) => document.querySelector(sel);
@@ -100,9 +108,18 @@ function renderStats() {
   $("#statsRow").innerHTML = boxes.map(([k, v]) => `<div class="stat-box"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("");
 }
 
+/* 主开关判定：master=null 视为常驻启用；字符串=布尔开关；{key,neq}/{key,eq}/{any:[...]} 为组合判定 */
+function isMasterOn(master) {
+  if (!master) return true;
+  if (typeof master === "string") return !!state.values[master];
+  if (master.any) return master.any.some((k) => !!state.values[k]);
+  if (master.neq) return state.values[master.key] !== master.neq;
+  if (master.eq) return state.values[master.key] === master.eq;
+  return true;
+}
+
 function stageState(stage) {
-  const on = stage.keys.some((k) => !!state.values[k]);
-  return on;
+  return isMasterOn(stage.master);
 }
 
 function renderPipeline() {
@@ -123,7 +140,7 @@ function renderPipeline() {
 }
 
 function cardOn(card) {
-  return card.keys.some((k) => !!state.values[k]);
+  return isMasterOn(card.master);
 }
 
 function renderCards() {
@@ -164,6 +181,14 @@ function fieldControl(key) {
         <select data-key="${key}">${opts}</select>
       </div>`;
   }
+  if (def.type === "list") {
+    const listVal = Array.isArray(val) ? val.join("\n") : (val ? String(val) : "");
+    return `
+      <div class="field">
+        <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
+        <textarea data-key="${key}" rows="5" placeholder="每行一项">${esc(listVal)}</textarea>
+      </div>`;
+  }
   const num = def.type === "int" || def.type === "float";
   if (num) {
     const step = def.step ?? (def.type === "int" ? 1 : 0.01);
@@ -200,6 +225,7 @@ function buildPanel(title, keys, onSave) {
       if (def.type === "bool") updates[key] = el.checked;
       else if (def.type === "int") updates[key] = parseInt(el.value, 10);
       else if (def.type === "float") updates[key] = parseFloat(el.value);
+      else if (def.type === "list") updates[key] = el.value.split("\n").map((s) => s.trim()).filter(Boolean);
       else updates[key] = el.value;
     });
     try {

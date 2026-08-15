@@ -421,6 +421,30 @@
             }
         }
     },
+    "gcp_section_emoji": {
+        "description": "😀 表情包降权",
+        "type": "object",
+        "items": {
+            "enable_emoji_filter": {
+                "description": "😀 启用表情包消息降权",
+                "type": "bool",
+                "default": false,
+                "hint": "开启后，纯表情包/图片表情消息的回复概率会按下方系数衰减，减少对表情包的重复回复。\n\n⚠️ 此配置项为重构后补充加入配置面板（原版代码有读取但从未在 _conf_schema.json 定义）"
+            },
+            "emoji_probability_decay": {
+                "description": "😀 表情包概率衰减系数",
+                "type": "float",
+                "default": 0.7,
+                "hint": "表情包消息的回复概率乘数（0~1）。0.7 表示表情包消息按原概率的 70% 参与回复判断"
+            },
+            "emoji_decay_min_probability": {
+                "description": "😀 表情包衰减后最低概率",
+                "type": "float",
+                "default": 0.1,
+                "hint": "表情包消息衰减后的概率下限，防止概率被压到 0 导致完全不理表情包"
+            }
+        }
+    },
     "gcp_section_poke": {
         "description": "👆 戳一戳",
         "type": "object",
