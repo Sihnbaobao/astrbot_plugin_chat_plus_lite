@@ -208,7 +208,17 @@ function buildPanel(title, keys, onSave) {
       if (data && data.applied) {
         toast(`已保存 ${data.applied.length} 项${data.skipped && data.skipped.length ? "，忽略 " + data.skipped.length + " 项" : ""}`, "ok");
         Object.assign(state.values, updates);
+        const keep = activePanel ? { key: activePanel.key, id: activePanel.id } : null;
+        closeActive();
         renderAll();
+        if (keep) {
+          const sel = keep.key === "stage" ? `[data-stage="${keep.id}"]` : `[data-card="${keep.id}"]`;
+          const targetEl = document.querySelector(sel);
+          if (targetEl) {
+            if (keep.key === "stage") toggleStagePanel(keep.id, targetEl);
+            else toggleCardPanel(keep.id, targetEl);
+          }
+        }
       } else {
         toast("保存失败：" + (res && res.message ? res.message : "未知错误"), "err");
       }
@@ -221,15 +231,20 @@ function buildPanel(title, keys, onSave) {
   return wrap;
 }
 
-/* 流水线/卡片面板的展开收起（互斥） */
-let activePanel = null; // { el, wrap, key }
+/* 流水线/卡片面板的展开收起（互斥）
+   注意：面板使用页面中固定的容器（#stagePanelWrap / #cardPanelWrap），
+   关闭时只清空容器内容，容器本身保留——避免 replaceWith 目标丢失导致点击无响应 */
+let activePanel = null; // { el, wrap, key, id }
+const stageWrapEl = document.getElementById("stagePanelWrap");
+const cardWrapEl = document.getElementById("cardPanelWrap");
 
 function closeActive() {
-  if (activePanel) {
+  if (!activePanel) return;
+  if (activePanel.el && activePanel.el.classList) {
     activePanel.el.classList.remove("active");
-    activePanel.wrap.remove();
-    activePanel = null;
   }
+  if (activePanel.wrap) activePanel.wrap.innerHTML = "";
+  activePanel = null;
 }
 
 function toggleStagePanel(stageId, el) {
@@ -237,13 +252,11 @@ function toggleStagePanel(stageId, el) {
   if (!stage) return;
   if (activePanel && activePanel.el === el) { closeActive(); return; }
   closeActive();
-  const wrap = document.createElement("div");
-  wrap.id = "stagePanelWrap";
-  wrap.appendChild(buildPanel(`${stage.icon} ${stage.title} · 配置`, stage.keys));
-  $("#stagePanelWrap").replaceWith(wrap);
+  stageWrapEl.innerHTML = "";
+  stageWrapEl.appendChild(buildPanel(`${stage.icon} ${stage.title} · 配置`, stage.keys));
   el.classList.add("active");
-  activePanel = { el, wrap, key: "stage" };
-  wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  activePanel = { el, wrap: stageWrapEl, key: "stage", id: stageId };
+  stageWrapEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function toggleCardPanel(cardId, el) {
@@ -251,13 +264,11 @@ function toggleCardPanel(cardId, el) {
   if (!card) return;
   if (activePanel && activePanel.el === el) { closeActive(); return; }
   closeActive();
-  const wrap = document.createElement("div");
-  wrap.id = "cardPanelWrap";
-  wrap.appendChild(buildPanel(`${card.icon} ${card.name} · 配置`, card.keys));
-  $("#cardPanelWrap").replaceWith(wrap);
+  cardWrapEl.innerHTML = "";
+  cardWrapEl.appendChild(buildPanel(`${card.icon} ${card.name} · 配置`, card.keys));
   el.classList.add("active");
-  activePanel = { el, wrap, key: "card" };
-  wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  activePanel = { el, wrap: cardWrapEl, key: "card", id: cardId };
+  cardWrapEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 /* ================= 提示词预览 ================= */
