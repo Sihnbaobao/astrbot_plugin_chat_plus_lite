@@ -456,6 +456,30 @@
         ],
         "hint": "控制同一群聊多条普通消息并发时的处理策略。\n\n• legacy（默认）：传统等待模式，每条消息独立处理，向后兼容旧行为，也是最兜底的普通消息并发保护模式\n• smart：智能批处理模式。会先按真实到达顺序确定主消息，再让读空气AI和回复AI一起感知当前消息后紧接着收到的追加消息（这些消息可能来自不同用户），减少顺序颠倒和逐条重复回复的问题\n\n⚠️ 这个模式选择主要只作用于普通对话主线，不直接改变主动对话流程本身的处理方式。主动对话相关的会话占用检测、普通链路在缓存转正/保存前等待主动对话释放、以及冷群缓存自动转正判断会话是否仍忙碌时，当前仍然复用通用的传统轮询等待参数（concurrent_wait_max_loops / concurrent_wait_interval）。\n\n⚠️ 选择 smart 模式，不代表传统并发保护完全失效；更准确地说，是普通对话链路会优先尝试 Smart 批处理与批次提示增强，但底层的传统并发等待/兜底保护仍然存在，用于处理无法被 Smart 覆盖的等待、占用和异常路径。\n\n注意：smart 与「群聊等待窗口」（GWW）可以配合，但互不依赖；即使不开 GWW，smart 也可以独立工作。进入 GWW 的消息不会进入 Smart 批处理流程。\n\n如果同时开启下方的「Smart批次回复提示增强」，回复阶段还会动态提示 AI：当前触发对象仍是主要回复对象，但可以像真人一样选择性顺带回应批次中的其他消息；这类提示只存在于运行时，不会保存到历史。"
     },
+    "enable_smart_batch_reply_hint": {
+        "description": "Smart批次回复提示增强",
+        "type": "bool",
+        "default": true,
+        "hint": "Smart 模式下，AI 回复时动态提示批次中有多少条追加消息（含发送者标注），帮助 AI 理解完整对话背景并自然顺带回应；关闭后 AI 只看到合并后的上下文文本，不显示批次提示"
+    },
+    "smart_concurrent_claim_delay": {
+        "description": "Smart批次收拢延迟（秒）",
+        "type": "float",
+        "default": 0.3,
+        "hint": "成为批次 anchor 前额外等待的秒数，给几乎同时到达的消息一个挂载窗口，避免晚到几十毫秒的消息被分到下一批导致 AI 多回一段"
+    },
+    "concurrent_wait_max_loops": {
+        "description": "并发等待最大循环次数",
+        "type": "int",
+        "default": 10,
+        "hint": "同一群有多条消息正在处理时，本插件等待前一条完成的最大循环次数（每次间隔见下一项）。到达上限后强制继续，可能产生竞争"
+    },
+    "concurrent_wait_interval": {
+        "description": "并发等待间隔（秒）",
+        "type": "float",
+        "default": 1,
+        "hint": "并发等待时每次检查的间隔秒数"
+    },
     "smart_concurrent_merge_wait": {
         "description": "⏱️ Smart模式：合并超时时间（秒）",
         "type": "float",

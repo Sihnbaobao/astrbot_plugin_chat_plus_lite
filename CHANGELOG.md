@@ -1,5 +1,14 @@
 ## 📝 更新日志
 
+### V2.0.6-lite (2026-08-15)
+
+**⚙️ 恢复 Smart 并发配置项到配置面板**
+
+- **背景**：concurrent_wait_max_loops / concurrent_wait_interval / enable_smart_batch_reply_hint / smart_concurrent_claim_delay 在代码中一直有默认值，但原版 _conf_schema.json 从未定义（面板不显示）。本次补齐定义并加入配置面板
+- **新增可配置项**：Smart批次回复提示增强（开关）、Smart批次收拢延迟、并发等待最大循环次数、并发等待间隔
+- **同步**：科技树「并发锁定」节点 keys 补全对应配置项
+- **说明**：配置项 94 → 98 项
+
 ### V2.0.5-lite (2026-08-15)
 
 **💬 修复群聊回复「XXX啊」机械复读句式**

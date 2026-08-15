@@ -306,8 +306,9 @@ const FlowData = {
                     icon: '🔐',
                     desc: '防止同一群组同时处理多条消息导致重复回复。\n• legacy模式（默认）：等待旧消息处理完再处理新消息，每条消息独立回复\n• smart模式：将同期到达的新消息合并进当前处理上下文，AI一次性感知所有消息后回复，避免「明明说了还说」的重复感',
                     keys: ['concurrent_wait_max_loops', 'concurrent_wait_interval',
-                           'concurrent_mode', 'smart_concurrent_merge_wait',
-                           'smart_concurrent_max_batch_size'],
+                           'concurrent_mode', 'enable_smart_batch_reply_hint',
+                           'smart_concurrent_merge_wait', 'smart_concurrent_max_batch_size',
+                           'smart_concurrent_claim_delay'],
                     onFail: 'pass',
                     next: null
                 }
