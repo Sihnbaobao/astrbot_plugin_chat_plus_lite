@@ -29,7 +29,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者: Him666233（原作者）／重构维护: Sihnbaobao
-版本: V2.0.6-lite
+版本: V2.0.7-lite
 本插件为 astrbot_plugin_group_chat_plus（Him666233）的 AGPL-3.0 精简重构派生作品，
 重新发布为独立插件 astrbot_plugin_chat_plus_lite。
 """
@@ -93,7 +93,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Him666233",
     "一个以AI读空气为主的群聊聊天效果增强插件（精简重构版）",
-    "V2.0.6-lite",
+    "V2.0.7-lite",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(Star):
@@ -131,11 +131,6 @@ class ChatPlus(Star):
         self.initial_probability = config.get("initial_probability", 0.02)
         self.after_reply_probability = config.get("after_reply_probability", 0.8)
         self.probability_duration = config.get("probability_duration", 120)
-        self.enable_probability_hard_limit = config.get(
-            "enable_probability_hard_limit", False
-        )
-        self.probability_min_limit = config.get("probability_min_limit", 0.05)
-        self.probability_max_limit = config.get("probability_max_limit", 0.8)
 
         # ========== 决策AI（读空气）配置 ==========
         self.decision_ai_provider_id = config.get("decision_ai_provider_id", "")
@@ -146,6 +141,9 @@ class ChatPlus(Star):
         self.decision_ai_extra_prompt = config.get("decision_ai_extra_prompt", "")
         self.decision_ai_timeout = config.get("decision_ai_timeout", 30)
         self.decision_ai_prompt_mode = config.get("decision_ai_prompt_mode", "append")
+        self.decision_ai_reply_tendency = config.get(
+            "decision_ai_reply_tendency", "persona"
+        )
         self.enable_decision_ai_reasoning = config.get(
             "enable_decision_ai_reasoning", False
         )
@@ -353,13 +351,7 @@ class ChatPlus(Star):
 
         # ========== 管理器初始化 ==========
         # 概率管理器
-        ProbabilityManager.initialize(
-            {
-                "enable_probability_hard_limit": self.enable_probability_hard_limit,
-                "probability_min_limit": self.probability_min_limit,
-                "probability_max_limit": self.probability_max_limit,
-            }
-        )
+        ProbabilityManager.initialize({})
 
         # 上下文管理器（自定义存储）
         ContextManager.init(
@@ -442,7 +434,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.0.6-lite（精简重构版）")
+        logger.info("群聊增强插件已加载 - V2.0.7-lite（精简重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -2182,19 +2174,6 @@ class ChatPlus(Star):
                 f"(+{transient_probability_boost:.2f})"
             )
 
-        # 应用用户配置的概率硬性限制（如果启用）
-        if self.enable_probability_hard_limit:
-            original_prob = current_probability
-            current_probability = max(
-                self.probability_min_limit,
-                min(self.probability_max_limit, current_probability),
-            )
-            if abs(original_prob - current_probability) > 1e-9:
-                logger.info(
-                    f"  【概率硬性限制】应用用户配置限制: {original_prob:.2f} -> {current_probability:.2f} "
-                    f"(范围: [{self.probability_min_limit:.2f}, {self.probability_max_limit:.2f}])"
-                )
-
         # 系统硬性边界 [0, 1]
         current_probability = max(0.0, min(1.0, current_probability))
 
@@ -2326,6 +2305,7 @@ class ChatPlus(Star):
                 reasoning_end_marker=self.judgment_reasoning_end_marker,
                 include_persona=self.decision_ai_include_persona,
                 configured_persona_name=self.decision_ai_persona_name,
+                reply_tendency=self.decision_ai_reply_tendency,
             )
 
             if self.debug_mode:

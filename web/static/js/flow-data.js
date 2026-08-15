@@ -178,17 +178,6 @@ const FlowData = {
                            'probability_duration', 'poke_bot_skip_probability',
                            'at_all_message_mode', 'at_all_probability_boost_value'],
                     onFail: 'pass',
-                    next: 'hard-limit'
-                },
-                {
-                    id: 'hard-limit',
-                    name: '概率硬限',
-                    icon: '🔒',
-                    desc: '强制将最终概率钳位在用户设定的最小/最大范围内',
-                    toggle: 'enable_probability_hard_limit',
-                    keys: ['enable_probability_hard_limit',
-                           'probability_min_limit', 'probability_max_limit'],
-                    onFail: 'pass',
                     next: 'random-roll'
                 },
                 {
@@ -294,7 +283,7 @@ const FlowData = {
                     desc: '调用决策AI分析对话上下文，判断是否适合回复。关键词命中只代表进入判断流程或获得提示，不代表必须回复。当前消息发送者仍然是读空气判断的主要对象',
                     promptDataKey: 'decision-ai',
                     keys: ['decision_ai_provider_id', 'decision_ai_include_persona',
-                           'decision_ai_prompt_mode',
+                           'decision_ai_prompt_mode', 'decision_ai_reply_tendency',
                            'decision_ai_extra_prompt', 'decision_ai_timeout'],
                     onFail: 'drop',
                     failLabel: 'AI判定不回复 → 缓存消息',

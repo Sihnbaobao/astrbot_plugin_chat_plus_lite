@@ -75,11 +75,6 @@ class ProbabilityManager:
     _reply_time_min_factor: float = 0.1
     _reply_time_max_factor: float = 2.0
     _reply_time_use_smooth_curve: bool = True
-    # 概率硬性限制配置
-    _enable_probability_hard_limit: bool = False
-    _probability_min_limit: float = 0.05
-    _probability_max_limit: float = 0.8
-
     @staticmethod
     def initialize(config: dict):
         """
@@ -111,16 +106,7 @@ class ProbabilityManager:
         ProbabilityManager._reply_time_use_smooth_curve = config.get(
             "reply_time_use_smooth_curve", False
         )
-        # 概率硬性限制配置
-        ProbabilityManager._enable_probability_hard_limit = config.get(
-            "enable_probability_hard_limit", False
-        )
-        ProbabilityManager._probability_min_limit = config.get(
-            "probability_min_limit", 0.0
-        )
-        ProbabilityManager._probability_max_limit = config.get(
-            "probability_max_limit", 1.0
-        )
+
 
         if DEBUG_MODE:
             logger.info("[概率管理器] 已初始化")
@@ -353,30 +339,6 @@ class ProbabilityManager:
                     del ProbabilityManager._probability_status[chat_key]
                 else:
                     ProbabilityManager._probability_status[chat_key] = compacted
-
-        # ========== 第二步：应用概率硬性限制（一键简化功能） ==========
-        if ProbabilityManager._enable_probability_hard_limit:
-            min_limit = ProbabilityManager._probability_min_limit
-            max_limit = ProbabilityManager._probability_max_limit
-
-            original_prob = base_probability
-            # 强制限制在范围内
-            base_probability = max(min_limit, min(max_limit, base_probability))
-
-            # 使用更精确的比较（考虑浮点数精度问题）
-            # 如果原始概率小于最小值或被限制，记录日志
-            if original_prob < min_limit or original_prob > max_limit:
-                logger.info(
-                    f"[概率硬性限制] 会话 {chat_key} "
-                    f"原始概率={original_prob:.4f}, 限制范围=[{min_limit:.2f}, {max_limit:.2f}], "
-                    f"最终概率={base_probability:.4f}"
-                )
-            elif abs(original_prob - base_probability) > 0.001:
-                logger.info(
-                    f"[概率硬性限制] 会话 {chat_key} "
-                    f"原始概率={original_prob:.4f}, 限制范围=[{min_limit:.2f}, {max_limit:.2f}], "
-                    f"最终概率={base_probability:.4f}"
-                )
 
         # ========== 最后一步：统一安全限制（确保所有路径都返回0-1范围内的值） ==========
         # 无论前面的计算如何，最终概率必须在0.0-1.0范围内
