@@ -114,9 +114,11 @@ body {
 .edit-panel h3 { font-size: 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px 20px; }
 .field { display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; }
+.field-title { font-size: 12.5px; font-weight: 600; line-height: 1.4; min-height: 18px; }
+.field-hint { font-size: 11px; font-weight: 400; color: var(--text-sub); line-height: 1.5; }
+.field .switch { align-self: flex-start; margin-top: 2px; }
 .field label { font-size: 12.5px; font-weight: 600; display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; line-height: 1.45; }
 .field label .hint { font-size: 11px; font-weight: 400; color: var(--text-sub); }
-.field .switch { align-self: flex-start; margin-top: 2px; }
 .field input[type="number"], .field select {
   padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px;
   background: var(--bg); color: var(--text); font-size: 13px; width: 100%;

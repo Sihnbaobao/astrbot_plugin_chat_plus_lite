@@ -166,27 +166,32 @@ function renderCards() {
 function fieldControl(key) {
   const def = FIELDS[key];
   const val = state.values[key];
+  const title = `<div class="field-title">${esc(def.label)}</div>`;
+  const hint = def.hint ? `<div class="field-hint">${esc(def.hint)}</div>` : "";
   if (def.type === "bool") {
     return `
       <div class="field">
-        <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
+        ${title}
         <label class="switch"><input type="checkbox" data-key="${key}" ${val ? "checked" : ""} /><span class="slider"></span></label>
+        ${hint}
       </div>`;
   }
   if (def.type === "select") {
     const opts = (def.options || []).map((o) => `<option value="${esc(o)}" ${String(val) === String(o) ? "selected" : ""}>${esc((def.labels && def.labels[o]) || o)}</option>`).join("");
     return `
       <div class="field">
-        <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
+        ${title}
         <select data-key="${key}">${opts}</select>
+        ${hint}
       </div>`;
   }
   if (def.type === "list") {
     const listVal = Array.isArray(val) ? val.join("\n") : (val ? String(val) : "");
     return `
       <div class="field">
-        <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
+        ${title}
         <textarea data-key="${key}" rows="5" placeholder="每行一项">${esc(listVal)}</textarea>
+        ${hint}
       </div>`;
   }
   const num = def.type === "int" || def.type === "float";
@@ -194,14 +199,16 @@ function fieldControl(key) {
     const step = def.step ?? (def.type === "int" ? 1 : 0.01);
     return `
       <div class="field">
-        <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
+        ${title}
         <input type="number" data-key="${key}" value="${esc(val)}" min="${def.min ?? ""}" max="${def.max ?? ""}" step="${step}" />
+        ${hint}
       </div>`;
   }
   return `
     <div class="field">
-      <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
+      ${title}
       <input type="text" data-key="${key}" value="${esc(val)}" />
+      ${hint}
     </div>`;
 }
 
@@ -313,8 +320,9 @@ async function renderPrompts() {
         <h3>${icon} ${title}</h3>
         <div class="meta">模式：${modeText(p.mode)} · ${p.has_custom ? "已配置自定义提示词" : "使用默认提示词"}</div>
         <div class="field" style="margin-top: 8px">
-          <label>✏️ 自定义提示词 <span class="hint">${modeDesc(p.mode)}</span></label>
+          <div class="field-title">✏️ 自定义提示词</div>
           <textarea data-prompt-edit="${cfgKey}" rows="6" placeholder="在这里输入你的自定义提示词…">${esc(p.extra)}</textarea>
+          <div class="field-hint">${modeDesc(p.mode)}</div>
         </div>
         <div class="save-bar" style="margin-top: 10px">
           <span class="save-status" data-prompt-status="${cfgKey}"></span>
