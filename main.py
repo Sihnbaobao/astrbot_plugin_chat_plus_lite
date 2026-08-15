@@ -17,7 +17,7 @@
 7. 黑名单（用户/关键词）
 8. 时间戳/发送者标注（群聊里 AI 只比私聊多知道"谁在说话"）
 9. 记忆注入（livingmemory 集成）
-10. Web 管理面板
+10. AstrBot 插件页管理控制台（Dashboard 内嵌，卡片式可视化）
 11. 戳一戳（回复后戳/反戳/戳过追踪）
 12. Smart 并发合并
 13. 指令过滤、@全体成员/@他人过滤、重复回复过滤、内容过滤
@@ -29,7 +29,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者: Him666233（原作者）／重构维护: Sihnbaobao
-版本: V2.0.7-lite
+版本: V2.1.0-lite
 本插件为 astrbot_plugin_group_chat_plus（Him666233）的 AGPL-3.0 精简重构派生作品，
 重新发布为独立插件 astrbot_plugin_chat_plus_lite。
 """
@@ -93,7 +93,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Him666233",
     "一个以AI读空气为主的群聊聊天效果增强插件（精简重构版）",
-    "V2.0.7-lite",
+    "V2.1.0-lite",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(Star):
@@ -334,11 +334,7 @@ class ChatPlus(Star):
             "reply_generation_timeout_warning", 60
         )
 
-        # ========== Web 面板配置 ==========
-        self.enable_web_panel = config.get("enable_web_panel", False)
-        self.web_panel_host = config.get("web_panel_host", "0.0.0.0")
-        self.web_panel_port = config.get("web_panel_port", 1451)
-        self.web_panel_reset_password = config.get("web_panel_reset_password", False)
+        # ========== 桌面端模式（AstrBot Desktop 兼容） ==========
         self.desktop_mode_setting = config.get("desktop_mode", "auto")
 
         # ========== 数据目录 ==========
@@ -434,7 +430,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.0.7-lite（精简重构版）")
+        logger.info("群聊增强插件已加载 - V2.1.0-lite（精简重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -447,7 +443,7 @@ class ChatPlus(Star):
     # ============================================================
 
     async def initialize(self):
-        """插件激活时调用：启动 Web 面板等后台服务。"""
+        """插件激活时调用：同步并发参数、注册插件页 Web API。"""
         self.session = aiohttp.ClientSession()
         # 同步 Smart并发参数
         try:
@@ -461,27 +457,8 @@ class ChatPlus(Star):
         except (TypeError, ValueError):
             pass
 
-        # 启动 Web 配置面板
-        if self.enable_web_panel:
-            try:
-                from .web.server import WebPanelServer
-
-                self._web_server = WebPanelServer(
-                    self,
-                    host=self.web_panel_host,
-                    port=self.web_panel_port,
-                    data_dir=self.plugin_data_dir,
-                )
-                # 检测密码重置标志
-                if self.web_panel_reset_password:
-                    self._web_server.auth_mgr.reset_to_default()
-                    self.config["web_panel_reset_password"] = False
-                    self.config.save_config()
-                    logger.info("🌐 Web 面板密码已重置，新密码已输出到日志")
-                await self._web_server.start()
-            except Exception as e:
-                logger.error(f"🌐 Web 配置面板启动失败: {e}", exc_info=True)
-                self._web_server = None
+        # 注册 AstrBot 插件页 Web API（Dashboard 内嵌管理页面）
+        self._register_web_apis()
 
     async def terminate(self):
         """插件禁用/重载时调用。"""
@@ -491,12 +468,242 @@ class ChatPlus(Star):
             except Exception:
                 pass
 
-        # 停止 Web 配置面板
-        if hasattr(self, "_web_server") and self._web_server:
+    # ============================================================
+    # 插件页 Web API（AstrBot Dashboard 插件页，见 pages/control/）
+    # V2.1.0：独立 Web 面板已移除，管理界面改为 AstrBot 插件页
+    # （Dashboard 内嵌 iframe），后端 API 由此注册。
+    # ============================================================
+
+    _PLUGIN_NAME = "astrbot_plugin_chat_plus_lite"
+
+    # 插件页可编辑的配置键（键名 -> 实例属性名）
+    _PAGE_EDITABLE_KEYS = {
+        "enable_group_chat": "enable_group_chat",
+        "enable_debug_log": "debug_mode",
+        "initial_probability": "initial_probability",
+        "after_reply_probability": "after_reply_probability",
+        "probability_duration": "probability_duration",
+        "decision_ai_reply_tendency": "decision_ai_reply_tendency",
+        "decision_ai_prompt_mode": "decision_ai_prompt_mode",
+        "decision_ai_timeout": "decision_ai_timeout",
+        "decision_ai_include_persona": "decision_ai_include_persona",
+        "decision_ai_reasoning_log": "decision_ai_reasoning_log",
+        "enable_decision_ai_reasoning": "enable_decision_ai_reasoning",
+        "reply_ai_prompt_mode": "reply_ai_prompt_mode",
+        "include_timestamp": "include_timestamp",
+        "include_sender_info": "include_sender_info",
+        "max_context_messages": "max_context_messages",
+        "enable_forward_message_parsing": "enable_forward_message_parsing",
+        "forward_max_nesting_depth": "forward_max_nesting_depth",
+        "enable_image_processing": "enable_image_processing",
+        "image_to_text_scope": "image_to_text_scope",
+        "max_images_per_message": "max_images_per_message",
+        "enable_emoji_filter": "enable_emoji_filter",
+        "emoji_probability_decay": "emoji_probability_decay",
+        "enable_memory_injection": "enable_memory_injection",
+        "memory_plugin_mode": "memory_plugin_mode",
+        "livingmemory_top_k": "livingmemory_top_k",
+        "keyword_smart_mode": "keyword_smart_mode",
+        "enable_user_blacklist": "enable_user_blacklist",
+        "enable_command_filter": "enable_command_filter",
+        "enable_ignore_at_others": "enable_ignore_at_others",
+        "enable_ignore_at_all": "enable_ignore_at_all",
+        "poke_message_mode": "poke_message_mode",
+        "poke_bot_skip_probability": "poke_bot_skip_probability",
+        "enable_poke_after_reply": "enable_poke_after_reply",
+        "enable_duplicate_filter": "enable_duplicate_filter",
+        "duplicate_filter_check_count": "duplicate_filter_check_count",
+        "concurrent_mode": "concurrent_mode",
+        "concurrent_wait_max_loops": "concurrent_wait_max_loops",
+        "concurrent_wait_interval": "concurrent_wait_interval",
+        "enable_smart_batch_reply_hint": "enable_smart_batch_reply_hint",
+        "smart_concurrent_merge_wait": "smart_concurrent_merge_wait",
+        "smart_concurrent_max_batch_size": "smart_concurrent_max_batch_size",
+        "smart_concurrent_claim_delay": "smart_concurrent_claim_delay",
+        "enable_output_content_filter": "enable_output_content_filter",
+        "enable_save_content_filter": "enable_save_content_filter",
+    }
+
+    def _register_web_apis(self):
+        """注册插件页 Web API（需要 AstrBot >= 4.25.3 的 Plugin Pages 支持）。"""
+        try:
+            from astrbot.api.web import (  # noqa: F401
+                error_response,
+                json_response,
+                request,
+            )
+
+            self.context.register_web_api(
+                f"/{self._PLUGIN_NAME}/status",
+                self._api_status,
+                ["GET"],
+                "插件运行状态总览",
+            )
+            self.context.register_web_api(
+                f"/{self._PLUGIN_NAME}/config/save",
+                self._api_save_config,
+                ["POST"],
+                "保存插件页修改的配置",
+            )
+            self.context.register_web_api(
+                f"/{self._PLUGIN_NAME}/prompts",
+                self._api_prompts,
+                ["GET"],
+                "提示词预览（读空气判断/回复生成）",
+            )
+            logger.info("✅ 插件页 Web API 已注册（Dashboard 插件页可用）")
+        except Exception as e:
+            logger.warning(f"插件页 Web API 注册失败（需要 AstrBot v4.25.3+）: {e}")
+
+    async def _api_status(self):
+        """返回插件状态总览（供插件页渲染卡片/胶囊）。"""
+        from astrbot.api.web import json_response
+
+        values = {}
+        for key, attr in self._PAGE_EDITABLE_KEYS.items():
+            values[key] = self.config.get(key, getattr(self, attr, None))
+
+        prob_status = getattr(ProbabilityManager, "_probability_status", {}) or {}
+        runtime = {
+            "probability_session_count": len(prob_status),
+            "smart_batch_snapshot_count": len(
+                getattr(self, "_smart_batch_snapshots", {})
+            ),
+            "processing_session_count": len(getattr(self, "processing_sessions", {})),
+        }
+        return json_response(
+            {
+                "version": "V2.1.0-lite",
+                "values": values,
+                "runtime": runtime,
+            }
+        )
+
+    async def _api_save_config(self):
+        """保存插件页提交的配置变更（仅允许白名单内的键）。"""
+        from astrbot.api.web import error_response, json_response, request
+
+        try:
+            payload = await request.json(default={})
+        except Exception:
+            payload = {}
+        updates = payload.get("updates") if isinstance(payload, dict) else None
+        if not isinstance(updates, dict) or not updates:
+            return error_response("updates 必须是非空对象")
+
+        applied = []
+        skipped = []
+        for key, value in updates.items():
+            if key not in self._PAGE_EDITABLE_KEYS:
+                skipped.append(key)
+                continue
             try:
-                await self._web_server.stop()
-            except Exception as e:
-                logger.error(f"🌐 Web 配置面板停止失败: {e}", exc_info=True)
+                self.config[key] = value
+            except Exception:
+                skipped.append(key)
+                continue
+            setattr(self, self._PAGE_EDITABLE_KEYS[key], value)
+            applied.append(key)
+
+        try:
+            self.config.save_config()
+        except Exception as e:
+            logger.warning(f"插件页保存配置落盘失败: {e}")
+
+        # Smart 并发参数需同步到类级
+        try:
+            SmartConcurrentManager._EXPIRE_SECONDS = float(
+                self.smart_concurrent_merge_wait
+            )
+        except (TypeError, ValueError):
+            pass
+        try:
+            SmartConcurrentManager._MAX_BATCH_SIZE = max(
+                1, int(self.smart_concurrent_max_batch_size)
+            )
+        except (TypeError, ValueError):
+            pass
+
+        return json_response({"applied": applied, "skipped": skipped})
+
+    def _page_tendency_prompt(self) -> str:
+        """与 DecisionAI.should_reply 中 reply_tendency 段落保持一致的预览文本。"""
+        tendency = self.decision_ai_reply_tendency
+        if tendency == "reserved":
+            return (
+                "\n\n【本次判断为保守模式】：\n"
+                "- 普通闲聊、寒暄、纯陈述一律不回复（返回no）\n"
+                "- 只回复明确需要你回应的消息：直接@你、直接提问、求助、触发关键词且与你有实质关系\n"
+                "- 不确定时一律返回no\n"
+            )
+        if tendency == "active":
+            return (
+                "\n\n【本次判断为积极模式】：\n"
+                "- 适度放宽判断标准，主动参与群聊互动\n"
+                "- 寒暄和普通闲聊也可以接话，不确定时倾向于回复（yes）\n"
+            )
+        return (
+            "\n\n【本次判断以人格社交倾向为最高优先级】：\n"
+            "- 若人格设定为沉默寡言/话少/冷淡型，普通闲聊默认不回复\n"
+            "- 仅回复直接@、明确提问、求助、触发关键词且与你有实质关系的消息\n"
+            "- 不确定时以人格社交倾向为最终依据\n"
+        )
+
+    async def _api_prompts(self):
+        """返回读空气判断/回复生成的提示词预览（与真实拼接逻辑保持一致）。"""
+        from astrbot.api.web import json_response
+
+        try:
+            from .utils.decision_ai import DecisionAI
+            from .utils.reply_handler import ReplyHandler
+        except Exception:
+            return json_response(
+                {
+                    "decision": {"text": "（无法加载提示词模块）"},
+                    "reply": {"text": ""},
+                }
+            )
+
+        decision_custom = bool(
+            self.decision_ai_extra_prompt
+            and str(self.decision_ai_extra_prompt).strip()
+        )
+        if decision_custom and self.decision_ai_prompt_mode == "override":
+            decision_text = str(self.decision_ai_extra_prompt).strip()
+        else:
+            decision_text = DecisionAI.SYSTEM_DECISION_PROMPT
+            if decision_custom:
+                decision_text += (
+                    f"\n\n用户补充说明:\n{self.decision_ai_extra_prompt.strip()}\n"
+                )
+        decision_text += self._page_tendency_prompt()
+        decision_text += DecisionAI.SYSTEM_DECISION_PROMPT_ENDING
+
+        reply_custom = bool(
+            self.reply_ai_extra_prompt and str(self.reply_ai_extra_prompt).strip()
+        )
+        if reply_custom and self.reply_ai_prompt_mode == "override":
+            reply_text = str(self.reply_ai_extra_prompt).strip()
+        else:
+            reply_text = "[发送者标注 + 历史上下文 + 当前消息]"
+            if reply_custom:
+                reply_text += "\n" + str(self.reply_ai_extra_prompt).strip()
+        reply_text += ReplyHandler.PROMPT_ENDING
+
+        return json_response(
+            {
+                "decision": {
+                    "mode": self.decision_ai_prompt_mode,
+                    "has_custom": decision_custom,
+                    "text": decision_text,
+                },
+                "reply": {
+                    "mode": self.reply_ai_prompt_mode,
+                    "has_custom": reply_custom,
+                    "text": reply_text,
+                },
+            }
+        )
 
     @filter.on_platform_loaded()
     async def on_platform_loaded(self):
@@ -560,7 +767,7 @@ class ChatPlus(Star):
         self.config.save_config()
 
     # ============================================================
-    # Web 面板 / 重启辅助
+    # 重启辅助
     # ============================================================
 
     async def _get_auth_token(self):

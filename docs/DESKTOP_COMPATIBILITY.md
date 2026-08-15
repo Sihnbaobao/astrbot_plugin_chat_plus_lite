@@ -302,7 +302,7 @@ git clone https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite.git
 
 **方法 2**：在 AstrBot 配置界面查看 `desktop_detected_env` 配置项的值
 
-**方法 3**：在 Web 面板 API 中检查 `/api/config` 响应的 `desktop_info` 字段
+**方法 3**：检查插件配置/日志中是否写入 `desktop_mode=force_desktop`（自动检测成功后回写配置）
 
 ### Q: 自动检测不准确怎么办
 
