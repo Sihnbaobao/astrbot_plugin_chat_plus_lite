@@ -168,7 +168,7 @@ function fieldControl(key) {
   const val = state.values[key];
   if (def.type === "bool") {
     return `
-      <div class="field-row">
+      <div class="field">
         <label>${esc(def.label)}<span class="hint">${esc(def.hint || "")}</span></label>
         <label class="switch"><input type="checkbox" data-key="${key}" ${val ? "checked" : ""} /><span class="slider"></span></label>
       </div>`;
