@@ -131,6 +131,9 @@ class ChatPlus(Star):
         self.enabled_groups = self._cfg("enabled_groups", [])
 
         # ========== 概率相关配置 ==========
+        self.enable_random_probability_filter = self._cfg(
+            "enable_random_probability_filter", False
+        )  # 随机读空气总开关：关闭时普通消息直接交给人格 AI 判断
         self.initial_probability = self._cfg("initial_probability", 0.02)
         self.after_reply_probability = self._cfg("after_reply_probability", 0.8)
         self.probability_duration = self._cfg("probability_duration", 120)
@@ -2415,12 +2418,15 @@ class ChatPlus(Star):
                     0.0, min(1.0, self.at_all_probability_boost_value)
                 )
 
+        # 随机读空气筛选总开关：关闭时普通消息也直接交给 AI 人格判断（AI 全权主导）
+        random_filter_active = self.enable_random_probability_filter
         if (
             not is_at_message
             and not has_trigger_keyword
             and not skip_probability_for_poke
             and not skip_probability_for_welcome
             and not skip_probability_for_at_all
+            and random_filter_active
         ):
             if self.debug_mode:
                 logger.info("【步骤5】开始读空气概率判断")
@@ -2442,6 +2448,8 @@ class ChatPlus(Star):
 
             logger.info("读空气概率判断: 决定处理此消息")
         else:
+            if not random_filter_active and self.debug_mode:
+                logger.info("【步骤5】随机概率筛选已关闭（AI 判断全权主导），普通消息直接进入 AI 判断")
             if is_at_message and self.debug_mode:
                 logger.info("【步骤5】@消息,跳过概率判断,必定处理")
             if has_trigger_keyword and self.debug_mode:

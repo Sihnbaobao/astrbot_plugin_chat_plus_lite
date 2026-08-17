@@ -38,6 +38,12 @@
         "description": "🎲 概率筛选",
         "type": "object",
         "items": {
+            "enable_random_probability_filter": {
+                "description": "随机读空气概率筛选总开关",
+                "type": "bool",
+                "default": false,
+                "hint": "建议保持关闭（AI 判断全权主导）。关闭后，非@普通消息不再按随机概率抽签，全部直接交给读空气AI用人格判断是否回复；开启后恢复旧的随机概率筛选（配合下方初始读空气概率）。该选项只影响\u2018是否回复\u2019的判断，不影响最终生成回复内容的回复AI。"
+            },
             "initial_probability": {
                 "description": "初始读空气概率",
                 "type": "float",
