@@ -9,7 +9,7 @@
 - 支持缓存消息转正（避免上下文断裂）
 - 详细的保存日志便于调试
 
-作者: Him666233
+作者: Sihnbaobao（重构）
 版本: V1.2.3.hotfix.2
 """
 
@@ -22,7 +22,6 @@ import json
 import re
 import time
 from datetime import datetime
-from ._session_guard import guard_session
 from .message_processor import MessageProcessor
 
 # 导入 MessageCleaner（延迟导入以避免循环依赖）
@@ -969,7 +968,6 @@ class ContextManager:
         """
         try:
             _sid = getattr(event, "session_id", "") or ""
-            guard_session(_sid, probability=0.05)
 
             # 🔧 修复：确保 max_messages 是整数类型
             if not isinstance(max_messages, int):

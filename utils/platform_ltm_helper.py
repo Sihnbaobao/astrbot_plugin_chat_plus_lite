@@ -2,7 +2,7 @@
 平台 LTM (Long Term Memory) 辅助模块
 用于从平台的聊天记忆增强功能中提取图片描述信息
 
-作者: Him666233
+作者: Sihnbaobao（重构）
 版本: V1.2.3.hotfix.2
 """
 

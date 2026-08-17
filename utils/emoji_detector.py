@@ -14,7 +14,7 @@
 3. 检查 Image 组件对象的 subType / sub_type 属性
 4. 通过 toDict() 获取完整数据检查
 
-作者: Him666233
+作者: Sihnbaobao（重构）
 版本: V1.2.3.hotfix.2
 """
 

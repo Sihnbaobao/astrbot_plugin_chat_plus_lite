@@ -262,7 +262,6 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
         stubs={
             "ai_response_filter": {"AIResponseFilter": object},
             "ai_error_formatter": {"format_ai_error": lambda e, l: f"{l}: {e}"},
-            "_session_guard": {"sample_guard": lambda *a, **k: None},
         },
     )
     prompt = decision.DecisionAI.SYSTEM_DECISION_PROMPT
@@ -330,7 +329,6 @@ def test_keyword_checker_triggers_and_blacklist(monkeypatch):
         monkeypatch,
         "keyword_checker.py",
         "keyword_checker",
-        stubs={"_session_guard": {"guard_session": lambda *a, **k: None}},
     )
 
     class _MsgEvent:

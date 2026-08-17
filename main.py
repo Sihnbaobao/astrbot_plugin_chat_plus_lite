@@ -28,10 +28,8 @@
 错字生成、打字模拟、拟人模式、消息质量评分、回复密度、频率调整、
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
-作者: Him666233（原作者）／重构维护: Sihnbaobao
-版本: V2.5.0-lite
-本插件为 astrbot_plugin_group_chat_plus（Him666233）的 AGPL-3.0 精简重构派生作品，
-重新发布为独立插件 astrbot_plugin_chat_plus_lite。
+作者/维护: Sihnbaobao
+版本: 0.0.1（重生版，自 astrbot_plugin_group_chat_plus 精简重构的独立插件）
 """
 
 import random
@@ -88,9 +86,9 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
 
 @register(
     "astrbot_plugin_chat_plus_lite",
-    "Him666233",
-    "一个以AI读空气为主的群聊聊天效果增强插件（精简重构版）",
-    "V2.5.0-lite",
+    "Sihnbaobao",
+    "一个以AI读空气为主的群聊聊天效果增强插件（人格主导，简洁配置）",
+    "0.0.1",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(Star):
@@ -408,7 +406,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.6.1-lite（人格主导重构 · 配置页精简）")
+        logger.info("群聊增强插件已加载 - 0.0.1（重生版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -537,7 +535,7 @@ class ChatPlus(Star):
     _PLUGIN_NAME = "astrbot_plugin_chat_plus_lite"
 
     # ============================================================
-    # 插件页配置源（V2.5.0：100% 覆盖——schema 驱动 + 隐藏键补充）
+    # 插件页配置源：100% 由 _conf_schema.json 驱动
     # _schema_groups() 从 _conf_schema.json 动态读取分组与字段定义，
     # 插件页渲染与 AstrBot 配置页完全一致；全部配置统一由 _conf_schema.json 驱动
     # 有读取但 schema 未展示的隐藏参数。
@@ -627,7 +625,7 @@ class ChatPlus(Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "V2.6.1-lite",
+                "version": "0.0.1",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -1393,9 +1391,7 @@ class ChatPlus(Star):
             except Exception:
                 pass
             if (not _raw_msg_str or not _raw_msg_str.strip()) and not _msg_components:
-                logger.info(
-                    f"🚫 [空消息过滤] 检测到平台产生的真空消息（发送者: {event.get_sender_name()}），已直接丢弃"
-                )
+                # 平台系统事件/真空消息（如进群通知）：不参与读空气，静默放行
                 event.call_llm = True
                 return
 

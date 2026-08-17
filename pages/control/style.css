@@ -98,6 +98,7 @@ body {
   background: var(--accent-soft); color: var(--accent); font-size: 11px;
 }
 .hint-ico:hover { background: var(--accent); color: #fff; }
+.field-hint { font-size: 11px; color: var(--text-sub); line-height: 1.5; }
 .field input[type="text"], .field input[type="number"], .field select, .field textarea {
   width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--text); font-size: 13px;

@@ -2,8 +2,8 @@
 工具模块初始化（精简版）
 导出所有工具类供主插件使用
 
-作者: Him666233
-版本: V2.5.0-lite（refactor-lite 重构版）
+作者: Sihnbaobao（重构）
+版本: 0.0.1
 """
 
 from .probability_manager import ProbabilityManager

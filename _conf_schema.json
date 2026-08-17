@@ -4,25 +4,25 @@
         "type": "object",
         "items": {
             "enable_group_chat": {
-                "description": "🔘 启用群聊功能",
+                "description": "启用群聊增强",
                 "type": "bool",
                 "default": true,
-                "hint": "【总开关】开启后启用群聊增强功能（AI读空气、概率筛选、主动对话等）。关闭后本插件不处理任何群聊消息"
+                "hint": "关闭后本插件不处理任何群聊消息。"
             },
             "enable_debug_log": {
-                "description": "启用群聊处理的详细日志",
+                "description": "调试日志",
                 "type": "bool",
                 "default": false,
-                "hint": "开启后会群聊消息处理输出更多详细的调试日志，便于排查问题和了解插件运行状态"
+                "hint": "开启后输出更多处理细节日志，排查用。"
             },
             "enabled_groups": {
-                "description": "启用的群组列表",
+                "description": "启用的群聊",
                 "type": "list",
                 "default": [],
-                "hint": "在哪些群组中启用此插件。留空则在所有群聊中启用；填写群号则只在指定群组中启用"
+                "hint": "留空=全部群；填群号则只在指定群生效，每行一个。"
             },
             "desktop_mode": {
-                "description": "🖥️ 桌面端模式",
+                "description": "运行环境识别",
                 "type": "string",
                 "default": "auto",
                 "options": [
@@ -30,7 +30,7 @@
                     "force_desktop",
                     "force_standard"
                 ],
-                "hint": "控制插件如何识别运行环境：\n\n• auto（推荐）：自动检测是否运行在桌面端。检测依据：①环境变量 ASTRBOT_DESKTOP_CLIENT=1 ②数据根目录为 ~/.astrbot ③进程树中存在 Tauri 父进程。首次检测成功后会自动写入本配置项记录结果\n\n• force_desktop：强制以桌面端模式运行。适用于自动检测失败但确实在使用桌面端的情况。开启后：重启指令会附加桌面端提示，日志中输出额外警告\n\n• force_standard：强制以标准版模式运行。适用于非桌面端环境或不需要桌面端兼容提示的场景"
+                "hint": "auto 自动识别桌面端/服务端。"
             }
         }
     },
@@ -39,45 +39,45 @@
         "type": "object",
         "items": {
             "enable_random_probability_filter": {
-                "description": "随机读空气概率筛选总开关",
+                "description": "随机概率筛选",
                 "type": "bool",
                 "default": false,
-                "hint": "建议保持关闭（AI 判断全权主导）。关闭后，非@普通消息不再按随机概率抽签，全部直接交给读空气AI用人格判断是否回复；开启后恢复旧的随机概率筛选（配合下方初始读空气概率）。该选项只影响‘是否回复’的判断，不影响最终生成回复内容的回复AI。"
+                "hint": "关闭=AI全权判断要不要回；开启=先按概率抽签。建议保持关闭。"
             },
             "initial_probability": {
-                "description": "初始读空气概率",
+                "description": "初始概率",
                 "type": "float",
                 "default": 0.02,
-                "hint": "AI初始判断是否回复消息的概率，范围0-1，如0.02表示2%概率触发读空气判断"
+                "hint": "开启随机筛选时的基础回复概率(0-1)。"
             },
             "decision_ai_provider_id": {
-                "description": "读空气AI提供商",
+                "description": "判断用模型",
                 "type": "string",
                 "default": "",
-                "hint": "用于判断是否回复的AI提供商，留空则使用默认提供商",
+                "hint": "留空=跟随会话默认模型。",
                 "_special": "select_provider"
             },
             "decision_ai_include_persona": {
-                "description": "读空气AI自动包含人格",
+                "description": "判断携带人格",
                 "type": "bool",
                 "default": true,
-                "hint": "默认开启。开启后，读空气AI会默认把判断用的人格设定作为独立 system_prompt 注入；留空指定人格名时，会自动跟随当前会话当前生效的人格。关闭后，本次读空气判断将按中性判断任务执行，不再额外注入人格设定。\n\n⚠️ 这只影响“判断是否回复”的 AI，不影响最终生成回复内容的回复AI。"
+                "hint": "开启=读空气判断用你的人格当主角(推荐)。只影响判断，不影响回复内容。"
             },
             "decision_ai_extra_prompt": {
-                "description": "读空气AI额外提示词",
+                "description": "判断补充提示词",
                 "type": "text",
                 "default": "",
-                "hint": "给「判断是否回复」的AI填写自定义提示词。\n\n• append模式：此处内容追加在默认提示词后面，可只写补充说明，留空则完全沿用默认提示词\n• override模式：此处内容完全替换默认提示词，需自行包含所有判断逻辑\n\n醒目说明：默认提示词前部会明确告诉AI——如果本次判断已注入人格，就按该人格视角判断；如果没有注入人格，就把当前任务视为中性判断任务，不要自行脑补角色扮演。\n同时也会显式说明关键词是如何被代码提取和传入的，帮助你按自己的需求微调提示词。\n\n开启「读空气AI额外推理」后，AI将先输出推理块再给出 yes/no，最终判定仍必须是 yes 或 no。\n如果你的自定义提示词里还没有额外推理协议，系统会自动补充，不会粗暴丢弃你的提示词正文。\n\n说明：在 Web 面板中，可在当前配置项下方查看默认系统提示词预览；传统配置页面不会显示这段预览。",
+                "hint": "给判断AI追加要求；留空用默认。",
                 "promptDataRef": "decision-ai"
             },
             "decision_ai_timeout": {
-                "description": "读空气AI超时时间(秒)",
+                "description": "判断超时(秒)",
                 "type": "int",
                 "default": 30,
-                "hint": "读空气AI判断的超时时间(秒)，超过此时间将默认不回复。建议根据你的AI提供商速度调整，默认30秒"
+                "hint": "判断超时则不回复；建议30。"
             },
             "decision_ai_reply_tendency": {
-                "description": "读空气回复倾向",
+                "description": "回复倾向",
                 "type": "string",
                 "options": [
                     "persona",
@@ -85,13 +85,13 @@
                     "active"
                 ],
                 "default": "persona",
-                "hint": "控制判断AI的回复积极度：\n• persona（默认）：完全按人格设定的社交倾向判断——沉默寡言型人格默认不回复普通闲聊，只回明确需要回应（@/直接提问/求助/关键词）的消息\n• reserved：更保守——普通闲聊一律不回复，只回必须回应的消息（适合觉得bot太爱说话的场景）\n• active：更积极——适度放宽判断，活跃群聊互动"
+                "hint": "persona=按人格性格；reserved=保守；active=积极。"
             },
             "decision_ai_persona_name": {
-                "description": "判断用指定人格名",
+                "description": "指定判断人格",
                 "type": "string",
                 "default": "",
-                "hint": "留空=跟随当前会话人格。填 AstrBot 里某个人格的名字，则读空气判断固定用该人格。"
+                "hint": "留空=跟随当前会话人格；填人格名固定用它判断。"
             }
         }
     },
@@ -100,22 +100,22 @@
         "type": "object",
         "items": {
             "trigger_keywords": {
-                "description": "触发关键词列表",
+                "description": "触发关键词",
                 "type": "list",
                 "default": [],
-                "hint": "当消息中包含这些关键词时，将跳过读空气判断，直接触发AI回复（看做@消息处理）（可以填AI扮演的角色的名字，别名之类的）。留空则不启用该功能\n\n⚠️ 匹配规则说明：\n1. 大小写敏感：关键词\"Hello\"不会匹配\"hello\"，请按实际消息中的大小写填写\n2. 子串匹配：关键词\"at\"会匹配\"attention\"、\"battle\"等包含该子串的词，如需精确匹配请使用更独特的关键词\n3. 原始消息匹配：仅匹配用户发送的原始消息文本，不会匹配到用户名、系统提示词、AI上下文等元数据"
+                "hint": "命中即跳过随机、必参与判断(可填角色别名)。"
             },
             "blacklist_keywords": {
-                "description": "黑名单关键词列表",
+                "description": "屏蔽关键词",
                 "type": "list",
                 "default": [],
-                "hint": "当消息中包含这些关键词时，将直接忽略该消息，不进行任何处理。留空则不启用该功能\n\n⚠️ 匹配规则说明：\n1. 大小写敏感：关键词\"AD\"不会匹配\"ad\"，请按实际消息中的大小写填写\n2. 子串匹配：关键词\"ad\"会匹配\"bad\"、\"addition\"等包含该子串的词，如需精确匹配请使用更独特的关键词\n3. 原始消息匹配：仅匹配用户发送的原始消息文本，不会匹配到用户名、系统提示词、AI上下文等元数据"
+                "hint": "命中直接忽略该消息。"
             },
             "keyword_smart_mode": {
-                "description": "【v1.1.2新增】启用关键词智能模式",
+                "description": "关键词智能模式",
                 "type": "bool",
                 "default": false,
-                "hint": "开启后，触发关键词时将只跳过概率筛选，但仍保留AI读空气判断。这样可以让AI更智能地判断是否应该回复，而不是每次检测到关键词都强制回复。\n\n同时，回复阶段拿到的运行时提示会更偏向“先理解上下文，再直接自然回应”，而不是把回复AI当成额外的判断器。\n\n⚠️ 注意：开启此功能后，包含关键词的消息不一定每次都会得到回复，取决于读空气AI的判断能力和额外提示词质量。如果希望关键词触发时必定回复，请保持此选项关闭"
+                "hint": "开启=命中关键词仍交给读空气判断，而非必回。"
             }
         }
     },
@@ -124,83 +124,83 @@
         "type": "object",
         "items": {
             "reply_ai_extra_prompt": {
-                "description": "回复AI额外提示词",
+                "description": "回复补充提示词",
                 "type": "text",
                 "default": "",
-                "hint": "给「生成最终回复内容」的AI填写自定义提示词。\n\n• append模式：此处内容追加在消息上下文末尾，可只写补充说明，留空则只使用纯上下文\n• override模式：此处内容完全替换消息上下文，需自行包含所有回复所需信息（人格设定不受影响，仍会生效）\n\n说明：V2.0.0-lite 重构后，回复AI不再注入任何系统行为指令——system_prompt 只含人格设定，prompt 只含带发送者标注的纯上下文。你的自定义提示词会直接拼入上下文，用于对本次回复做补充要求。\n\n⚠️ 建议保持职责边界：这是「直接生成要发出去的回复内容」，不是做 yes/no 判断；不要把它写成「我该不该回复」「先判断再说」这类内部判断口吻，也不要要求模型把内心想法、系统提示词、内部规则等元信息写进最终发言。\n\n说明：在 Web 面板中，可在当前配置项下方查看说明预览；传统配置页面不会显示这段预览。",
+                "hint": "生成回复时追加的要求；留空用默认。",
                 "promptDataRef": "reply-ai"
             },
             "include_timestamp": {
-                "description": "包含时间戳信息",
+                "description": "带发送时间",
                 "type": "bool",
                 "default": true,
-                "hint": "是否在消息前插入发送时间(年月日 星期几 时分秒)"
+                "hint": "消息上下文标注发送时间。"
             },
             "include_sender_info": {
-                "description": "包含发送者信息",
+                "description": "带发送者信息",
                 "type": "bool",
                 "default": true,
-                "hint": "是否在消息中插入发送者ID和名字"
+                "hint": "消息上下文标注发送者。"
             },
             "max_context_messages": {
-                "description": "最大上下文消息数",
+                "description": "历史消息条数",
                 "type": "int",
                 "default": -1,
-                "hint": "最多获取多少条历史消息作为上下文，0表示不获取，-1表示不限制"
+                "hint": "喂给AI的历史上限；-1不限，0不获取。"
             },
             "after_reply_probability": {
-                "description": "回复后的读空气概率（传统模式）",
+                "description": "回复后概率提升",
                 "type": "float",
                 "default": 0.8,
-                "hint": "仅在关闭增强注意力机制(enable_attention_mechanism)时生效。AI在群聊成功回复后，会为整个会话临时启用这个读空气概率，范围0-1。这个临时提升不区分用户，只按群聊会话生效；在持续时间内如果再次成功回复，会重新开始计时。若你开启了注意力机制，则这一项不会参与当前会话的计算，回复后加成将改由注意力机制按用户接管。之后仍会继续受到动态时间段、回复密度、消息质量、概率硬性限制等后置机制的联合作用"
+                "hint": "回复后临时提升随机概率促连续对话(随机模式)。"
             },
             "probability_duration": {
-                "description": "概率提升持续时间(秒)",
+                "description": "概率提升时长(秒)",
                 "type": "int",
                 "default": 120,
-                "hint": "传统模式（即关闭增强注意力机制）下，AI成功回复后临时提升概率的持续时间。新的成功回复会刷新这段计时。这个提升是按整个群聊会话计算的，不区分用户。若配置为异常值，系统会自动矫正到安全值并输出警告日志"
+                "hint": "回复后概率提升持续多久。"
             },
             "enable_duplicate_filter": {
-                "description": "🔄 启用AI重复消息拦截",
+                "description": "防复读",
                 "type": "bool",
                 "default": true,
-                "hint": "【总开关】开启后，AI在发送消息前会检查是否与最近发过的消息重复。如果检测到重复，将拦截发送。此功能同时对普通回复和主动对话生效。关闭后不进行任何重复检测"
+                "hint": "避免重复表达相同观点。"
             },
             "duplicate_filter_check_count": {
-                "description": "🔢 重复检测参考消息条数",
+                "description": "防复读检查条数",
                 "type": "int",
                 "default": 5,
-                "hint": "检测重复时参考最近多少条AI发送的消息。例如设置为3，则只检查最近3条AI回复是否与当前要发送的消息重复。建议1-10条，默认5条。设置为1表示只检查上一条AI回复"
+                "hint": "对照最近几条回复查重。"
             },
             "duplicate_filter_time_limit": {
-                "description": "⏱️ 重复检测时效(秒)",
+                "description": "防复读时效(秒)",
                 "type": "int",
                 "default": 1800,
-                "hint": "【需启用时效性判断】消息发送后多长时间内会被用于重复检测。超过此时间的消息不参与重复判断。默认1800秒(30分钟)。建议300-7200秒。例如设置600秒，则10分钟前发送的消息不会被用于重复检测"
+                "hint": "仅在该时间内查重。"
             },
             "custom_storage_max_messages": {
-                "description": "上下文缓存消息上限",
+                "description": "上下文缓存上限(条)",
                 "type": "int",
                 "default": 500,
-                "hint": "用于上下文连续性的本地缓存最多保留多少条消息。"
+                "hint": "本地上下文缓存最多保留的消息数。"
             },
             "enable_duplicate_time_limit": {
                 "description": "防复读·时效开关",
                 "type": "bool",
                 "default": true,
-                "hint": "开启后，仅当回复在时效内才参与防复读判断。"
+                "hint": "开启后防复读仅考虑时效内消息。"
             },
             "reply_timeout_warning_threshold": {
-                "description": "回复超时告警阈值(秒)",
+                "description": "回复超时告警(秒)",
                 "type": "int",
                 "default": 120,
-                "hint": "回复AI超过该秒数未完成即打警告日志。"
+                "hint": "回复超过该时长打警告。"
             },
             "reply_generation_timeout_warning": {
                 "description": "生成超时告警(秒)",
                 "type": "int",
                 "default": 60,
-                "hint": "单次生成超过该秒数打警告日志。"
+                "hint": "单次生成超该时长打警告。"
             }
         }
     },
@@ -209,32 +209,32 @@
         "type": "object",
         "items": {
             "enable_user_blacklist": {
-                "description": "启用用户黑名单",
+                "description": "用户黑名单开关",
                 "type": "bool",
                 "default": false,
-                "hint": "【v1.0.7新增】开启后，黑名单中的用户发送的消息将被本插件忽略（不影响其他插件和官方功能）(注意:虽然黑名单功能可以阻止消息在本插件中运行，但消息不会被阻止其他的插件和官方功能依然可以接收到消息，可能会被读取，然后进行回复，建议配合其他黑名单功能插件使用)"
+                "hint": "屏蔽指定用户的消息。"
             },
             "blacklist_user_ids": {
-                "description": "黑名单用户ID列表",
+                "description": "黑名单用户ID",
                 "type": "list",
                 "default": [],
-                "hint": "【v1.0.7新增】需要屏蔽的用户ID列表。这些用户的消息将被本插件忽略，但不影响其他插件处理。留空则不屏蔽任何用户"
+                "hint": "每行一个QQ号，其消息被忽略。"
             },
             "enable_command_filter": {
-                "description": "启用指令标识过滤",
+                "description": "指令过滤开关",
                 "type": "bool",
                 "default": true,
-                "hint": "开启后，插件会忽略以指定前缀开头的消息（通常是指令消息），不进行任何处理，但不影响其他插件处理这些消息"
+                "hint": "忽略以指定前缀开头(如/、!)的消息。"
             },
             "command_prefixes": {
-                "description": "指令前缀列表",
+                "description": "指令前缀",
                 "type": "list",
                 "default": [
                     "/",
                     "!",
                     "#"
                 ],
-                "hint": "需要过滤的指令前缀，如 /、!、#、: 等。当消息以这些前缀开头时，插件会跳过处理。留空表示不过滤任何前缀"
+                "hint": "以这些前缀开头的消息不处理，如 / ! #。"
             }
         }
     },
@@ -243,14 +243,14 @@
         "type": "object",
         "items": {
             "concurrent_mode": {
-                "description": "🔄 并发消息处理模式",
+                "description": "并发模式",
                 "type": "string",
                 "default": "legacy",
                 "options": [
                     "legacy",
                     "smart"
                 ],
-                "hint": "控制同一群聊多条普通消息并发时的处理策略。\n\n• legacy（默认）：传统等待模式，每条消息独立处理，向后兼容旧行为，也是最兜底的普通消息并发保护模式\n• smart：智能批处理模式。会先按真实到达顺序确定主消息，再让读空气AI和回复AI一起感知当前消息后紧接着收到的追加消息（这些消息可能来自不同用户），减少顺序颠倒和逐条重复回复的问题\n\n⚠️ 这个模式选择主要只作用于普通对话主线，不直接改变主动对话流程本身的处理方式。主动对话相关的会话占用检测、普通链路在缓存转正/保存前等待主动对话释放、以及冷群缓存自动转正判断会话是否仍忙碌时，当前仍然复用通用的传统轮询等待参数（concurrent_wait_max_loops / concurrent_wait_interval）。\n\n⚠️ 选择 smart 模式，不代表传统并发保护完全失效；更准确地说，是普通对话链路会优先尝试 Smart 批处理与批次提示增强，但底层的传统并发等待/兜底保护仍然存在，用于处理无法被 Smart 覆盖的等待、占用和异常路径。\n\n注意：smart 与「群聊等待窗口」（GWW）可以配合，但互不依赖；即使不开 GWW，smart 也可以独立工作。进入 GWW 的消息不会进入 Smart 批处理流程。\n\n如果同时开启下方的「Smart批次回复提示增强」，回复阶段还会动态提示 AI：当前触发对象仍是主要回复对象，但可以像真人一样选择性顺带回应批次中的其他消息；这类提示只存在于运行时，不会保存到历史。"
+                "hint": "legacy=逐条独立；smart=短时多条合并一批再判断回复。"
             }
         }
     },
@@ -259,38 +259,38 @@
         "type": "object",
         "items": {
             "enable_image_processing": {
-                "description": "🖼️ 允许处理图片（通过概率筛选的消息）",
+                "description": "图片识别",
                 "type": "bool",
                 "default": false,
-                "hint": "【用于通过概率筛选的消息】开启后，当消息通过概率筛选时，插件会将图片转换为文字描述，让读空气AI和回复AI能理解图片内容。⚠️重要说明：此功能与下方的「平台图片描述提取」是两套独立逻辑！\n\n📌 适用场景：\n• 此功能：消息【通过】概率筛选 → 图片转文字 → 读空气AI判断 → 回复AI生成回复\n• 平台图片描述提取：消息【未通过】概率筛选 → 复用平台描述 → 缓存到上下文\n\n💡 建议：如果你希望AI能正确理解图片，建议开启此功能并配置下方的图片转文字相关选项"
+                "hint": "把图片转成文字描述喂给AI。"
             },
             "image_to_text_provider_id": {
-                "description": "图片转文字AI提供商",
+                "description": "图片转文字模型",
                 "type": "string",
                 "default": "",
-                "hint": "用于图片转文字的AI提供商，留空则直接传递图片给多模态AI（需确认最终回复AI支持多模态）",
+                "hint": "留空=直接把图片给多模态回复AI。",
                 "_special": "select_provider"
             },
             "image_to_text_prompt": {
-                "description": "图片转文字提示词",
+                "description": "图片描述提示词",
                 "type": "text",
                 "default": "请详细描述这张图片的内容",
-                "hint": "图片转文字时使用的提示词"
+                "hint": "让模型描述图片时的要求。"
             },
             "image_to_text_timeout": {
-                "description": "图片转文字超时时间(秒)",
+                "description": "图片转文字超时(秒)",
                 "type": "int",
                 "default": 60,
-                "hint": "图片转文字AI调用的超时时间(秒)，超过此时间将放弃转换。建议根据你的AI提供商速度调整，默认60秒"
+                "hint": "超时放弃转换。"
             },
             "enable_memory_injection": {
-                "description": "启用强制记忆植入",
+                "description": "记忆注入",
                 "type": "bool",
                 "default": false,
-                "hint": "是否强制调用外部记忆存储插件获取记忆(需要先安装对应的插件)(推荐开启)。记忆插件模式请在下方配置"
+                "hint": "从记忆插件(livingmemory)取记忆辅助判断/回复。"
             },
             "memory_plugin_mode": {
-                "description": "记忆插件模式",
+                "description": "记忆插件",
                 "type": "string",
                 "default": "auto",
                 "options": [
@@ -298,44 +298,44 @@
                     "legacy",
                     "livingmemory"
                 ],
-                "hint": "选择使用哪个记忆存储插件：\n\n• auto（推荐）= 自动检测已安装的记忆插件，检测优先级：LivingMemory v2 → v1 → Legacy。两个都安装时优先使用LivingMemory；都未安装时自动跳过记忆注入，不会报错\n• legacy = 旧版strbot_plugin_play_sy(又叫ai_memory)插件\n• livingmemory = 新版LivingMemory智能记忆插件\n\n⚠️ legacy和livingmemory只能选其一，auto模式会自动判断。LivingMemory功能更强大(混合检索、智能总结、自动遗忘)，但需要配置Embedding Provider。注意：LivingMemory需要在其自身配置中启用'会话隔离'和'人格隔离'才能正常工作"
+                "hint": "auto=自动检测已安装记忆插件。"
             },
             "memory_insertion_timing": {
-                "description": "记忆插入时机",
+                "description": "记忆注入阶段",
                 "type": "string",
                 "default": "post_decision",
                 "options": [
                     "pre_decision",
                     "post_decision"
                 ],
-                "hint": "选择将记忆注入到哪个阶段：pre_decision=在读空气AI判定前注入（用于帮助AI根据记忆判断是否回复）；post_decision=仅在最终回复生成前注入（不影响是否回复的判定）。⚠️注意：主动对话功能不受此配置影响，总是在生成回复前注入记忆（相当于post_decision模式）"
+                "hint": "pre_decision=判断前注入，帮助决定回不回。"
             },
             "livingmemory_top_k": {
-                "description": "LivingMemory召回记忆数量",
+                "description": "记忆条数",
                 "type": "int",
                 "default": 5,
-                "hint": "【仅在memory_plugin_mode=livingmemory或auto检测到LivingMemory时生效】每次调用LivingMemory插件时获取多少条相关记忆。\n\n📊 记忆召回机制说明：\n✅ LivingMemory会按以下因素综合排序记忆：\n  1. 相关性得分（与当前对话的相关程度）\n  2. 重要性权重（0-1，记忆本身的重要程度）\n  3. 时间新鲜度（越新的记忆权重越高）\n✅ 返回的记忆已按优先级排序，前面的更重要\n✅ 自动过滤：只返回【当前会话+当前人格】的记忆\n\n⚙️ 配置建议：\n• 3-10条：适合日常对话，平衡上下文和token消耗\n• 10-30条：适合需要丰富背景信息的场景\n• -1：召回所有相关记忆（最多1000条），适合需要完整历史的场景\n\n⚠️ 注意：设置-1会召回大量记忆，可能导致token消耗巨大，请谨慎使用！"
+                "hint": "每次召回记忆条数。"
             },
             "enable_emoji_filter": {
-                "description": "😀 启用表情包消息降权",
+                "description": "表情包识别",
                 "type": "bool",
                 "default": false,
-                "hint": "【仅QQ平台】开启后，插件利用QQ平台元数据（sub_type字段）识别表情包图片（NapCat/Lagrange等OneBot协议），对表情包消息应用概率衰减，并通过筛选的表情包会被添加[表情包图片]标记，帮助AI区分表情包和普通图片，避免AI把表情包当普通图片描述。\n\n⚠️ 平台限制：仅支持QQ平台OneBot协议（NapCat/Lagrange/aiocqhttp等），其他平台开启后自动跳过检测，不会报错。\n\n（此配置项为重构后补入配置面板：原版代码有读取但 _conf_schema.json 从未定义）"
+                "hint": "识别表情包并按规则降低触发概率(QQ平台)。"
             },
             "emoji_probability_decay": {
-                "description": "😀 表情包概率衰减系数",
+                "description": "表情包概率衰减",
                 "type": "float",
                 "default": 0.7,
-                "hint": "【仅QQ平台】当检测到消息包含表情包时，对当前概率应用的衰减因子（0~1）。值越大衰减越多。实际概率 = 原始概率 × (1 - 衰减因子)。例如 0.7 表示概率降为原来的 30%。设置 0 则不衰减（仅添加标记），设置 1 则完全屏蔽表情包。"
+                "hint": "遇表情包时的概率衰减系数。"
             },
             "emoji_decay_min_probability": {
-                "description": "😀 表情包衰减后最低概率",
+                "description": "衰减下限",
                 "type": "float",
                 "default": 0.1,
-                "hint": "【仅QQ平台】当原始概率已低于此值时，不再对表情包应用衰减，避免概率本身很低时进一步降低导致表情包完全无法触发回复。建议 0.05~0.15。"
+                "hint": "概率低于此值不再衰减。"
             },
             "poke_message_mode": {
-                "description": "戳一戳消息处理模式",
+                "description": "戳一戳模式",
                 "type": "string",
                 "default": "bot_only",
                 "options": [
@@ -343,37 +343,37 @@
                     "bot_only",
                     "all"
                 ],
-                "hint": "【v1.0.9新增】⚠️仅支持QQ平台+aiocqhttp消息平台⚠️ 选择如何处理戳一戳消息：ignore=忽略所有戳一戳消息（本插件不处理）；bot_only=只处理戳机器人的消息（会添加系统提示词告诉AI有人戳他）；all=接受所有戳一戳消息（会添加系统提示词说明谁戳了谁，让AI知道不是戳他自己）。【自动历史事件保留】本插件会直接复用这里的过滤结果：只有在当前模式下最终允许本插件处理的真实 poke，才会额外把“谁戳了谁”的事件语义保留到历史上下文；被这里忽略掉的 poke 不会进入该解析步骤。"
+                "hint": "ignore=忽略；bot_only=仅响应戳自己；all=都处理。"
             },
             "poke_bot_skip_probability": {
-                "description": "戳机器人时跳过概率筛选",
+                "description": "被戳跳过概率",
                 "type": "bool",
                 "default": true,
-                "hint": "【v1.0.9增强】开启后，当戳一戳模式为bot_only或all，且戳的是机器人本身时，将跳过概率筛选（必定进入读空气判断），但仍保留读空气AI判断。关闭则戳一戳消息与普通消息一样需要通过概率筛选"
+                "hint": "戳自己时跳过随机概率直接处理。"
             },
             "enable_poke_after_reply": {
-                "description": "🆕 启用回复后戳一戳功能",
+                "description": "回复后戳一戳",
                 "type": "bool",
                 "default": false,
-                "hint": "⚠️仅支持QQ平台+aiocqhttp协议⚠️ 开启后，AI在主动回复消息时，会根据概率戳一戳发送问题的人。注意：只在主动回复时触发，不在主动对话时触发（因为主动对话没有被回复的对象）。若戳一戳动作真实成功，会在AI正常回复保存完成后，额外单独保存一条AI视角的戳一戳历史事件。"
+                "hint": "回复后按概率戳一下提问者。"
             },
             "poke_after_reply_probability": {
-                "description": "回复后戳一戳概率",
+                "description": "回复后戳人概率",
                 "type": "float",
                 "default": 0.15,
-                "hint": "AI主动回复后戳一戳发送者的概率（范围0-1）。默认0.15即15%。建议0.1-0.3，太高会打扰用户"
+                "hint": "回复后戳一戳的概率(建议0.1-0.3)。"
             },
             "poke_enabled_groups": {
-                "description": "🆕 戳一戳功能启用的群组白名单",
+                "description": "启用的群(戳一戳)",
                 "type": "list",
                 "default": [],
-                "hint": "【群聊白名单】只有在此列表中的群聊才允许使用戳一戳相关功能（包括：处理戳一戳消息、收到戳一戳后反戳、回复后戳一戳、戳过对方追踪提示、自动保留戳一戳历史事件）。留空则所有群聊都允许；填写群号则只在指定群组中启用戳一戳功能。注意：此白名单不影响防伪造戳一戳的过滤功能（即过滤用户手动输入的\"[Poke:poke]\"标识符）"
+                "hint": "留空=全部群；填群号限定。"
             },
             "max_images_per_message": {
-                "description": "单条消息图片上限",
+                "description": "单条图片上限",
                 "type": "int",
                 "default": 10,
-                "hint": "一条消息最多处理多少张图片，超出忽略。"
+                "hint": "单条消息最多处理几张图。"
             }
         }
     }

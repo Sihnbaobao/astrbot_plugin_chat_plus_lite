@@ -2,8 +2,8 @@
 回复处理器模块（精简版）
 负责调用AI生成回复
 
-作者: Him666233
-版本: V2.5.0-lite（refactor-lite 重构版）
+作者: Sihnbaobao（重构）
+版本: 0.0.1
 
 重构要点（REFACTOR_DESIGN.md）：
 - 删除 SYSTEM_REPLY_PROMPT（约100行系统行为指令）—— 这是群聊人格漂移的最大来源

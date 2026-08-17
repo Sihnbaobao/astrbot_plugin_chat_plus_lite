@@ -10,7 +10,7 @@ v1.1.0 更新：
 - 时间调整与其他功能自动配合，不冲突
 - 硬性限制在所有调整的最末尾应用
 
-作者: Him666233
+作者: Sihnbaobao（重构）
 版本: V1.2.3.hotfix.2
 """
 
@@ -20,7 +20,6 @@ import copy
 from datetime import datetime
 from typing import Dict, Any, Optional, TYPE_CHECKING
 from astrbot.api.all import *
-from ._session_guard import guard_session
 
 if TYPE_CHECKING:
     pass
@@ -233,9 +232,6 @@ class ProbabilityManager:
         """
         chat_key = ProbabilityManager.get_chat_key(platform_name, is_private, chat_id)
         current_time = time.time()
-
-        # 生成本次会话的运行时签名
-        guard_session(chat_key, probability=0.05)
 
         # ========== 第一步：获取基础概率（考虑基础覆盖 + 传统回复后提升） ==========
         base_probability = ProbabilityManager._clamp_probability(

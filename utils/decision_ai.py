@@ -2,8 +2,8 @@
 决策AI模块（精简版）
 负责调用AI判断是否应该回复消息（读空气功能）
 
-作者: Him666233
-版本: V2.5.0-lite（refactor-lite 重构版）
+作者: Sihnbaobao（重构）
+版本: 0.0.1
 
 重构要点（REFACTOR_DESIGN.md）：
 - 该提示词仅用于"要不要回复"的 yes/no 判断，不生成用户可见的回复内容
@@ -17,7 +17,6 @@ from typing import List, Optional, Dict, Any, Tuple
 from astrbot.api.all import *
 from .ai_response_filter import AIResponseFilter
 from .ai_error_formatter import format_ai_error
-from ._session_guard import sample_guard
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -401,7 +400,6 @@ class DecisionAI:
         Returns:
             True=应该回复，False=不回复
         """
-        sample_guard("decision")
         try:
             if hasattr(event, "_decision_ai_error"):
                 try:

@@ -126,7 +126,11 @@ function goToGroup(gid) {
 function fieldControl(key) {
   const def = META[key] || { label: key, type: "string", hint: "" };
   const val = state.values[key];
-  const label = `<span class="field-label">${esc(def.label)}</span>${def.hint ? `<span class="hint-ico" data-hint="${esc(def.hint)}" title="点击查看说明">ⓘ</span>` : ""}`;
+  const hint = def.hint || "";
+  const showInline = hint && hint.length <= 36; // 短说明直接显示，长说明才折叠进 ⓘ
+  const label = `<span class="field-label">${esc(def.label)}</span>` +
+    (hint && !showInline ? `<span class="hint-ico" data-hint="${esc(hint)}" title="${esc(hint)}">ⓘ</span>` : "");
+  const hintLine = showInline ? `<div class="field-hint">${esc(hint)}</div>` : "";
   let ctrl = "";
   if (def.type === "bool") {
     ctrl = `<label class="switch"><input type="checkbox" data-key="${key}" ${val ? "checked" : ""} /><span class="slider"></span></label>`;
@@ -143,7 +147,7 @@ function fieldControl(key) {
   } else {
     ctrl = `<input type="text" data-key="${key}" value="${esc(val ?? "")}" />`;
   }
-  return `<div class="field">${label}${ctrl}</div>`;
+  return `<div class="field">${label}${ctrl}${hintLine}</div>`;
 }
 
 /* ============ 保存 ============ */
