@@ -260,9 +260,6 @@ class ChatPlus(Star):
         # ========== 戳一戳配置 ==========
         self.poke_message_mode = self._cfg("poke_message_mode", "bot_only")
         self.poke_bot_skip_probability = self._cfg("poke_bot_skip_probability", True)
-        self.poke_bot_probability_boost_reference = self._cfg(
-            "poke_bot_probability_boost_reference", 0.3
-        )
         self.poke_after_reply_enabled = self._cfg("enable_poke_after_reply", False)
         self.poke_after_reply_probability = self._cfg(
             "poke_after_reply_probability", 0.15
@@ -578,12 +575,6 @@ class ChatPlus(Star):
     def _register_web_apis(self):
         """注册插件页 Web API（需要 AstrBot >= 4.25.3 的 Plugin Pages 支持）。"""
         try:
-            from astrbot.api.web import (  # noqa: F401
-                error_response,
-                json_response,
-                request,
-            )
-
             self.context.register_web_api(
                 f"/{self._PLUGIN_NAME}/status",
                 self._api_status,
