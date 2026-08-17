@@ -124,18 +124,6 @@ body {
 .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
 
 
-/* ===== pipeline ===== */
-.pipeline { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
-.capsule {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  min-width: 120px; padding: 12px 10px; border-radius: var(--radius);
-  background: var(--card); border: 1px solid var(--border); cursor: pointer;
-}
-.capsule:hover { border-color: var(--accent); box-shadow: var(--shadow); }
-.capsule .num { font-size: 11px; color: var(--text-sub); }
-.capsule .cap-name { font-size: 13px; font-weight: 600; }
-.capsule .cap-state { font-size: 11px; color: var(--text-sub); text-align: center; }
-.arrow { display: flex; align-items: center; color: var(--text-sub); padding: 0 4px; }
 
 
 /* ===== prompt preview ===== */
@@ -175,6 +163,5 @@ body {
   .hero { padding: 14px 16px; }
   .section { padding: 14px 16px; }
   .form-grid { grid-template-columns: 1fr; }
-  .pipeline { gap: 4px; }
-  .capsule { min-width: 100px; }
+  .form-grid { grid-template-columns: 1fr; }
 }

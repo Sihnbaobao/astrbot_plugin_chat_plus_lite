@@ -31,22 +31,6 @@ function isMasterOn(master) {
   return true;
 }
 
-/* ============ 流水线环节 → 分组映射（新分组 id） ============ */
-const STAGE_ORDER = [
-  { id: "probability", icon: "🎲", title: "读空气概率" },
-  { id: "command", icon: "🎛️", title: "触发&过滤" },
-  { id: "at", icon: "📢", title: "@必回" },
-  { id: "decision", icon: "🧠", title: "AI判断" },
-  { id: "reply", icon: "💬", title: "回复生成" },
-];
-const STAGE_GROUPS = {
-  probability: "gcp_decision",
-  command: "gcp_trigger",
-  at: "gcp_manage",
-  decision: "gcp_decision",
-  reply: "gcp_reply",
-};
-
 /* ============ 分组摘要 ============ */
 function groupSummary(gid) {
   const v = state.values;
@@ -83,26 +67,7 @@ function renderHeader() {
   $("#smartPill").textContent = "并发：" + (state.values.concurrent_mode ?? "legacy");
 }
 
-function renderPipeline() {
-  $("#pipeline").innerHTML = STAGE_ORDER.map((s, idx) => {
-    const html = `
-      <div class="capsule" data-stage="${s.id}" role="button" tabindex="0">
-        <span class="num">${idx + 1}</span>
-        <div class="cap-name">${s.icon} ${s.title}</div>
-        <div class="cap-state">${esc(groupsById(STAGE_GROUPS[s.id]) ? groupSummary(STAGE_GROUPS[s.id]) : "")}</div>
-      </div>`;
-    return idx < STAGE_ORDER.length - 1 ? html + `<div class="arrow">→</div>` : html;
-  }).join("");
-  $("#pipeline").querySelectorAll(".capsule").forEach((el) => {
-    const act = () => { const gid = STAGE_GROUPS[el.dataset.stage]; if (gid) goToGroup(gid); };
-    el.addEventListener("click", act);
-    el.addEventListener("keydown", (e) => { if (e.key === "Enter") act(); });
-  });
-}
-
 const groupIdList = () => (state.groups || []).map((g) => g.id);
-function groupById(gid) { return (state.groups || []).find((g) => g.id === gid); }
-function groupsById(gids) { return (Array.isArray(gids) ? gids : [gids]).map(groupById).filter(Boolean).length; }
 
 /* ============ 配置：tab + 分页 ============ */
 function renderTabs() {
@@ -306,7 +271,6 @@ function renderAll() {
   renderHeader();
   renderTabs();
   renderGroup();
-  renderPipeline();
 }
 
 async function loadStatus() {
