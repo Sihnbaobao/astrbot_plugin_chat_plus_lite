@@ -539,7 +539,7 @@ class ChatPlus(Star):
     # ============================================================
     # 插件页配置源（V2.5.0：100% 覆盖——schema 驱动 + 隐藏键补充）
     # _schema_groups() 从 _conf_schema.json 动态读取分组与字段定义，
-    # 插件页渲染与 AstrBot 配置页完全一致；_EXTRA_KEYS 收纳 main.py
+    # 插件页渲染与 AstrBot 配置页完全一致；全部配置统一由 _conf_schema.json 驱动
     # 有读取但 schema 未展示的隐藏参数。
     # ============================================================
 
@@ -549,29 +549,6 @@ class ChatPlus(Star):
         "enable_debug_log": "debug_mode",
         "enable_poke_trace_prompt": "poke_trace_enabled",
         "enable_poke_after_reply": "poke_after_reply_enabled",
-    }
-
-    # 隐藏参数（main.py 有读取但 _conf_schema.json 未定义，插件页统一收纳）
-    _EXTRA_KEYS = {
-        "custom_storage_max_messages": "custom_storage_max_messages",
-        "decision_ai_persona_name": "decision_ai_persona_name",
-        "decision_ai_reasoning_log": "decision_ai_reasoning_log",
-        "decision_ai_reasoning_log_mode": "decision_ai_reasoning_log_mode",
-        "enable_decision_ai_reasoning": "enable_decision_ai_reasoning",
-        "judgment_reasoning_start_marker": "judgment_reasoning_start_marker",
-        "judgment_reasoning_end_marker": "judgment_reasoning_end_marker",
-        "enable_full_command_detection": "enable_full_command_detection",
-        "enable_command_prefix_match": "enable_command_prefix_match",
-        "at_all_probability_boost_value": "at_all_probability_boost_value",
-        "enable_duplicate_time_limit": "enable_duplicate_time_limit",
-        "probability_filter_cache_delay": "probability_filter_cache_delay",
-        "reply_timeout_warning_threshold": "reply_timeout_warning_threshold",
-        "reply_generation_timeout_warning": "reply_generation_timeout_warning",
-        "gcp_clear_image_cache_allowed_user_ids": "gcp_clear_image_cache_allowed_user_ids",
-        "ignore_at_others_mode": "ignore_at_others_mode",
-        "platform_image_caption_fast_check_count": "platform_image_caption_fast_check_count",
-        "poke_bot_probability_boost_reference": "poke_bot_probability_boost_reference",
-        "max_images_per_message": "max_images_per_message",
     }
 
     def _schema_groups(self):
@@ -594,13 +571,11 @@ class ChatPlus(Star):
             return []
 
     def _all_editable_keys(self) -> dict:
-        """全部可编辑键 → 属性名（schema 键 ∪ 隐藏键）。"""
+        """全部可编辑键 → 属性名（全部来自 schema 分组）。"""
         mapping = {}
         for group in self._schema_groups():
             for key in group["items"]:
                 mapping[key] = self._ATTR_MAP.get(key, key)
-        for key, attr in self._EXTRA_KEYS.items():
-            mapping.setdefault(key, attr)
         return mapping
     def _register_web_apis(self):
         """注册插件页 Web API（需要 AstrBot >= 4.25.3 的 Plugin Pages 支持）。"""
@@ -650,16 +625,6 @@ class ChatPlus(Star):
             "processing_session_count": len(getattr(self, "processing_sessions", {})),
         }
         groups = self._schema_groups()
-        groups.append(
-            {
-                "id": "gcp_extra",
-                "title": "🔧 高级参数",
-                "hint": "以下参数在 main.py 中有默认值但未在 AstrBot 配置页展示，可在插件页调整",
-                "items": {
-                    k: {"description": k, "type": "string"} for k in self._EXTRA_KEYS
-                },
-            }
-        )
         return json_response(
             {
                 "version": "V2.6.1-lite",
