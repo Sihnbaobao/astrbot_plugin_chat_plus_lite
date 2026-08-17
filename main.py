@@ -130,8 +130,8 @@ class ChatPlus(Star):
             "enable_random_probability_filter", False
         )  # 随机读空气总开关：关闭时普通消息直接交给人格 AI 判断
         self.initial_probability = self._cfg("initial_probability", 0.02)
-        self.after_reply_probability = self._cfg("after_reply_probability", 0.8)
-        self.probability_duration = self._cfg("probability_duration", 120)
+        self.after_reply_probability = 0.8
+        self.probability_duration = 120
 
         # ========== 决策AI（读空气）配置 ==========
         self.decision_ai_provider_id = self._cfg("decision_ai_provider_id", "")
@@ -167,7 +167,7 @@ class ChatPlus(Star):
 
         # ========== 上下文配置 ==========
         self.max_context_messages = self._cfg("max_context_messages", -1)
-        self.custom_storage_max_messages = self._cfg("custom_storage_max_messages", 500)
+        self.custom_storage_max_messages = 500
         self.pending_cache_max_count = self._cfg("pending_cache_max_count", 10)
         self.pending_cache_ttl_seconds = self._cfg("pending_cache_ttl_seconds", 1800)
 
@@ -176,10 +176,8 @@ class ChatPlus(Star):
         self.enable_image_processing = self._cfg("enable_image_processing", False)
         self.image_to_text_scope = self._cfg("image_to_text_scope", "mention_only")
         self.image_to_text_provider_id = self._cfg("image_to_text_provider_id", "")
-        self.image_to_text_prompt = self._cfg(
-            "image_to_text_prompt", "请详细描述这张图片的内容"
-        )
-        self.image_to_text_timeout = self._cfg("image_to_text_timeout", 60)
+        self.image_to_text_prompt = "请详细描述这张图片的内容"
+        self.image_to_text_timeout = 60
         self.max_images_per_message = self._cfg("max_images_per_message", 10)
         self.enable_image_description_cache = self._cfg(
             "enable_image_description_cache", False
@@ -205,17 +203,13 @@ class ChatPlus(Star):
 
         # ========== 表情包标记配置 ==========
         self.enable_emoji_filter = self._cfg("enable_emoji_filter", False)
-        self.emoji_probability_decay = self._cfg("emoji_probability_decay", 0.7)
-        self.emoji_decay_min_probability = self._cfg(
-            "emoji_decay_min_probability", 0.1
-        )
+        self.emoji_probability_decay = 0.7
+        self.emoji_decay_min_probability = 0.1
 
         # ========== 记忆注入配置（livingmemory） ==========
         self.enable_memory_injection = self._cfg("enable_memory_injection", False)
         self.memory_plugin_mode = self._cfg("memory_plugin_mode", "auto")
-        self.memory_insertion_timing = self._cfg(
-            "memory_insertion_timing", "post_decision"
-        )
+        self.memory_insertion_timing = "post_decision"
         self.livingmemory_top_k = self._cfg("livingmemory_top_k", 5)
         self.livingmemory_version = self._cfg("livingmemory_version", "auto")
         self.livingmemory_persona_compat_mode = self._cfg(
@@ -259,7 +253,7 @@ class ChatPlus(Star):
 
         # ========== 戳一戳配置 ==========
         self.poke_message_mode = self._cfg("poke_message_mode", "bot_only")
-        self.poke_bot_skip_probability = self._cfg("poke_bot_skip_probability", True)
+        self.poke_bot_skip_probability = True
         self.poke_after_reply_enabled = self._cfg("enable_poke_after_reply", False)
         self.poke_after_reply_probability = self._cfg(
             "poke_after_reply_probability", 0.15
@@ -270,7 +264,7 @@ class ChatPlus(Star):
             "poke_trace_max_tracked_users", 5
         )
         self.poke_trace_ttl_seconds = self._cfg("poke_trace_ttl_seconds", 300)
-        self.poke_enabled_groups = [str(g) for g in self._cfg("poke_enabled_groups", [])]
+        self.poke_enabled_groups = []  # 精简后固定默认：全部群可用戳一戳
 
         # 反戳概率（0=禁用，1=必定反戳并丢弃本插件处理）
         raw_reverse_prob = self._cfg("poke_reverse_on_poke_probability", 0)
@@ -282,15 +276,9 @@ class ChatPlus(Star):
 
         # ========== 去重过滤配置 ==========
         self.enable_duplicate_filter = self._cfg("enable_duplicate_filter", True)
-        self.duplicate_filter_check_count = self._cfg(
-            "duplicate_filter_check_count", 5
-        )
-        self.enable_duplicate_time_limit = self._cfg(
-            "enable_duplicate_time_limit", True
-        )
-        self.duplicate_filter_time_limit = self._cfg(
-            "duplicate_filter_time_limit", 1800
-        )
+        self.duplicate_filter_check_count = 5
+        self.enable_duplicate_time_limit = True
+        self.duplicate_filter_time_limit = 1800
 
         # ========== 并发/Smart配置 ==========
         self.concurrent_mode = self._cfg("concurrent_mode", "legacy")
@@ -308,12 +296,8 @@ class ChatPlus(Star):
         )
 
         # ========== 性能警告阈值 ==========
-        self.reply_timeout_warning_threshold = self._cfg(
-            "reply_timeout_warning_threshold", 120
-        )
-        self.reply_generation_timeout_warning = self._cfg(
-            "reply_generation_timeout_warning", 60
-        )
+        self.reply_timeout_warning_threshold = 120
+        self.reply_generation_timeout_warning = 60
 
         # ========== 桌面端模式（AstrBot Desktop 兼容） ==========
         self.desktop_mode_setting = self._cfg("desktop_mode", "auto")

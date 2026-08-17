@@ -148,59 +148,11 @@
                 "default": -1,
                 "hint": "喂给AI的历史上限；-1不限，0不获取。"
             },
-            "after_reply_probability": {
-                "description": "回复后概率提升",
-                "type": "float",
-                "default": 0.8,
-                "hint": "回复后临时提升随机概率促连续对话(随机模式)。"
-            },
-            "probability_duration": {
-                "description": "概率提升时长(秒)",
-                "type": "int",
-                "default": 120,
-                "hint": "回复后概率提升持续多久。"
-            },
             "enable_duplicate_filter": {
                 "description": "防复读",
                 "type": "bool",
                 "default": true,
                 "hint": "避免重复表达相同观点。"
-            },
-            "duplicate_filter_check_count": {
-                "description": "防复读检查条数",
-                "type": "int",
-                "default": 5,
-                "hint": "对照最近几条回复查重。"
-            },
-            "duplicate_filter_time_limit": {
-                "description": "防复读时效(秒)",
-                "type": "int",
-                "default": 1800,
-                "hint": "仅在该时间内查重。"
-            },
-            "custom_storage_max_messages": {
-                "description": "上下文缓存上限(条)",
-                "type": "int",
-                "default": 500,
-                "hint": "本地上下文缓存最多保留的消息数。"
-            },
-            "enable_duplicate_time_limit": {
-                "description": "防复读·时效开关",
-                "type": "bool",
-                "default": true,
-                "hint": "开启后防复读仅考虑时效内消息。"
-            },
-            "reply_timeout_warning_threshold": {
-                "description": "回复超时告警(秒)",
-                "type": "int",
-                "default": 120,
-                "hint": "回复超过该时长打警告。"
-            },
-            "reply_generation_timeout_warning": {
-                "description": "生成超时告警(秒)",
-                "type": "int",
-                "default": 60,
-                "hint": "单次生成超该时长打警告。"
             }
         }
     },
@@ -271,18 +223,6 @@
                 "hint": "留空=直接把图片给多模态回复AI。",
                 "_special": "select_provider"
             },
-            "image_to_text_prompt": {
-                "description": "图片描述提示词",
-                "type": "text",
-                "default": "请详细描述这张图片的内容",
-                "hint": "让模型描述图片时的要求。"
-            },
-            "image_to_text_timeout": {
-                "description": "图片转文字超时(秒)",
-                "type": "int",
-                "default": 60,
-                "hint": "超时放弃转换。"
-            },
             "enable_memory_injection": {
                 "description": "记忆注入",
                 "type": "bool",
@@ -300,16 +240,6 @@
                 ],
                 "hint": "auto=自动检测已安装记忆插件。"
             },
-            "memory_insertion_timing": {
-                "description": "记忆注入阶段",
-                "type": "string",
-                "default": "post_decision",
-                "options": [
-                    "pre_decision",
-                    "post_decision"
-                ],
-                "hint": "pre_decision=判断前注入，帮助决定回不回。"
-            },
             "livingmemory_top_k": {
                 "description": "记忆条数",
                 "type": "int",
@@ -322,18 +252,6 @@
                 "default": false,
                 "hint": "识别表情包并按规则降低触发概率(QQ平台)。"
             },
-            "emoji_probability_decay": {
-                "description": "表情包概率衰减",
-                "type": "float",
-                "default": 0.7,
-                "hint": "遇表情包时的概率衰减系数。"
-            },
-            "emoji_decay_min_probability": {
-                "description": "衰减下限",
-                "type": "float",
-                "default": 0.1,
-                "hint": "概率低于此值不再衰减。"
-            },
             "poke_message_mode": {
                 "description": "戳一戳模式",
                 "type": "string",
@@ -344,12 +262,6 @@
                     "all"
                 ],
                 "hint": "ignore=忽略；bot_only=仅响应戳自己；all=都处理。"
-            },
-            "poke_bot_skip_probability": {
-                "description": "被戳跳过概率",
-                "type": "bool",
-                "default": true,
-                "hint": "戳自己时跳过随机概率直接处理。"
             },
             "enable_poke_after_reply": {
                 "description": "回复后戳一戳",
@@ -362,12 +274,6 @@
                 "type": "float",
                 "default": 0.15,
                 "hint": "回复后戳一戳的概率(建议0.1-0.3)。"
-            },
-            "poke_enabled_groups": {
-                "description": "启用的群(戳一戳)",
-                "type": "list",
-                "default": [],
-                "hint": "留空=全部群；填群号限定。"
             },
             "max_images_per_message": {
                 "description": "单条图片上限",
