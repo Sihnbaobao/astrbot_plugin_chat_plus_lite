@@ -9,11 +9,8 @@
 <body>
   <header class="hero">
     <div>
-      <h1>
-        ⚡ Group Chat Plus Lite
-        <span class="ver" id="ver">…</span>
-      </h1>
-      <p class="sub">AI 读空气群聊增强 · 管理控制台（卡片式视图，点击任意胶囊/卡片展开编辑）</p>
+      <h1>⚡ Group Chat Plus Lite <span class="ver" id="ver">…</span></h1>
+      <p class="sub">AI 读空气群聊增强 · 管理控制台</p>
     </div>
     <div class="hero-pills">
       <div class="pill"><span class="dot" id="dotMain"></span><span id="mainSwitch">群聊回复：…</span></div>
@@ -22,24 +19,28 @@
     </div>
   </header>
 
-  <!-- 运行时统计 -->
-  <section class="section" id="statsSection">
-    <h2 class="section-title">📊 运行状态</h2>
-    <div class="stats-row" id="statsRow"></div>
+  <!-- 配置：分组 tab + 分页浏览 -->
+  <section class="section" id="configSection">
+    <h2 class="section-title">🃏 配置 <span class="tip">一次一组 · 点击 ⓘ 看字段说明 · 底部切组</span></h2>
+    <div class="tabs" id="tabs"></div>
+    <div class="panel" id="configPanel"></div>
+    <div class="pager">
+      <button class="btn ghost" id="prevGroup">← 上一组</button>
+      <span class="pos" id="groupPos">0 / 0</span>
+      <button class="btn ghost" id="nextGroup">下一组 →</button>
+    </div>
   </section>
 
   <!-- 消息处理流水线 -->
   <section class="section">
-    <h2 class="section-title">🧩 消息处理流水线 <span class="tip">点击胶囊展开该环节的配置</span></h2>
+    <h2 class="section-title">🧩 消息处理流水线 <span class="tip">点击环节跳到对应配置组</span></h2>
     <div class="pipeline" id="pipeline"></div>
-    <div id="stagePanelWrap"></div>
   </section>
 
-  <!-- 功能卡片 -->
-  <section class="section">
-    <h2 class="section-title">🃏 配置分组 <span class="tip">与 AstrBot 配置页 100% 同步，点击卡片展开全部配置</span></h2>
-    <div class="cards" id="cards"></div>
-    <div id="cardPanelWrap"></div>
+  <!-- 运行状态 -->
+  <section class="section" id="statsSection">
+    <h2 class="section-title">📊 运行状态</h2>
+    <div class="stats-row" id="statsRow"></div>
   </section>
 
   <!-- 提示词预览 -->
@@ -49,10 +50,11 @@
   </section>
 
   <div class="footer-note">
-    保存的配置即时写入插件配置并生效（Smart 并发参数自动同步）。<br />
-    提示词/高级参数请到 AstrBot「插件配置」页修改；修改后如需重新加载插件，请重启 AstrBot 或重载插件。
+    保存的配置即时写入插件配置并生效。<br />
+    自定义提示词可在下方“提示词预览”中编辑保存；其余高级项已并入对应分组。
   </div>
 
+  <div id="tipBox"></div>
   <div id="toast"></div>
   <script type="module" src="./app.js"></script>
 </body>
