@@ -64,7 +64,7 @@ class ImageDescriptionCache:
             # 通过统计文件行数初始化计数器（不加载内容）
             self._entry_count = self._count_lines()
             self._initialized = True
-            logger.info(
+            logger.debug(
                 f"[图片缓存] 已初始化，当前缓存 {self._entry_count} 条，"
                 f"上限 {self._max_entries} 条，"
                 f"文件: {self._cache_file}"
@@ -127,7 +127,7 @@ class ImageDescriptionCache:
                             desc = entry.get("d", "")
                             if desc:
                                 if DEBUG_MODE:
-                                    logger.info(
+                                    logger.debug(
                                         f"[图片缓存] 命中缓存: {url[:80]}... -> {desc[:50]}..."
                                     )
                                 return desc
@@ -163,7 +163,7 @@ class ImageDescriptionCache:
             self._entry_count += 1
 
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[图片缓存] 已保存: {url[:80]}... ({self._entry_count}/{self._max_entries})"
                 )
 
@@ -191,7 +191,7 @@ class ImageDescriptionCache:
             if skip_count <= 0:
                 return
 
-            logger.info(
+            logger.debug(
                 f"[图片缓存] 缓存条目 ({self._entry_count}) 超过上限 ({self._max_entries})，"
                 f"清理最旧的 {skip_count} 条，保留 {keep_count} 条"
             )
@@ -217,7 +217,7 @@ class ImageDescriptionCache:
                 os.replace(temp_path, str(self._cache_file))
 
                 self._entry_count = written
-                logger.info(f"[图片缓存] 清理完成，当前缓存 {self._entry_count} 条")
+                logger.debug(f"[图片缓存] 清理完成，当前缓存 {self._entry_count} 条")
 
             except Exception as e:
                 # 清理临时文件
@@ -244,11 +244,11 @@ class ImageDescriptionCache:
             legacy_path = self._cache_dir.parent / "image_description_cache.json"
             if legacy_path.exists():
                 legacy_path.unlink()
-                logger.info(
+                logger.debug(
                     "[图片缓存] 已清理旧版缓存文件 image_description_cache.json"
                 )
             self._entry_count = 0
-            logger.info("[图片缓存] 缓存已清空")
+            logger.debug("[图片缓存] 缓存已清空")
             return True
         except Exception as e:
             logger.error(f"[图片缓存] 清空缓存失败: {e}")

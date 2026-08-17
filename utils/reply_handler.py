@@ -143,7 +143,7 @@ class ReplyHandler:
                     + ReplyHandler.PROMPT_ENDING
                 )
 
-            logger.info(
+            logger.debug(
                 f"正在调用AI生成回复（当前发送者：{sender_name or '未知'}，ID:{sender_id}）..."
             )
 
@@ -184,7 +184,7 @@ class ReplyHandler:
                             + "\n\n"
                         )
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"✅ 已获取人格配置（persona_manager），长度: {len(system_prompt)} 字符"
                     )
             except Exception as e:
@@ -210,11 +210,11 @@ class ReplyHandler:
             event.set_extra(PLUGIN_CURRENT_MESSAGE, current_message_for_retrieval)
 
             if DEBUG_MODE:
-                logger.info("🔧 已设置插件标记，将通过 event.request_llm() 调用 AI")
-                logger.info(f"  - system_prompt 长度: {len(system_prompt)}")
-                logger.info(f"  - full_prompt 长度: {len(full_prompt)}")
-                logger.info(f"  - image_urls 数量: {len(image_urls)}")
-                logger.info(
+                logger.debug("🔧 已设置插件标记，将通过 event.request_llm() 调用 AI")
+                logger.debug(f"  - system_prompt 长度: {len(system_prompt)}")
+                logger.debug(f"  - full_prompt 长度: {len(full_prompt)}")
+                logger.debug(f"  - image_urls 数量: {len(image_urls)}")
+                logger.debug(
                     f"  - 向量检索用短消息长度: {len(current_message_for_retrieval)}"
                 )
 

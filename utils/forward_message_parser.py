@@ -58,12 +58,12 @@ class ForwardMessageParser:
                 return False
 
             if debug_mode:
-                logger.info(f"[转发消息] 检测到 {len(forward_indices)} 个转发消息组件")
+                logger.debug(f"[转发消息] 检测到 {len(forward_indices)} 个转发消息组件")
 
             call_action = _get_call_action(event)
             if call_action is None:
                 if debug_mode:
-                    logger.info(
+                    logger.debug(
                         "[转发消息] 当前平台不支持 get_forward_msg API，跳过解析"
                     )
                 return False
@@ -86,11 +86,11 @@ class ForwardMessageParser:
                 forward_id = getattr(forward_comp, "id", None)
                 if not forward_id:
                     if debug_mode:
-                        logger.info("[转发消息] Forward 组件无 id 字段，跳过")
+                        logger.debug("[转发消息] Forward 组件无 id 字段，跳过")
                     continue
 
                 if debug_mode:
-                    logger.info(f"[转发消息] 正在获取转发内容，ID: {forward_id}")
+                    logger.debug(f"[转发消息] 正在获取转发内容，ID: {forward_id}")
 
                 nodes = await _get_forward_nodes_by_id(
                     call_action,
@@ -135,7 +135,7 @@ class ForwardMessageParser:
                 any_parsed = True
 
                 if debug_mode:
-                    logger.info(
+                    logger.debug(
                         f"[转发消息] 已解析转发消息（{len(nodes)} 条节点），"
                         f"API 调用次数: {parse_context['api_call_count']}"
                     )

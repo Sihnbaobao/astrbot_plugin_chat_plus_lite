@@ -56,7 +56,7 @@ class WelcomeMessageParser:
             # 排除机器人自身入群
             if raw.get("user_id") == raw.get("self_id"):
                 if debug_mode:
-                    logger.info("[入群解析] 机器人自身入群事件，跳过")
+                    logger.debug("[入群解析] 机器人自身入群事件，跳过")
                 return False
 
             user_id = str(raw.get("user_id", ""))
@@ -85,7 +85,7 @@ class WelcomeMessageParser:
             event.message_str = prompt_text
 
             if debug_mode:
-                logger.info(f"[入群解析] 已解析新成员入群事件: {prompt_text}")
+                logger.debug(f"[入群解析] 已解析新成员入群事件: {prompt_text}")
 
             return True
 

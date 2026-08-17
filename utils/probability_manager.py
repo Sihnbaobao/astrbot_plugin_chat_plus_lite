@@ -109,7 +109,7 @@ class ProbabilityManager:
 
 
         if DEBUG_MODE:
-            logger.info("[概率管理器] 已初始化")
+            logger.debug("[概率管理器] 已初始化")
 
     @staticmethod
     def get_chat_key(platform_name: str, is_private: bool, chat_id: str) -> str:
@@ -280,7 +280,7 @@ class ProbabilityManager:
                         )
                         base_source = status.get("base_source", "base_probability")
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"会话 {chat_key} 使用基础概率覆盖: {base_probability:.2f} (来源: {base_source})"
                             )
                     else:
@@ -288,7 +288,7 @@ class ProbabilityManager:
                         status.pop("base_until", None)
                         status.pop("base_source", None)
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"会话 {chat_key} 的基础概率覆盖已超时，恢复为初始概率: {base_probability:.2f}"
                             )
 
@@ -323,14 +323,14 @@ class ProbabilityManager:
                         base_source = status.get(
                             "reply_boost_source", "after_reply_probability"
                         )
-                        logger.info(
+                        logger.debug(
                             f"[传统回复后提升] 会话 {chat_key} 当前使用临时提升概率: {base_probability:.2f}"
                         )
                     else:
                         status.pop("reply_boost_probability", None)
                         status.pop("reply_boost_until", None)
                         status.pop("reply_boost_source", None)
-                        logger.info(
+                        logger.debug(
                             f"[传统回复后提升] 会话 {chat_key} 的临时提升已过期，恢复到基础概率层"
                         )
 
@@ -389,7 +389,7 @@ class ProbabilityManager:
             status["reply_boost_source"] = "after_reply_probability"
             ProbabilityManager._probability_status[chat_key] = status
 
-        logger.info(
+        logger.debug(
             f"[传统回复后提升] 会话 {chat_key} 已启用临时提升: {safe_probability:.2f}, "
             f"持续 {safe_duration} 秒 (至 {time.strftime('%H:%M:%S', time.localtime(boosted_until))})"
         )
@@ -413,7 +413,7 @@ class ProbabilityManager:
         async with ProbabilityManager._lock:
             if chat_key in ProbabilityManager._probability_status:
                 del ProbabilityManager._probability_status[chat_key]
-                logger.info(f"会话 {chat_key} 概率状态已重置")
+                logger.debug(f"会话 {chat_key} 概率状态已重置")
 
     @staticmethod
     async def set_base_probability(
@@ -458,7 +458,7 @@ class ProbabilityManager:
             status["base_source"] = "frequency_adjuster"
             ProbabilityManager._probability_status[chat_key] = status
 
-        logger.info(
+        logger.debug(
             f"[频率调整] 会话 {chat_key} 基础概率已调整为 {safe_probability:.2f}, "
             f"持续 {safe_duration} 秒"
         )

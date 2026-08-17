@@ -41,7 +41,7 @@ class KeywordChecker:
             for keyword in keywords:
                 if keyword and keyword in message_text:
                     if DEBUG_MODE:
-                        logger.info(f"检测到{keyword_type}: {keyword}")
+                        logger.debug(f"检测到{keyword_type}: {keyword}")
                     return True
 
             return False
@@ -91,7 +91,7 @@ class KeywordChecker:
             for keyword in keywords:
                 if keyword and keyword in message_text:
                     if DEBUG_MODE:
-                        logger.info(f"检测到触发关键词: {keyword}")
+                        logger.debug(f"检测到触发关键词: {keyword}")
                     return True, keyword
 
             return False, ""

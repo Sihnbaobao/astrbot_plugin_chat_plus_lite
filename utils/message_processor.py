@@ -322,7 +322,7 @@ class MessageProcessor:
                     "【@全体成员说明】这是一条@全体成员消息。它也包含你，但不一定是专门只对你说的。"
                 )
                 if DEBUG_MODE:
-                    logger.info("已添加@全体成员说明（当前消息）")
+                    logger.debug("已添加@全体成员说明（当前消息）")
 
             # 6. 发送者识别系统提示（根据触发方式）
             if include_sender_info and trigger_type:
@@ -368,7 +368,7 @@ class MessageProcessor:
                 if system_notice:
                     system_parts.append(system_notice)
                     if DEBUG_MODE:
-                        logger.info(f"已添加发送者识别提示（触发方式: {trigger_type}）")
+                        logger.debug(f"已添加发送者识别提示（触发方式: {trigger_type}）")
 
             # 7. 持久化戳一戳事件文本
             if persistent_poke_event_text and persistent_poke_event_text.strip():
@@ -390,7 +390,7 @@ class MessageProcessor:
                 result = user_part
 
             if DEBUG_MODE and system_parts:
-                logger.info(
+                logger.debug(
                     f"消息已添加元数据（新格式，冒号为系统/用户边界）: "
                     f"{' '.join(system_parts)} | {user_part[:50]}..."
                 )
@@ -521,7 +521,7 @@ class MessageProcessor:
                 system_parts.append(
                     "【@全体成员说明】这是一条@全体成员消息。它也包含你，但不一定是专门只对你说的。"
                 )
-                logger.info("已添加@全体成员说明（从缓存）")
+                logger.debug("已添加@全体成员说明（从缓存）")
 
             # 6. 发送者识别系统提示（根据触发方式）
             if include_sender_info and trigger_type:
@@ -559,7 +559,7 @@ class MessageProcessor:
 
                 if system_notice:
                     system_parts.append(system_notice)
-                    logger.info(
+                    logger.debug(
                         f"已添加发送者识别提示（从缓存，触发方式: {trigger_type}）"
                     )
 
@@ -583,7 +583,7 @@ class MessageProcessor:
                 result = user_part
 
             if system_parts:
-                logger.info(
+                logger.debug(
                     f"消息已添加元数据（从缓存，新格式，冒号为系统/用户边界）: "
                     f"{' '.join(system_parts)} | {user_part[:50]}..."
                 )
@@ -737,7 +737,7 @@ class MessageProcessor:
             is_bot = sender_id == bot_id
 
             if is_bot:
-                logger.info(
+                logger.debug(
                     f"检测到机器人自己的消息,将忽略: sender_id={sender_id}, bot_id={bot_id}"
                 )
 
@@ -778,7 +778,7 @@ class MessageProcessor:
                             bot_id
                         ):
                             if DEBUG_MODE:
-                                logger.info("检测到@机器人的消息（At组件）")
+                                logger.debug("检测到@机器人的消息（At组件）")
                             return True
 
             # 方法2: 检查消息文本中是否包含@机器人（兼容旧版本QQ）
@@ -799,7 +799,7 @@ class MessageProcessor:
 
                 # 强制日志：显示文本@检测的详细信息（用于排查）
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[文本@检测] bot_id={bot_id}, bot_name={bot_name}, message={message_text[:50] if message_text else 'None'}"
                     )
 
@@ -808,7 +808,7 @@ class MessageProcessor:
                     # 检查 @机器人ID
                     if f"@{bot_id}" in message_text:
                         if DEBUG_MODE:
-                            logger.info(f"检测到@机器人的消息（文本@ID: @{bot_id}）")
+                            logger.debug(f"检测到@机器人的消息（文本@ID: @{bot_id}）")
                         return True
 
                     # 检查 @机器人名称（支持部分匹配，如 @Monika(AI) 也能匹配 @Monika）
@@ -818,13 +818,13 @@ class MessageProcessor:
                         pattern = rf"@{re.escape(bot_name)}(?:[^a-zA-Z0-9_]|$)"
                         if re.search(pattern, message_text):
                             if DEBUG_MODE:
-                                logger.info(
+                                logger.debug(
                                     f"检测到@机器人的消息（文本@名称: @{bot_name}）"
                                 )
                             return True
             except Exception as e:
                 if DEBUG_MODE:
-                    logger.info(f"文本@检测时出错: {e}")
+                    logger.debug(f"文本@检测时出错: {e}")
 
             return False
 

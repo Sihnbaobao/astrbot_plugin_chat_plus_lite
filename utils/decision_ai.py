@@ -127,7 +127,7 @@ class DecisionAI:
         mode = (log_mode or "processed").strip().lower()
         if mode == "raw":
             if raw_response:
-                logger.info(f"{log_prefix} 原始输出:\n{raw_response}")
+                logger.debug(f"{log_prefix} 原始输出:\n{raw_response}")
             return
 
         reasoning_text = (parse_result or {}).get("reasoning_text")
@@ -135,9 +135,9 @@ class DecisionAI:
         tail_line = (parse_result or {}).get("tail_line") or ""
 
         if reasoning_text:
-            logger.info(f"{log_prefix} 推理过程:\n{reasoning_text}")
+            logger.debug(f"{log_prefix} 推理过程:\n{reasoning_text}")
         elif protocol_followed is True:
-            logger.info(
+            logger.debug(
                 f"{log_prefix} 本次 AI 未输出推理过程，直接给出判断结果。最终答案: {tail_line}"
             )
 
@@ -171,7 +171,7 @@ class DecisionAI:
         }
 
         if not include_persona:
-            logger.info(f"{log_prefix} 已关闭人格注入，将按中性判断模式继续")
+            logger.debug(f"{log_prefix} 已关闭人格注入，将按中性判断模式继续")
             return result
 
         persona_mgr = getattr(context, "persona_manager", None)
@@ -209,7 +209,7 @@ class DecisionAI:
                             conversation_persona_id = getattr(conv, "persona_id", None)
                 except Exception as e:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"{log_prefix} 通过 conversation_manager 获取 persona_id 失败: {e}"
                         )
 
@@ -228,7 +228,7 @@ class DecisionAI:
                         return persona, "current-session"
                 except Exception as e:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"{log_prefix} resolve_selected_persona 解析失败: {e}"
                         )
 
@@ -239,7 +239,7 @@ class DecisionAI:
                         return persona, "default-persona"
                 except Exception as e:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"{log_prefix} get_default_persona_v3 解析失败: {e}"
                         )
 
@@ -268,7 +268,7 @@ class DecisionAI:
                         persona.get("name", configured_name) or configured_name
                     )
                     result["source"] = "configured"
-                    logger.info(
+                    logger.debug(
                         f"{log_prefix} 已使用指定人格: {result['persona_name']}"
                     )
                     return result
@@ -289,11 +289,11 @@ class DecisionAI:
             result["persona_name"] = persona.get("name", "default") or "default"
             result["source"] = source
             if configured_name and result["fallback_used"]:
-                logger.info(
+                logger.debug(
                     f"{log_prefix} 已回退到当前会话人格: {result['persona_name']}"
                 )
             elif not configured_name:
-                logger.info(
+                logger.debug(
                     f"{log_prefix} 已使用当前会话人格: {result['persona_name']}"
                 )
             return result
@@ -543,7 +543,7 @@ class DecisionAI:
                     + _decision_sender_tail
                 )
 
-            logger.info(
+            logger.debug(
                 f"正在调用决策AI判断是否回复（当前发送者：{sender_name or '未知'}，ID:{sender_id}，"
                 f"倾向：{reply_tendency}）..."
             )
@@ -584,9 +584,9 @@ class DecisionAI:
             decision = DecisionAI._parse_decision(decision_answer or "")
 
             if decision:
-                logger.info("决策AI判断: 应该回复这条消息 (yes)")
+                logger.debug("决策AI判断: 应该回复这条消息 (yes)")
             else:
-                logger.info("决策AI判断: 不应该回复这条消息 (no)")
+                logger.debug("决策AI判断: 不应该回复这条消息 (no)")
 
             return decision
 
@@ -620,7 +620,7 @@ class DecisionAI:
         """
         if not ai_response:
             if DEBUG_MODE:
-                logger.info("AI回复为空,默认判定为不回复（谨慎模式）")
+                logger.debug("AI回复为空,默认判定为不回复（谨慎模式）")
             return False  # 空回复时谨慎处理
 
         # 清理回复文本
@@ -632,12 +632,12 @@ class DecisionAI:
         # 优先检查完整的yes/no
         if cleaned_response == "yes" or cleaned_response == "y":
             if DEBUG_MODE:
-                logger.info(f"AI明确回复 '{ai_response}' (yes),判定为回复")
+                logger.debug(f"AI明确回复 '{ai_response}' (yes),判定为回复")
             return True
 
         if cleaned_response == "no" or cleaned_response == "n":
             if DEBUG_MODE:
-                logger.info(f"AI明确回复 '{ai_response}' (no),判定为不回复")
+                logger.debug(f"AI明确回复 '{ai_response}' (no),判定为不回复")
             return False
 
         # 检查中文的明确回复
@@ -648,7 +648,7 @@ class DecisionAI:
             or cleaned_response == "适合"
         ):
             if DEBUG_MODE:
-                logger.info(f"AI明确回复 '{ai_response}' (肯定),判定为回复")
+                logger.debug(f"AI明确回复 '{ai_response}' (肯定),判定为回复")
             return True
 
         if (
@@ -659,7 +659,7 @@ class DecisionAI:
             or cleaned_response == "不适合"
         ):
             if DEBUG_MODE:
-                logger.info(f"AI明确回复 '{ai_response}' (否定),判定为不回复")
+                logger.debug(f"AI明确回复 '{ai_response}' (否定),判定为不回复")
             return False
 
         # 否定关键词列表（检查开头）
@@ -680,7 +680,7 @@ class DecisionAI:
         for keyword in negative_starts:
             if cleaned_response.startswith(keyword):
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"AI回复 '{ai_response}' 以否定词 '{keyword}' 开头,判定为不回复"
                     )
                 return False
@@ -703,12 +703,12 @@ class DecisionAI:
         for keyword in positive_starts:
             if cleaned_response.startswith(keyword):
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"AI回复 '{ai_response}' 以肯定词 '{keyword}' 开头,判定为回复"
                     )
                 return True
 
         # 默认情况：不明确的回复，采用谨慎策略
         if DEBUG_MODE:
-            logger.info(f"AI回复 '{ai_response}' 不明确,默认判定为不回复（谨慎模式）")
+            logger.debug(f"AI回复 '{ai_response}' 不明确,默认判定为不回复（谨慎模式）")
         return False

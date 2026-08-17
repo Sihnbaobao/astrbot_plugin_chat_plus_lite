@@ -525,7 +525,7 @@ class MessageCleaner:
                     # 只有当提取到非空消息时才返回
                     if raw_message:
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[消息清理] 从消息链提取原始消息: {raw_message[:100]}..."
                             )
                         # 🆕 过滤戳一戳文本标识符
@@ -542,13 +542,13 @@ class MessageCleaner:
             # 方法2: 使用get_message_str（可能包含提示词，需要清理）
             plain_message = event.get_message_str()
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[消息清理] 方法2: get_message_str()={plain_message[:100] if plain_message else '(空)'}"
                 )
             if plain_message:
                 cleaned = MessageCleaner.clean_message(plain_message)
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[消息清理] 从plain提取并清理: {cleaned[:100] if cleaned else '(空消息)'}..."
                     )
                 if cleaned:
@@ -561,18 +561,18 @@ class MessageCleaner:
             # 方法3: 使用get_message_outline（最后的备选）
             outline_message = event.get_message_outline()
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[消息清理] 方法3: get_message_outline()={outline_message[:100] if outline_message else '(空)'}"
                 )
             cleaned = MessageCleaner.clean_message(outline_message)
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[消息清理] 从outline提取并清理: {cleaned[:100] if cleaned else '(空消息)'}..."
                 )
             if not cleaned:
                 # 优化：空消息可能是正常的（如纯图片、纯表情、戳一戳等），降低日志级别
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[消息清理] 所有方法都返回空消息（可能是纯图片/表情/戳一戳等）: event.message_str={event.message_str[:100] if event.message_str else '(空)'}"
                     )
             # 🆕 过滤戳一戳文本标识符
@@ -657,7 +657,7 @@ class MessageCleaner:
                     )
                 else:
                     if DEBUG_MODE:
-                        logger.info("[消息清理] 引用消息组件无有效内容，已跳过")
+                        logger.debug("[消息清理] 引用消息组件无有效内容，已跳过")
                     return ""
 
             if reply_text:
@@ -666,7 +666,7 @@ class MessageCleaner:
 
         except Exception as e:
             if DEBUG_MODE:
-                logger.info(f"[消息清理] 格式化引用消息失败: {e}")
+                logger.debug(f"[消息清理] 格式化引用消息失败: {e}")
             return ""
 
     @staticmethod
@@ -718,7 +718,7 @@ class MessageCleaner:
             )
 
         if is_empty and DEBUG_MODE:
-            logger.info(f"[消息清理] 检测到空@消息（mode={mode}）")
+            logger.debug(f"[消息清理] 检测到空@消息（mode={mode}）")
 
         return is_empty
 
@@ -763,19 +763,19 @@ class MessageCleaner:
             has_image = "[图片]" in message_text
             if has_image:
                 if DEBUG_MODE:
-                    logger.info("[缓存-图片处理] 检测到纯图片消息，丢弃不缓存")
+                    logger.debug("[缓存-图片处理] 检测到纯图片消息，丢弃不缓存")
                 return False, ""
             else:
                 # 原消息就是空的
                 if DEBUG_MODE:
-                    logger.info("[缓存-图片处理] 消息为空，不缓存")
+                    logger.debug("[缓存-图片处理] 消息为空，不缓存")
                 return False, ""
 
         # 检查是否有图片被移除
         has_image = "[图片]" in message_text
         if has_image:
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[缓存-图片处理] 移除图片标记，保留文本: {text_without_images[:100]}..."
                 )
             return True, text_without_images

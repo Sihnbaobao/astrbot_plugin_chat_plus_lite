@@ -132,7 +132,7 @@ class ContentFilter:
                 # 移除从开头到结束标记（包含结束标记）的内容
                 content = content[end_pos + len(end_marker) :]
                 if DEBUG_MODE:
-                    logger.info(f"[内容过滤] 头部过滤生效，移除到 '{end_marker}'")
+                    logger.debug(f"[内容过滤] 头部过滤生效，移除到 '{end_marker}'")
 
         elif mode == "tail":
             # 尾部过滤：从开始标记到末尾（包含）
@@ -142,7 +142,7 @@ class ContentFilter:
                 # 移除从开始标记到末尾的内容
                 content = content[:start_pos]
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[内容过滤] 尾部过滤生效，移除从 '{start_marker}' 开始的内容"
                     )
 
@@ -163,7 +163,7 @@ class ContentFilter:
                 # 移除这段内容（包含两个标记）
                 content = content[:start_pos] + content[end_pos + len(end_marker) :]
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[内容过滤] 范围过滤生效，移除 '{start_marker}' 到 '{end_marker}' 之间的内容"
                     )
 
@@ -201,9 +201,9 @@ class ContentFilter:
                 )
 
         if content != original_content and DEBUG_MODE:
-            logger.info("[内容过滤] 过滤完成")
-            logger.info(f"  原始长度: {len(original_content)}")
-            logger.info(f"  过滤后长度: {len(content)}")
+            logger.debug("[内容过滤] 过滤完成")
+            logger.debug(f"  原始长度: {len(original_content)}")
+            logger.debug(f"  过滤后长度: {len(content)}")
 
         return content
 
@@ -224,7 +224,7 @@ class ContentFilter:
             return content
 
         if DEBUG_MODE:
-            logger.info(f"[输出过滤] 开始过滤，规则数: {len(rules)}")
+            logger.debug(f"[输出过滤] 开始过滤，规则数: {len(rules)}")
 
         return ContentFilter.filter_content(content, rules)
 
@@ -245,7 +245,7 @@ class ContentFilter:
             return content
 
         if DEBUG_MODE:
-            logger.info(f"[保存过滤] 开始过滤，规则数: {len(rules)}")
+            logger.debug(f"[保存过滤] 开始过滤，规则数: {len(rules)}")
 
         return ContentFilter.filter_content(content, rules)
 
@@ -286,11 +286,11 @@ class ContentFilterManager:
         DEBUG_MODE = debug_mode
 
         if debug_mode:
-            logger.info("[内容过滤管理器] 初始化完成")
-            logger.info(
+            logger.debug("[内容过滤管理器] 初始化完成")
+            logger.debug(
                 f"  输出过滤: {'启用' if enable_output_filter else '禁用'}, 规则数: {len(self.output_filter_rules)}"
             )
-            logger.info(
+            logger.debug(
                 f"  保存过滤: {'启用' if enable_save_filter else '禁用'}, 规则数: {len(self.save_filter_rules)}"
             )
 

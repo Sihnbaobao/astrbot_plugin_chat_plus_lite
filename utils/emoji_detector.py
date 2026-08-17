@@ -137,7 +137,7 @@ class EmojiDetector:
                     sub_type = data.get("sub_type") or data.get("subType")
                     if EmojiDetector._is_sub_type_emoji(sub_type):
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[表情包检测] 检测到表情包: sub_type={sub_type} (原始事件)"
                             )
                         return True
@@ -146,7 +146,7 @@ class EmojiDetector:
                     summary = data.get("summary", "")
                     if EmojiDetector._is_emoji_summary(summary):
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[表情包检测] 检测到表情包: summary='{summary}' (原始事件)"
                             )
                         return True
@@ -157,7 +157,7 @@ class EmojiDetector:
                 if hasattr(img, "subType") and img.subType is not None:
                     if EmojiDetector._is_sub_type_emoji(img.subType):
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[表情包检测] 检测到表情包: subType={img.subType} (组件属性)"
                             )
                         return True
@@ -167,7 +167,7 @@ class EmojiDetector:
                     sub_type = img.__dict__.get("sub_type")
                     if EmojiDetector._is_sub_type_emoji(sub_type):
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[表情包检测] 检测到表情包: sub_type={sub_type} (组件__dict__)"
                             )
                         return True
@@ -181,7 +181,7 @@ class EmojiDetector:
                             sub_type = data.get("sub_type") or data.get("subType")
                             if EmojiDetector._is_sub_type_emoji(sub_type):
                                 if DEBUG_MODE:
-                                    logger.info(
+                                    logger.debug(
                                         f"[表情包检测] 检测到表情包: sub_type={sub_type} (toDict)"
                                     )
                                 return True
@@ -189,7 +189,7 @@ class EmojiDetector:
                             summary = data.get("summary", "")
                             if EmojiDetector._is_emoji_summary(summary):
                                 if DEBUG_MODE:
-                                    logger.info(
+                                    logger.debug(
                                         f"[表情包检测] 检测到表情包: summary='{summary}' (toDict)"
                                     )
                                 return True
@@ -202,7 +202,7 @@ class EmojiDetector:
                             )
                             if img_type in ("emoji", "sticker", "face", "meme"):
                                 if DEBUG_MODE:
-                                    logger.info(
+                                    logger.debug(
                                         f"[表情包检测] 检测到表情包: type='{img_type}' (toDict)"
                                     )
                                 return True

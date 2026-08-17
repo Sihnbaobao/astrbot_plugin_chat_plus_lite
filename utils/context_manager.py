@@ -92,22 +92,22 @@ class ContextManager:
         if not ContextManager.base_storage_path.exists():
             ContextManager.base_storage_path.mkdir(parents=True, exist_ok=True)
             if DEBUG_MODE:
-                logger.info(f"上下文存储路径初始化: {ContextManager.base_storage_path}")
+                logger.debug(f"上下文存储路径初始化: {ContextManager.base_storage_path}")
 
         # 设置自定义存储限制
         ContextManager.custom_storage_max_messages = custom_storage_max_messages
         if custom_storage_max_messages == 0:
-            logger.info(
+            logger.debug(
                 "[上下文管理器] 自定义存储已禁用（配置为0），将完全依赖官方存储"
             )
             # 清理所有自定义存储文件
             ContextManager._clear_all_custom_storage()
         elif custom_storage_max_messages == -1:
-            logger.info(
+            logger.debug(
                 f"[上下文管理器] 自定义存储不限制条数（硬上限 {ContextManager.CUSTOM_STORAGE_HARD_LIMIT} 条）"
             )
         else:
-            logger.info(
+            logger.debug(
                 f"[上下文管理器] 自定义存储每会话限制 {custom_storage_max_messages} 条消息"
             )
 
@@ -124,7 +124,7 @@ class ContextManager:
             if ContextManager._cutoff_file_path.exists():
                 with open(ContextManager._cutoff_file_path, "r", encoding="utf-8") as f:
                     ContextManager._history_cutoff_timestamps = json.load(f)
-                logger.info(
+                logger.debug(
                     f"[上下文管理器] 已加载 {len(ContextManager._history_cutoff_timestamps)} 个会话的历史截止时间戳"
                 )
         except Exception as e:
@@ -153,7 +153,7 @@ class ContextManager:
         """
         ContextManager._history_cutoff_timestamps[chat_id] = time.time()
         ContextManager._save_cutoff_timestamps()
-        logger.info(
+        logger.debug(
             f"[上下文管理器] 已设置历史截止时间戳 chat_id={chat_id}, "
             f"cutoff={ContextManager._history_cutoff_timestamps[chat_id]}"
         )
@@ -505,7 +505,7 @@ class ContextManager:
                 if file_path.exists():
                     file_path.unlink()
                     if DEBUG_MODE:
-                        logger.info(f"[自定义存储裁剪] 已删除文件: {file_path}")
+                        logger.debug(f"[自定义存储裁剪] 已删除文件: {file_path}")
                 return True
             except Exception as e:
                 logger.error(f"[自定义存储裁剪] 删除文件失败: {e}")
@@ -549,7 +549,7 @@ class ContextManager:
             file_path.unlink()
             temp_path.rename(file_path)
 
-            logger.info(
+            logger.debug(
                 f"[自定义存储裁剪] 裁剪完成: {total} → {keep_count} 条（丢弃最旧的 {skip_count} 条）"
             )
             return True
@@ -662,7 +662,7 @@ class ContextManager:
                     logger.warning(f"[自定义存储] 删除文件失败 {json_file}: {e}")
 
             if deleted_count > 0:
-                logger.info(
+                logger.debug(
                     f"[自定义存储] 已清理 {deleted_count} 个自定义存储文件（配置为禁用自定义存储）"
                 )
         except Exception as e:
@@ -704,7 +704,7 @@ class ContextManager:
             # 如果配置为0,不获取历史消息
             if max_messages == 0:
                 if DEBUG_MODE:
-                    logger.info("配置为不获取历史消息")
+                    logger.debug("配置为不获取历史消息")
                 return []
 
             # 获取平台和聊天信息
@@ -724,7 +724,7 @@ class ContextManager:
             # 🔧 修复：使用 Path 对象的 exists() 方法
             if not file_path.exists():
                 if DEBUG_MODE:
-                    logger.info(f"历史消息文件不存在: {file_path}")
+                    logger.debug(f"历史消息文件不存在: {file_path}")
                 return []
 
             # 使用安全的JSON反序列化
@@ -748,7 +748,7 @@ class ContextManager:
             if len(history_dicts) > effective_limit:
                 history_dicts = history_dicts[-effective_limit:]
                 if DEBUG_MODE:
-                    logger.info(f"历史消息在转换前截断为 {effective_limit} 条")
+                    logger.debug(f"历史消息在转换前截断为 {effective_limit} 条")
 
             # 将字典列表转换为 AstrBotMessage 对象列表
             history = [
@@ -761,11 +761,11 @@ class ContextManager:
             # 🔧 优化日志：仅在 DEBUG_MODE 下输出，避免与上下文获取日志混淆
             if DEBUG_MODE:
                 if max_messages == -1:
-                    logger.info(
+                    logger.debug(
                         f"[自定义存储-event] 读取历史消息 {len(history)} 条（硬上限 {HARD_LIMIT}）"
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         f"[自定义存储-event] 读取历史消息 {len(history)} 条（限制 {max_messages} 条）"
                     )
 
@@ -811,7 +811,7 @@ class ContextManager:
             # 如果配置为0,不获取历史消息
             if max_messages == 0:
                 if DEBUG_MODE:
-                    logger.info("配置为不获取历史消息")
+                    logger.debug("配置为不获取历史消息")
                 return []
 
             if not chat_id:
@@ -826,7 +826,7 @@ class ContextManager:
             # 🔧 修复：使用 Path 对象的 exists() 方法
             if not file_path.exists():
                 if DEBUG_MODE:
-                    logger.info(f"历史消息文件不存在: {file_path}")
+                    logger.debug(f"历史消息文件不存在: {file_path}")
                 return []
 
             # 使用安全的JSON反序列化
@@ -850,7 +850,7 @@ class ContextManager:
             if len(history_dicts) > effective_limit:
                 history_dicts = history_dicts[-effective_limit:]
                 if DEBUG_MODE:
-                    logger.info(f"历史消息在转换前截断为 {effective_limit} 条")
+                    logger.debug(f"历史消息在转换前截断为 {effective_limit} 条")
 
             # 将字典列表转换为 AstrBotMessage 对象列表
             history = [
@@ -863,11 +863,11 @@ class ContextManager:
             # 🔧 优化日志：仅在 DEBUG_MODE 下输出，避免与上下文获取日志混淆
             if DEBUG_MODE:
                 if max_messages == -1:
-                    logger.info(
+                    logger.debug(
                         f"[自定义存储-params] 读取历史消息 {len(history)} 条（硬上限 {HARD_LIMIT}）"
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         f"[自定义存储-params] 读取历史消息 {len(history)} 条（限制 {max_messages} 条）"
                     )
 
@@ -984,7 +984,7 @@ class ContextManager:
             # 如果配置为0,不获取历史消息
             if max_messages == 0:
                 if DEBUG_MODE:
-                    logger.info("配置为不获取历史消息")
+                    logger.debug("配置为不获取历史消息")
                 # 即使不获取历史，也要返回缓存消息
                 return cached_messages or []
 
@@ -1013,7 +1013,7 @@ class ContextManager:
             if context and hasattr(context, "message_history_manager"):
                 try:
                     if DEBUG_MODE:
-                        logger.info("[上下文管理器] 尝试从官方存储读取历史消息...")
+                        logger.debug("[上下文管理器] 尝试从官方存储读取历史消息...")
 
                     official_history = await context.message_history_manager.get(
                         platform_id=platform_id,
@@ -1046,19 +1046,19 @@ class ContextManager:
                             ]
                             filtered = before_count - len(history)
                             if filtered > 0:
-                                logger.info(
+                                logger.debug(
                                     f"[上下文管理器] 历史截止过滤: 丢弃 {filtered} 条旧消息 "
                                     f"(cutoff={cutoff_ts}, chat_id={chat_id})"
                                 )
 
                         if len(history) > 0:
                             official_success = True
-                            logger.info(
+                            logger.debug(
                                 f"[上下文管理器] 从官方存储读取到 {len(history)} 条历史消息"
                             )
                     else:
                         if DEBUG_MODE:
-                            logger.info("[上下文管理器] 官方存储无历史消息")
+                            logger.debug("[上下文管理器] 官方存储无历史消息")
 
                 except Exception as e:
                     logger.warning(f"[上下文管理器] 从官方存储读取失败: {e}")
@@ -1067,18 +1067,18 @@ class ContextManager:
             # ========== 2. 回退到自定义存储 ==========
             if not official_success:
                 if DEBUG_MODE:
-                    logger.info("[上下文管理器] 回退到自定义存储读取历史消息...")
+                    logger.debug("[上下文管理器] 回退到自定义存储读取历史消息...")
 
                 # 使用现有的自定义存储读取方法
                 history = ContextManager.get_history_messages(event, max_messages)
 
                 if history:
-                    logger.info(
+                    logger.debug(
                         f"[上下文管理器] 从自定义存储读取到 {len(history)} 条历史消息"
                     )
                 else:
                     if DEBUG_MODE:
-                        logger.info("[上下文管理器] 自定义存储也无历史消息")
+                        logger.debug("[上下文管理器] 自定义存储也无历史消息")
 
             # ========== 3. 拼接缓存消息 ==========
             # 🔧 v1.2.0 修复：改进缓存消息合并逻辑，确保缓存消息能正确拼接到上下文
@@ -1147,7 +1147,7 @@ class ContextManager:
 
                 if new_cached:
                     history.extend(new_cached)
-                    logger.info(
+                    logger.debug(
                         f"📦 [缓存拼接] 拼接了 {len(new_cached)} 条缓存消息到上下文"
                         + (
                             f"（跳过 {skipped_count} 条重复）"
@@ -1156,7 +1156,7 @@ class ContextManager:
                         )
                     )
                 elif skipped_count > 0:
-                    logger.info(
+                    logger.debug(
                         f"📦 [缓存拼接] 所有 {skipped_count} 条缓存消息都已在历史中，无需拼接"
                     )
 
@@ -1172,7 +1172,7 @@ class ContextManager:
             if len(history) > effective_limit:
                 history = history[-effective_limit:]
 
-            logger.info(f"[上下文管理器] 最终获取历史消息 {len(history)} 条")
+            logger.debug(f"[上下文管理器] 最终获取历史消息 {len(history)} 条")
             return history
 
         except Exception as e:
@@ -1241,7 +1241,7 @@ class ContextManager:
             if context and hasattr(context, "message_history_manager") and platform_id:
                 try:
                     if DEBUG_MODE:
-                        logger.info("[上下文管理器] 尝试从官方存储读取历史消息...")
+                        logger.debug("[上下文管理器] 尝试从官方存储读取历史消息...")
 
                     official_history = await context.message_history_manager.get(
                         platform_id=platform_id,
@@ -1273,14 +1273,14 @@ class ContextManager:
                             ]
                             filtered = before_count - len(history)
                             if filtered > 0:
-                                logger.info(
+                                logger.debug(
                                     f"[上下文管理器] 历史截止过滤: 丢弃 {filtered} 条旧消息 "
                                     f"(cutoff={cutoff_ts}, chat_id={chat_id})"
                                 )
 
                         if len(history) > 0:
                             official_success = True
-                            logger.info(
+                            logger.debug(
                                 f"[上下文管理器] 从官方存储读取到 {len(history)} 条历史消息"
                             )
 
@@ -1293,7 +1293,7 @@ class ContextManager:
                     platform_name, is_private, chat_id, max_messages
                 )
                 if history:
-                    logger.info(
+                    logger.debug(
                         f"[上下文管理器] 从自定义存储读取到 {len(history)} 条历史消息"
                     )
 
@@ -1364,7 +1364,7 @@ class ContextManager:
 
                 if new_cached:
                     history.extend(new_cached)
-                    logger.info(
+                    logger.debug(
                         f"📦 [缓存拼接] 拼接了 {len(new_cached)} 条缓存消息到上下文"
                         + (
                             f"（跳过 {skipped_count} 条重复）"
@@ -1373,7 +1373,7 @@ class ContextManager:
                         )
                     )
                 elif skipped_count > 0:
-                    logger.info(
+                    logger.debug(
                         f"📦 [缓存拼接] 所有 {skipped_count} 条缓存消息都已在历史中，无需拼接"
                     )
 
@@ -1457,7 +1457,7 @@ class ContextManager:
                         # 调试日志（仅在第一条消息时输出，避免刷屏）
                         if formatted_parts and len(formatted_parts) == 1:
                             if DEBUG_MODE:
-                                logger.info(
+                                logger.debug(
                                     f"[上下文格式化] 机器人ID: {bot_id}, 当前消息发送者ID: {sender_id}, 是否为机器人: {is_bot}"
                                 )
 
@@ -1629,7 +1629,7 @@ class ContextManager:
                     formatted_parts.append("--- 以上为紧接着的追加消息 ---")
 
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[上下文格式化] 已拼接 {len(sorted_wb)} 条窗口缓冲消息到当前消息下方"
                         )
             except Exception as e:
@@ -1645,7 +1645,7 @@ class ContextManager:
                     pass
 
             if DEBUG_MODE:
-                logger.info(f"上下文格式化完成,总长度: {len(result)} 字符")
+                logger.debug(f"上下文格式化完成,总长度: {len(result)} 字符")
             return result
 
         except Exception as e:
@@ -1850,7 +1850,7 @@ class ContextManager:
                 )
                 cleaned_message = cleaned_message.strip()
                 if DEBUG_MODE:
-                    logger.info("⚠️ [保存消息] 检测到系统提示残留，已二次清理")
+                    logger.debug("⚠️ [保存消息] 检测到系统提示残留，已二次清理")
 
             # 获取平台和聊天信息
             platform_name = event.get_platform_name()
@@ -1912,10 +1912,10 @@ class ContextManager:
                         )
 
                     if DEBUG_MODE:
-                        logger.info("用户消息已保存到自定义历史记录")
+                        logger.debug("用户消息已保存到自定义历史记录")
             else:
                 if DEBUG_MODE:
-                    logger.info("[自定义存储] 已禁用，跳过保存到自定义存储")
+                    logger.debug("[自定义存储] 已禁用，跳过保存到自定义存储")
 
             # 保存到官方历史管理器（platform_message_history表）
             # 注意：这个表和conversation不同，是用于平台消息记录的
@@ -1967,7 +1967,7 @@ class ContextManager:
                                     message_chain_dict.append(comp_dict)
                             except Exception as comp_err:
                                 if DEBUG_MODE:
-                                    logger.info(f"组件转换失败，跳过: {comp_err}")
+                                    logger.debug(f"组件转换失败，跳过: {comp_err}")
                                 continue
 
                     if not message_chain_dict:
@@ -1986,7 +1986,7 @@ class ContextManager:
                     )
 
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             "用户消息已保存到官方历史管理器(platform_message_history)"
                         )
 
@@ -2182,7 +2182,7 @@ class ContextManager:
                 )
                 cleaned_message = cleaned_message.strip()
                 if DEBUG_MODE:
-                    logger.info("⚠️ [AI回复保存] 检测到系统提示残留，已二次清理")
+                    logger.debug("⚠️ [AI回复保存] 检测到系统提示残留，已二次清理")
 
             # 获取平台和聊天信息
             platform_name = event.get_platform_name()
@@ -2252,10 +2252,10 @@ class ContextManager:
                         )
 
                     if DEBUG_MODE:
-                        logger.info("AI回复消息已保存到自定义历史记录")
+                        logger.debug("AI回复消息已保存到自定义历史记录")
             else:
                 if DEBUG_MODE:
-                    logger.info("[自定义存储] 已禁用，跳过保存到自定义存储")
+                    logger.debug("[自定义存储] 已禁用，跳过保存到自定义存储")
 
             # 保存到官方历史管理器（platform_message_history表）
             # 注意：这个表和conversation不同，是用于平台消息记录的
@@ -2307,7 +2307,7 @@ class ContextManager:
                                     message_chain_dict.append(comp_dict)
                             except Exception as comp_err:
                                 if DEBUG_MODE:
-                                    logger.info(f"组件转换失败，跳过: {comp_err}")
+                                    logger.debug(f"组件转换失败，跳过: {comp_err}")
                                     continue
 
                     if not message_chain_dict:
@@ -2326,7 +2326,7 @@ class ContextManager:
                     )
 
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             "AI回复消息已保存到官方历史管理器(platform_message_history)"
                         )
 
@@ -2507,15 +2507,15 @@ class ContextManager:
                         )
 
                     if DEBUG_MODE:
-                        logger.info("[主动对话保存] AI回复消息已保存到自定义历史记录")
+                        logger.debug("[主动对话保存] AI回复消息已保存到自定义历史记录")
                 else:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             "[主动对话保存] file_path 为 None，跳过保存到自定义历史"
                         )
             else:
                 if DEBUG_MODE:
-                    logger.info("[自定义存储] 已禁用，跳过保存到自定义存储")
+                    logger.debug("[自定义存储] 已禁用，跳过保存到自定义存储")
 
             # 保存到官方历史管理器（platform_message_history表）
             # 与 save_bot_message 保持一致
@@ -2536,7 +2536,7 @@ class ContextManager:
                     )
 
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             "[主动对话保存] AI回复消息已保存到官方历史管理器(platform_message_history)"
                         )
 
@@ -2572,7 +2572,7 @@ class ContextManager:
             # 1. 获取unified_msg_origin（会话标识）
             unified_msg_origin = event.unified_msg_origin
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[官方保存] 准备保存到官方对话系统，会话: {unified_msg_origin}"
                 )
 
@@ -2583,7 +2583,7 @@ class ContextManager:
             curr_cid = await cm.get_curr_conversation_id(unified_msg_origin)
             if not curr_cid:
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存] 会话 {unified_msg_origin} 没有对话，创建新对话"
                     )
                 # 获取群名作为标题
@@ -2606,7 +2606,7 @@ class ContextManager:
                     content=[],
                 )
                 if DEBUG_MODE:
-                    logger.info(f"[官方保存] 创建新对话ID: {curr_cid}")
+                    logger.debug(f"[官方保存] 创建新对话ID: {curr_cid}")
 
             if not curr_cid:
                 logger.warning("[官方保存] 无法创建或获取对话ID")
@@ -2624,14 +2624,14 @@ class ContextManager:
                 history_list = []
 
             if DEBUG_MODE:
-                logger.info(f"[官方保存] 当前对话有 {len(history_list)} 条历史消息")
+                logger.debug(f"[官方保存] 当前对话有 {len(history_list)} 条历史消息")
 
             # 6. 添加用户消息和AI回复
             history_list.append({"role": "user", "content": user_message})
             history_list.append({"role": "assistant", "content": bot_message})
 
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[官方保存] 准备保存，新增2条消息，总计 {len(history_list)} 条"
                 )
 
@@ -2641,7 +2641,7 @@ class ContextManager:
             )
 
             if success:
-                logger.info(
+                logger.debug(
                     f"✅ [官方保存] 消息已保存到官方对话系统 (conversation_id: {curr_cid}, 总消息数: {len(history_list)})"
                 )
                 return True
@@ -2696,11 +2696,11 @@ class ContextManager:
                 cm_type = type(cm).__name__
                 available = [m for m in methods if hasattr(cm, m)]
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存] CM类型={cm_type}, 对话ID={conversation_id}, 消息数={len(history_list)}"
                     )
-                    logger.info(f"[官方保存] 可用方法: {available}")
-                    logger.info(f"[官方保存] unified_msg_origin: {unified_msg_origin}")
+                    logger.debug(f"[官方保存] 可用方法: {available}")
+                    logger.debug(f"[官方保存] unified_msg_origin: {unified_msg_origin}")
             except Exception as e:
                 logger.warning(f"[官方保存] 记录CM信息失败: {e}")
 
@@ -2710,14 +2710,14 @@ class ContextManager:
                     # 尝试位置参数+列表
                     try:
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[官方保存] >>> 尝试 {m} 使用列表参数，历史长度={len(history_list)}"
                             )
                         await getattr(cm, m)(
                             unified_msg_origin, conversation_id, history_list
                         )
 
-                        logger.info(f"✅ [官方保存] {m} 成功（列表）")
+                        logger.debug(f"✅ [官方保存] {m} 成功（列表）")
 
                         # 验证是否真的保存成功
                         try:
@@ -2726,7 +2726,7 @@ class ContextManager:
                             )
                             if verification:
                                 if DEBUG_MODE:
-                                    logger.info(
+                                    logger.debug(
                                         f"✅ [官方保存] 验证成功：对话存在，ID={conversation_id}"
                                     )
                             else:
@@ -2740,7 +2740,7 @@ class ContextManager:
                     except TypeError as te:
                         # 参数类型不匹配，尝试字符串格式
                         if DEBUG_MODE:
-                            logger.info(f"[官方保存] {m} 列表参数类型不匹配: {te}")
+                            logger.debug(f"[官方保存] {m} 列表参数类型不匹配: {te}")
                     except Exception as e:
                         logger.warning(f"[官方保存] {m}（列表）失败: {e}")
 
@@ -2748,14 +2748,14 @@ class ContextManager:
                     try:
                         history_str = json.dumps(history_list, ensure_ascii=False)
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[官方保存] >>> 尝试 {m} 使用字符串参数，长度={len(history_str)}"
                             )
                         await getattr(cm, m)(
                             unified_msg_origin, conversation_id, history_str
                         )
 
-                        logger.info(f"✅ [官方保存] {m} 成功（字符串）")
+                        logger.debug(f"✅ [官方保存] {m} 成功（字符串）")
                         return True
                     except Exception as e2:
                         logger.warning(f"[官方保存] {m}（字符串）失败: {e2}")
@@ -2891,7 +2891,7 @@ class ContextManager:
                             sender_name=cached_msg.get("sender_name", "未知用户"),
                         )
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[冷群转正] platform_message_history 写入成功: "
                                 f"sender={cached_msg.get('sender_name')}, "
                                 f"content_preview={msg_content[:80]}..."
@@ -2993,7 +2993,7 @@ class ContextManager:
                 if ContextManager._is_custom_storage_enabled():
                     parts.append("自定义存储")
                 dest = "+".join(parts)
-                logger.info(f"✅ [冷群转正] 已保存 {added_count} 条缓存消息到 {dest}")
+                logger.debug(f"✅ [冷群转正] 已保存 {added_count} 条缓存消息到 {dest}")
                 return True
 
             logger.warning("[冷群转正] 保存到官方历史失败")
@@ -3069,30 +3069,30 @@ class ContextManager:
                     if save_kind == "poke_event"
                     else "[官方保存+缓存转正]"
                 )
-                logger.info(f"========== {log_prefix} 开始保存 ==========")
-                logger.info(f"{log_prefix} unified_msg_origin: {unified_msg_origin}")
-                logger.info(f"{log_prefix} 缓存消息: {len(cached_messages)} 条")
-                logger.info(f"{log_prefix} 用户消息长度: {len(user_message)} 字符")
+                logger.debug(f"========== {log_prefix} 开始保存 ==========")
+                logger.debug(f"{log_prefix} unified_msg_origin: {unified_msg_origin}")
+                logger.debug(f"{log_prefix} 缓存消息: {len(cached_messages)} 条")
+                logger.debug(f"{log_prefix} 用户消息长度: {len(user_message)} 字符")
                 if bot_message is not None:
-                    logger.info(f"{log_prefix} AI回复长度: {len(bot_message)} 字符")
+                    logger.debug(f"{log_prefix} AI回复长度: {len(bot_message)} 字符")
                 else:
-                    logger.info(f"{log_prefix} 本次不保存AI回复（bot_message为空）")
+                    logger.debug(f"{log_prefix} 本次不保存AI回复（bot_message为空）")
 
             # 2. 获取conversation_manager
             cm = context.conversation_manager
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[官方保存+缓存转正] ConversationManager类型: {type(cm).__name__}"
                 )
 
             # 3. 获取当前对话ID，如果没有则创建
             curr_cid = await cm.get_curr_conversation_id(unified_msg_origin)
             if DEBUG_MODE:
-                logger.info(f"[官方保存+缓存转正] 当前对话ID: {curr_cid}")
+                logger.debug(f"[官方保存+缓存转正] 当前对话ID: {curr_cid}")
 
             if not curr_cid:
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] ❗ 会话 {unified_msg_origin} 没有对话，准备创建新对话"
                     )
                 # 获取群名作为标题
@@ -3107,8 +3107,8 @@ class ContextManager:
                     else f"私聊 {event.get_sender_name()}"
                 )
                 if DEBUG_MODE:
-                    logger.info(f"[官方保存+缓存转正] 新对话标题: {title}")
-                    logger.info(
+                    logger.debug(f"[官方保存+缓存转正] 新对话标题: {title}")
+                    logger.debug(
                         f"[官方保存+缓存转正] 平台ID: {event.get_platform_id()}"
                     )
 
@@ -3121,7 +3121,7 @@ class ContextManager:
                         content=[],
                     )
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"✅ [官方保存+缓存转正] 成功创建新对话，ID: {curr_cid}"
                         )
                 except Exception as create_err:
@@ -3137,21 +3137,21 @@ class ContextManager:
 
             # 4. 获取当前对话的历史记录
             if DEBUG_MODE:
-                logger.info("[官方保存+缓存转正] 正在获取对话历史...")
+                logger.debug("[官方保存+缓存转正] 正在获取对话历史...")
             try:
                 conversation = await cm.get_conversation(
                     unified_msg_origin=unified_msg_origin, conversation_id=curr_cid
                 )
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] 获取对话对象: {conversation is not None}"
                     )
                 if conversation:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[官方保存+缓存转正] 对话对象类型: {type(conversation).__name__}"
                         )
-                        logger.info(
+                        logger.debug(
                             f"[官方保存+缓存转正] 对话标题: {getattr(conversation, 'title', 'N/A')}"
                         )
             except Exception as get_err:
@@ -3166,7 +3166,7 @@ class ContextManager:
                 try:
                     history_list = json.loads(conversation.history)
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[官方保存+缓存转正] 解析历史记录成功: {len(history_list)} 条"
                         )
                 except (json.JSONDecodeError, TypeError) as parse_err:
@@ -3174,14 +3174,14 @@ class ContextManager:
                     history_list = []
             else:
                 if DEBUG_MODE:
-                    logger.info("[官方保存+缓存转正] 对话历史为空，从头开始")
+                    logger.debug("[官方保存+缓存转正] 对话历史为空，从头开始")
                 history_list = []
 
             # 6. 添加需要转正的缓存消息（去重）
             cache_converted = 0
             if cached_messages:
                 if DEBUG_MODE:
-                    logger.info("[官方保存+缓存转正] 开始处理缓存消息转正...")
+                    logger.debug("[官方保存+缓存转正] 开始处理缓存消息转正...")
 
                 # 提取现有历史中的消息内容（用于去重）
                 # 辅助函数：将content转换为可哈希格式
@@ -3207,7 +3207,7 @@ class ContextManager:
                             continue
 
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] 现有历史内容数: {len(existing_contents)} 条"
                     )
 
@@ -3256,7 +3256,7 @@ class ContextManager:
                                     image_count += len(cached_image_urls)
 
                                     if DEBUG_MODE:
-                                        logger.info(
+                                        logger.debug(
                                             f"[官方保存+缓存转正] 添加多模态消息: 文本+{len(cached_image_urls)}张图片"
                                         )
                                 else:
@@ -3288,12 +3288,12 @@ class ContextManager:
                 cache_converted = added_count
                 if DEBUG_MODE:
                     image_info = f", 图片{image_count}张" if image_count > 0 else ""
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] 缓存消息处理完成: 总数={len(cached_messages)}, 添加={added_count}, 跳过(重复)={skipped_count}{image_info}"
                     )
             else:
                 if DEBUG_MODE:
-                    logger.info("[官方保存+缓存转正] 无缓存消息需要转正")
+                    logger.debug("[官方保存+缓存转正] 无缓存消息需要转正")
 
             # ========== 保存缓存消息到官方 platform_message_history ==========
             # 正常转正路径也需要将缓存消息写入此表，确保 Web Chat UI 可展示
@@ -3320,7 +3320,7 @@ class ContextManager:
                             sender_name=cached_msg.get("sender_name", "未知用户"),
                         )
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 f"[官方保存+缓存转正] platform_message_history 写入成功: "
                                 f"sender={cached_msg.get('sender_name', '未知')}, "
                                 f"content_preview={msg_content[:80]}..."
@@ -3475,7 +3475,7 @@ class ContextManager:
                                 _parts.append("用户")
                             if bot_message:
                                 _parts.append("AI")
-                            logger.info(
+                            logger.debug(
                                 f"[官方保存+缓存转正] 已保存 {custom_saved} 条消息到自定义存储"
                                 f"（{' + '.join(_parts)}）"
                             )
@@ -3484,11 +3484,11 @@ class ContextManager:
             if user_message:
                 history_list.append({"role": "user", "content": user_message})
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] 添加用户消息: {user_message[:50]}..."
                     )
             elif DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     "[官方保存+缓存转正] user_message为空，本次不添加用户消息到历史"
                 )
 
@@ -3496,16 +3496,16 @@ class ContextManager:
             if bot_message:
                 history_list.append({"role": "assistant", "content": bot_message})
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] 添加AI回复: {bot_message[:50]}..."
                     )
             elif DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     "[官方保存+缓存转正] bot_message为空，本次不添加AI回复到历史"
                 )
 
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[官方保存+缓存转正] 准备保存，总消息数: {len(history_list)} 条"
                 )
 
@@ -3516,16 +3516,16 @@ class ContextManager:
                 original_length = len(history_list)
                 history_list = history_list[-MAX_HISTORY_LENGTH:]
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] ⚠️ 历史过长，已截断: {original_length} -> {MAX_HISTORY_LENGTH} 条"
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         f"[官方保存+缓存转正] 历史截断: {original_length} -> {MAX_HISTORY_LENGTH} 条（避免向量检索溢出）"
                     )
 
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     "[官方保存+缓存转正] ========== 调用底层保存方法 =========="
                 )
 
@@ -3545,25 +3545,25 @@ class ContextManager:
                 )
 
                 if save_kind == "poke_event":
-                    logger.info("=" * 60)
-                    logger.info("✅ [官方保存+戳一戳事件] 额外保存成功！")
-                    logger.info(f"  对话ID: {curr_cid}")
-                    logger.info(f"  总消息数: {len(history_list)}")
-                    logger.info(
+                    logger.debug("=" * 60)
+                    logger.debug("✅ [官方保存+戳一戳事件] 额外保存成功！")
+                    logger.debug(f"  对话ID: {curr_cid}")
+                    logger.debug(f"  总消息数: {len(history_list)}")
+                    logger.debug(
                         f"  事件类型: AI戳一戳事件（额外保存，未转正缓存{cache_converted}条）"
                     )
-                    logger.info("  新增消息: 用户0条 + AI1条")
-                    logger.info("=" * 60)
+                    logger.debug("  新增消息: 用户0条 + AI1条")
+                    logger.debug("=" * 60)
                 else:
-                    logger.info("=" * 60)
-                    logger.info("✅✅✅ [官方保存+缓存转正] 保存成功！")
-                    logger.info(f"  对话ID: {curr_cid}")
-                    logger.info(f"  总消息数: {len(history_list)}")
-                    logger.info(f"  缓存转正: {cache_converted} 条")
+                    logger.debug("=" * 60)
+                    logger.debug("✅✅✅ [官方保存+缓存转正] 保存成功！")
+                    logger.debug(f"  对话ID: {curr_cid}")
+                    logger.debug(f"  总消息数: {len(history_list)}")
+                    logger.debug(f"  缓存转正: {cache_converted} 条")
                     added_ai = 1 if bot_message else 0
                     added_user = 1 if user_message else 0
-                    logger.info(f"  新增消息: 用户{added_user}条 + AI{added_ai}条")
-                    logger.info("=" * 60)
+                    logger.debug(f"  新增消息: 用户{added_user}条 + AI{added_ai}条")
+                    logger.debug("=" * 60)
                 return True
             else:
                 logger.error("❌❌❌ [官方保存+缓存转正] 保存失败！所有方法均失败！")

@@ -121,7 +121,7 @@ class ImageHandler:
                 return True, text_content, [], False
 
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"检测到消息包含 {len(image_components)} 张图片, 是否有文字: {has_text}"
                 )
 
@@ -129,11 +129,11 @@ class ImageHandler:
             # 如果不启用图片处理，所有带图片的消息都要过滤（不管是什么模式）
             if not enable_image_processing:
                 if DEBUG_MODE:
-                    logger.info("图片处理未启用,过滤所有图片")
+                    logger.debug("图片处理未启用,过滤所有图片")
                 # 如果是纯图片消息,丢弃
                 if not has_text:
                     if DEBUG_MODE:
-                        logger.info("检测到纯图片消息,但图片处理未启用,丢弃该消息")
+                        logger.debug("检测到纯图片消息,但图片处理未启用,丢弃该消息")
                     return False, "", [], False
                 else:
                     # 如果是图文混合,移除图片只保留文字
@@ -141,7 +141,7 @@ class ImageHandler:
                         message_chain, self_id=self_id
                     )
                     if DEBUG_MODE:
-                        logger.info(f"移除图片后的消息: {text_only}")
+                        logger.debug(f"移除图片后的消息: {text_only}")
                     return True, text_only, [], False
 
             # === 第二步：根据应用范围(image_to_text_scope)决定是否对当前消息启用图片转文字 ===
@@ -149,7 +149,7 @@ class ImageHandler:
             should_apply_image_to_text = True
 
             # 🔍 调试日志：始终输出scope判断信息，便于排查问题
-            logger.info(
+            logger.debug(
                 f"🖼️ [图片范围检查] scope={scope}, is_at_message={is_at_message}, has_trigger_keyword={has_trigger_keyword}"
             )
 
@@ -169,19 +169,19 @@ class ImageHandler:
                 should_apply_image_to_text = is_at_message or has_trigger_keyword
 
             # 🔍 调试日志：输出最终判断结果
-            logger.info(
+            logger.debug(
                 f"🖼️ [图片范围判断] should_apply_image_to_text={should_apply_image_to_text}"
             )
 
             if not should_apply_image_to_text:
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"图片转文字应用范围为{scope}, 当前消息不符合范围, 过滤图片"
                     )
                 # 如果是纯图片消息,丢弃
                 if not has_text:
                     if DEBUG_MODE:
-                        logger.info("非适用范围内的纯图片消息,丢弃该消息")
+                        logger.debug("非适用范围内的纯图片消息,丢弃该消息")
                     return False, "", [], False
                 else:
                     # 如果是图文混合,移除图片只保留文字
@@ -189,19 +189,19 @@ class ImageHandler:
                         message_chain, self_id=self_id
                     )
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"非适用范围内的图文混合,移除图片保留文字: {text_only}"
                         )
                     return True, text_only, [], False
 
             # === 第三步：启用了图片处理，根据是否配置图片转文字ID决定处理方式 ===
             if DEBUG_MODE:
-                logger.info("图片处理已启用")
+                logger.debug("图片处理已启用")
 
             # 如果没有填写图片转文字的提供商ID,说明使用多模态AI,提取图片URL传递
             if not image_to_text_provider_id:
                 if DEBUG_MODE:
-                    logger.info("未配置图片转文字提供商ID,提取图片URL传递给多模态AI")
+                    logger.debug("未配置图片转文字提供商ID,提取图片URL传递给多模态AI")
                 # 提取图片URL
                 image_urls = await ImageHandler._extract_image_urls(image_components)
                 # 提取文本内容 — 保留 [图片] 标记作为占位符，与视频/语音/文件标记行为一致。
@@ -212,7 +212,7 @@ class ImageHandler:
                     include_images=True,
                 )
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"🟢 [多模态模式] 提取到 {len(image_urls)} 张图片，文本内容: {text_content[:100] if text_content else '(无文本)'}"
                     )
                 return (
@@ -224,7 +224,7 @@ class ImageHandler:
 
             # === 第四步：配置了图片转文字提供商ID，尝试转换图片 ===
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"已配置图片转文字提供商ID,尝试转换图片(超时时间: {timeout}秒)"
                 )
             processed_message = await ImageHandler._convert_images_to_text(
@@ -268,12 +268,12 @@ class ImageHandler:
                         message_chain, self_id=self_id
                     )
                     if DEBUG_MODE:
-                        logger.info(f"降级处理: 移除图片,保留文字: {text_only}")
+                        logger.debug(f"降级处理: 移除图片,保留文字: {text_only}")
                     return True, text_only, [], False  # 图片转文字失败，图片被移除
 
             # 转换成功，返回转换后的消息（图片已转成文字描述）
             if DEBUG_MODE:
-                logger.info(f"🔴 [图片转文字成功] 结果: {processed_message[:150]}")
+                logger.debug(f"🔴 [图片转文字成功] 结果: {processed_message[:150]}")
             return (
                 True,
                 processed_message,
@@ -570,7 +570,7 @@ class ImageHandler:
                 if image_path:
                     image_urls.append(image_path)
                     if DEBUG_MODE:
-                        logger.info(f"提取到图片 {idx}: {image_path}")
+                        logger.debug(f"提取到图片 {idx}: {image_path}")
                 else:
                     logger.warning(f"无法提取图片 {idx} 的路径")
             except Exception as e:
@@ -614,7 +614,7 @@ class ImageHandler:
                         if audio_path:
                             audio_urls.append(audio_path)
                             if DEBUG_MODE:
-                                logger.info(f"[媒体提取] 语音文件: {audio_path}")
+                                logger.debug(f"[媒体提取] 语音文件: {audio_path}")
                     except Exception as e:
                         logger.warning(f"[媒体提取] 提取语音文件路径失败: {e}")
 
@@ -625,7 +625,7 @@ class ImageHandler:
                         if video_path:
                             video_paths.append(video_path)
                             if DEBUG_MODE:
-                                logger.info(f"[媒体提取] 视频文件: {video_path}")
+                                logger.debug(f"[媒体提取] 视频文件: {video_path}")
                     except Exception as e:
                         logger.warning(f"[媒体提取] 提取视频文件路径失败: {e}")
 
@@ -645,7 +645,7 @@ class ImageHandler:
                             }
                         )
                         if DEBUG_MODE:
-                            logger.info(f"[媒体提取] 文件: {file_name} -> {file_path}")
+                            logger.debug(f"[媒体提取] 文件: {file_name} -> {file_path}")
                     except Exception as e:
                         logger.warning(f"[媒体提取] 提取文件信息失败: {e}")
 
@@ -750,14 +750,14 @@ class ImageHandler:
                         continue
 
                     if DEBUG_MODE:
-                        logger.info(f"正在转换图片 {idx}: {image_path}")
+                        logger.debug(f"正在转换图片 {idx}: {image_path}")
 
                     # 🆕 v1.2.0: 先检查本地缓存，命中则跳过AI调用
                     if image_description_cache and image_description_cache.enabled:
                         cached_desc = image_description_cache.lookup(image_path)
                         if cached_desc:
                             image_descriptions[idx] = cached_desc
-                            logger.info(
+                            logger.debug(
                                 f"[图片缓存] 图片 {idx} 命中缓存，跳过AI调用 (省钱!)"
                             )
                             continue
@@ -782,7 +782,7 @@ class ImageHandler:
                     if description:
                         image_descriptions[idx] = description
                         if DEBUG_MODE:
-                            logger.info(f"图片 {idx} 转换成功: {description[:50]}...")
+                            logger.debug(f"图片 {idx} 转换成功: {description[:50]}...")
 
                         # 🆕 v1.2.0: AI转换成功后，保存到本地缓存
                         # 🔧 防御性编程：保存前再次检查缓存中是否已存在
@@ -813,7 +813,7 @@ class ImageHandler:
                 image_descriptions=image_descriptions,
             )
             if DEBUG_MODE:
-                logger.info(f"图片转文字完成,处理后的消息: {result_text[:100]}...")
+                logger.debug(f"图片转文字完成,处理后的消息: {result_text[:100]}...")
             return result_text
 
         except Exception as e:

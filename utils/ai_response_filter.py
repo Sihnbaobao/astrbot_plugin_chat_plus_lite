@@ -136,9 +136,9 @@ class AIResponseFilter:
         response = AIResponseFilter._strip_answer_prefixes(response)
 
         if response != original_response and DEBUG_MODE:
-            logger.info("[AI响应过滤] 检测到模型原生思考链并已过滤")
-            logger.info(f"  原始响应前100字符: {original_response[:100]}...")
-            logger.info(f"  过滤后响应: {response}")
+            logger.debug("[AI响应过滤] 检测到模型原生思考链并已过滤")
+            logger.debug(f"  原始响应前100字符: {original_response[:100]}...")
+            logger.debug(f"  过滤后响应: {response}")
 
         return response
 

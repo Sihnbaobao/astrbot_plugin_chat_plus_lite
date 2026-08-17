@@ -87,7 +87,7 @@ class PlatformLTMHelper:
             ltm = PlatformLTMHelper._get_platform_ltm(context)
             if not ltm:
                 if DEBUG_MODE:
-                    logger.info("[PlatformLTM] 未找到平台 LTM 实例")
+                    logger.debug("[PlatformLTM] 未找到平台 LTM 实例")
                 return False, None
 
             # 检查 LTM 是否启用了图片理解功能（快速失败点）
@@ -95,7 +95,7 @@ class PlatformLTMHelper:
             if not cfg.get("image_caption", False):
                 # 用户未开启图片理解，立即返回，零开销
                 if DEBUG_MODE:
-                    logger.info("[PlatformLTM] 平台未启用图片理解功能，快速跳过")
+                    logger.debug("[PlatformLTM] 平台未启用图片理解功能，快速跳过")
                 return False, None
 
             # === 第二阶段：智能等待获取图片描述 ===
@@ -117,7 +117,7 @@ class PlatformLTMHelper:
             # 如果 max_wait <= 0，不等待直接返回
             if max_wait <= 0 or max_retry_count <= 0:
                 if DEBUG_MODE:
-                    logger.info("[PlatformLTM] max_wait=0，不等待直接返回")
+                    logger.debug("[PlatformLTM] max_wait=0，不等待直接返回")
                 return False, None
 
             # 检查是否需要等待（平台可能正在处理中）
@@ -129,12 +129,12 @@ class PlatformLTMHelper:
             if not should_wait:
                 # 不需要等待（可能是会话不存在、消息不匹配等）
                 if DEBUG_MODE:
-                    logger.info("[PlatformLTM] 无需等待平台处理")
+                    logger.debug("[PlatformLTM] 无需等待平台处理")
                 return False, None
 
             # === 第三阶段：等待平台处理完成 ===
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"[PlatformLTM] 检测到平台可能正在处理图片，开始等待(最多{max_wait}秒)..."
                 )
 
@@ -158,7 +158,7 @@ class PlatformLTMHelper:
                 if result[0]:
                     # 成功获取图片描述
                     if DEBUG_MODE:
-                        logger.info(f"[PlatformLTM] 第 {retry + 1} 次重试成功")
+                        logger.debug(f"[PlatformLTM] 第 {retry + 1} 次重试成功")
                     return result
 
                 # 检查是否平台处理失败（出现 [Image] 而非 [Image: xxx]）
@@ -166,7 +166,7 @@ class PlatformLTMHelper:
                     ltm, umo, sender_name, msg_timestamp
                 ):
                     if DEBUG_MODE:
-                        logger.info("[PlatformLTM] 检测到平台图片处理失败，停止等待")
+                        logger.debug("[PlatformLTM] 检测到平台图片处理失败，停止等待")
                     return False, None
 
                 # 🔧 优化：如果会话从未存在，且已经等待了足够长时间（超过快速检查阶段），
@@ -177,7 +177,7 @@ class PlatformLTMHelper:
                     )
                     if not current_session_exists:
                         if DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 "[PlatformLTM] 会话一直不存在，平台可能不会处理这条消息，停止等待"
                             )
                         return False, None
@@ -187,7 +187,7 @@ class PlatformLTMHelper:
 
             # 超时，返回失败
             if DEBUG_MODE:
-                logger.info("[PlatformLTM] 等待超时，平台可能处理失败")
+                logger.debug("[PlatformLTM] 等待超时，平台可能处理失败")
             return False, None
 
         except Exception as e:
@@ -279,7 +279,7 @@ class PlatformLTMHelper:
 
         except Exception as e:
             if DEBUG_MODE:
-                logger.info(f"[PlatformLTM] 获取消息时间戳失败: {e}")
+                logger.debug(f"[PlatformLTM] 获取消息时间戳失败: {e}")
             return None
 
     @staticmethod
@@ -348,7 +348,7 @@ class PlatformLTMHelper:
             processed_text = PlatformLTMHelper._extract_message_content(matched_chat)
 
             if processed_text:
-                logger.info(
+                logger.debug(
                     f"🖼️ [PlatformLTM] 成功提取平台图片描述: {processed_text[:100]}..."
                 )
                 return True, processed_text
@@ -552,7 +552,7 @@ class PlatformLTMHelper:
             if umo not in ltm.session_chats:
                 # 🔧 修复：会话不存在时，可能是平台 LTM 还没处理到，应该等待
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         "[PlatformLTM] 会话不存在，平台可能还没处理到，需要等待"
                     )
                 return True
@@ -561,14 +561,14 @@ class PlatformLTMHelper:
             if not session_chats:
                 # 🔧 修复：会话为空时，可能是平台 LTM 还没处理到，应该等待
                 if DEBUG_MODE:
-                    logger.info("[PlatformLTM] 会话为空，平台可能还没处理到，需要等待")
+                    logger.debug("[PlatformLTM] 会话为空，平台可能还没处理到，需要等待")
                 return True
 
             # 检查是否是当前发送者的消息
             if not sender_name:
                 # 🔧 修复：即使没有发送者名称，也应该等待（无法精确匹配，但可以尝试）
                 if DEBUG_MODE:
-                    logger.info("[PlatformLTM] 发送者名称为空，但仍尝试等待")
+                    logger.debug("[PlatformLTM] 发送者名称为空，但仍尝试等待")
                 return True
 
             # 🔧 如果有时间戳，精确查找
@@ -711,7 +711,7 @@ class PlatformLTMHelper:
                         star_inst = star_md.star_cls
                         if hasattr(star_inst, "ltm") and star_inst.ltm is not None:
                             if DEBUG_MODE:
-                                logger.info(
+                                logger.debug(
                                     f"[PlatformLTM] 从插件 {star_md.name} 找到 LTM 实例"
                                 )
                             return star_inst.ltm
@@ -725,7 +725,7 @@ class PlatformLTMHelper:
                         star_inst = star_md.star_cls
                         if hasattr(star_inst, "ltm") and star_inst.ltm is not None:
                             if DEBUG_MODE:
-                                logger.info(
+                                logger.debug(
                                     f"[PlatformLTM] 从 star_registry 的插件 {star_md.name} 找到 LTM 实例"
                                 )
                             return star_inst.ltm
@@ -764,7 +764,7 @@ class PlatformLTMHelper:
 
         except Exception as e:
             if DEBUG_MODE:
-                logger.info(f"[PlatformLTM] 获取 LTM 实例失败: {e}")
+                logger.debug(f"[PlatformLTM] 获取 LTM 实例失败: {e}")
             return None
 
     @staticmethod
@@ -840,7 +840,7 @@ class PlatformLTMHelper:
 
         except Exception as e:
             if DEBUG_MODE:
-                logger.info(f"[PlatformLTM] 验证消息匹配时出错: {e}")
+                logger.debug(f"[PlatformLTM] 验证消息匹配时出错: {e}")
             return False
 
     @staticmethod
@@ -877,7 +877,7 @@ class PlatformLTMHelper:
 
         except Exception as e:
             if DEBUG_MODE:
-                logger.info(f"[PlatformLTM] 提取消息内容时出错: {e}")
+                logger.debug(f"[PlatformLTM] 提取消息内容时出错: {e}")
             return None
 
     @staticmethod

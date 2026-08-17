@@ -436,7 +436,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.5.0-lite（精简重构版）")
+        logger.info("群聊增强插件已加载 - V2.6.0-lite（人格主导重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -692,7 +692,7 @@ class ChatPlus(Star):
         )
         return json_response(
             {
-                "version": "V2.5.0-lite",
+                "version": "V2.6.0-lite",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -2076,7 +2076,7 @@ class ChatPlus(Star):
             # AI决策判定不通过时，将消息添加到缓存
             if cached_message_data:
                 self.cache_manager.add_to_cache(chat_id, cached_message_data, source="AI决策过滤")
-                logger.info("📦 决策AI判断: 不回复此消息，已缓存消息，等待后续转正")
+                logger.debug("📦 决策AI判断: 不回复此消息，已缓存消息，等待后续转正")
 
             # Smart 批次下被吸收但未触发回复的后续消息回落为普通缓存
             if self.concurrent_mode == "smart":
@@ -2636,7 +2636,7 @@ class ChatPlus(Star):
                 logger.info(f"【步骤9】决策AI判断完成，耗时: {_decision_elapsed:.2f}秒")
 
             if not should_reply:
-                logger.info("决策AI判断: 不应该回复此消息")
+                logger.debug("决策AI判断: 不应该回复此消息")
                 # 清理pre_decision缓存（防止内存残留）
                 try:
                     ckey = ProbabilityManager.get_chat_key(
@@ -2651,7 +2651,7 @@ class ChatPlus(Star):
                     pass
                 return False
 
-            logger.info("决策AI判断: 应该回复此消息")
+            logger.debug("决策AI判断: 应该回复此消息")
             return True
         else:
             if self.debug_mode:
@@ -3504,7 +3504,7 @@ class ChatPlus(Star):
                 f"（超过{self.reply_timeout_warning_threshold}秒阈值）"
             )
 
-        logger.info("消息处理完成,已发送回复并保存历史")
+        logger.debug("消息处理完成,已发送回复并保存历史")
 
         # 回复后戳一戳功能
         if self.poke_after_reply_enabled:

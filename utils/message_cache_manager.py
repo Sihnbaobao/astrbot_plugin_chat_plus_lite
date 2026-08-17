@@ -178,7 +178,7 @@ class MessageCacheManager:
 
         # 剥离后如果是空消息，直接跳过不缓存
         if not message_data.get("content", ""):
-            logger.info(f"[缓存管理器] 消息剥离后为空，跳过缓存 (来源: {source})")
+            logger.debug(f"[缓存管理器] 消息剥离后为空，跳过缓存 (来源: {source})")
             return 0
 
         # 初始化缓存
@@ -208,7 +208,7 @@ class MessageCacheManager:
                 self.pending_messages_cache[chat_id]
             ):
                 removed = old_count - len(self.pending_messages_cache[chat_id])
-                logger.info(
+                logger.debug(
                     f"  [缓存管理器] 已清理过期缓存: {removed} 条（超过{self.cache_ttl_seconds}秒）"
                 )
 
@@ -219,7 +219,7 @@ class MessageCacheManager:
                 cleared = len(self.pending_messages_cache[chat_id])
                 self.pending_messages_cache[chat_id] = []
                 if self.debug_mode:
-                    logger.info(
+                    logger.debug(
                         f"  [缓存管理器] 数量限制为0，清空所有缓存: {cleared} 条"
                     )
         elif self.max_cache_count > 0:
@@ -233,7 +233,7 @@ class MessageCacheManager:
                 # 计算需要删除的数量（至少删除1条为新消息腾出空间）
                 to_remove = current_count - self.max_cache_count + 1
                 if self.debug_mode:
-                    logger.info(
+                    logger.debug(
                         f"  [缓存管理器] 数量达到上限({self.max_cache_count}条)，批量移除最旧的{to_remove}条消息"
                     )
                 # 批量删除
@@ -251,7 +251,7 @@ class MessageCacheManager:
                 if cached_msg.get("message_id") == message_id:
                     if self.debug_mode:
                         content = message_data.get("content", "")
-                        logger.info(
+                        logger.debug(
                             f"  [缓存防御性去重] 检测到重复 message_id，跳过: {content[:50]}..."
                         )
                     return len(self.pending_messages_cache[chat_id])
@@ -262,14 +262,14 @@ class MessageCacheManager:
         cache_count = len(self.pending_messages_cache[chat_id])
 
         # 日志输出
-        logger.info(f"📦 [缓存-{source}] 已缓存消息 (共{cache_count}条)")
+        logger.debug(f"📦 [缓存-{source}] 已缓存消息 (共{cache_count}条)")
 
         if self.debug_mode:
             content_preview = ContextManager._content_to_safe_text(
                 message_data.get("content", "")
             )
             content_preview = content_preview[:100] if content_preview else "(空)"
-            logger.info(f"  [缓存管理器] 缓存内容: {content_preview}...")
+            logger.debug(f"  [缓存管理器] 缓存内容: {content_preview}...")
 
         return cache_count
 
@@ -438,7 +438,7 @@ class MessageCacheManager:
                         dedup_skipped += 1
                         if self.debug_mode:
                             content = cached_msg.get("content", "")
-                            logger.info(f"  [缓存去重] 跳过重复消息: {content[:50]}...")
+                            logger.debug(f"  [缓存去重] 跳过重复消息: {content[:50]}...")
                         continue
 
                     # 未重复，添加到合并列表
@@ -462,7 +462,7 @@ class MessageCacheManager:
             cached_messages_to_merge = cached_messages
 
         if self.debug_mode:
-            logger.info(
+            logger.debug(
                 f"  [缓存管理器] 缓存候选: {cached_candidates_count} 条, "
                 f"去重跳过: {dedup_skipped} 条, 计划合并: {len(cached_messages_to_merge)} 条"
             )
@@ -528,7 +528,7 @@ class MessageCacheManager:
             )
 
             if self.debug_mode:
-                logger.info(
+                logger.debug(
                     f"  [缓存管理器] 已合并 {len(cached_astrbot_messages)} 条缓存消息到历史"
                 )
 
@@ -566,7 +566,7 @@ class MessageCacheManager:
         # 如果主动对话正在处理，跳过缓存转正
         if proactive_processing:
             if self.debug_mode:
-                logger.info("  [缓存管理器] 主动对话正在处理，跳过缓存转正")
+                logger.debug("  [缓存管理器] 主动对话正在处理，跳过缓存转正")
             return []
 
         # 过滤要转正的消息（Phase-1：仅处理普通缓存，跳过窗口缓冲消息）
@@ -591,7 +591,7 @@ class MessageCacheManager:
             if msg_id and msg_id in processing_msg_ids:
                 skipped_processing += 1
                 if self.debug_mode:
-                    logger.info(
+                    logger.debug(
                         f"  [缓存管理器] 跳过正在处理中的消息: {msg_id[:30]}..."
                     )
                 continue
@@ -603,19 +603,19 @@ class MessageCacheManager:
             raw_cached.append(msg)
 
         if self.debug_mode and skipped_window_buffered > 0:
-            logger.info(
+            logger.debug(
                 f"  [缓存管理器] Phase-1 跳过 {skipped_window_buffered} 条窗口缓冲消息（待Phase-2保存）"
             )
 
         if skipped_processing > 0:
-            logger.info(
+            logger.debug(
                 f"  [缓存管理器] 跳过 {skipped_processing} 条正在处理中的消息（并发保护）"
             )
 
         if not raw_cached:
             return []
 
-        logger.info(f"  [缓存管理器] 发现 {len(raw_cached)} 条待转正的缓存消息")
+        logger.debug(f"  [缓存管理器] 发现 {len(raw_cached)} 条待转正的缓存消息")
 
         # 处理每条缓存消息，添加元数据
         cached_messages_to_convert = []
@@ -683,7 +683,7 @@ class MessageCacheManager:
                     image_info = (
                         f", 图片{len(cached_image_urls)}张" if cached_image_urls else ""
                     )
-                    logger.info(
+                    logger.debug(
                         f"  [缓存管理器] 转正消息（已添加元数据，发送者: {sender_info}{image_info}）: {msg_content[:100]}..."
                     )
 
@@ -715,7 +715,7 @@ class MessageCacheManager:
 
         # 如果主动对话正在处理，跳过缓存清理
         if proactive_processing:
-            logger.info(
+            logger.debug(
                 "  [缓存管理器] 主动对话正在处理，跳过缓存清理（由主动对话负责）"
             )
             return 0, len(self.pending_messages_cache[chat_id])
@@ -748,12 +748,12 @@ class MessageCacheManager:
         remaining_count = len(new_cache)
 
         if remaining_count > 0:
-            logger.info(
+            logger.debug(
                 f"  [缓存管理器] 已清理 {cleared_count} 条已保存的缓存消息，"
                 f"保留 {remaining_count} 条（正在处理中或后续消息）"
             )
         else:
-            logger.info(f"  [缓存管理器] 已清空消息缓存: {cleared_count} 条")
+            logger.debug(f"  [缓存管理器] 已清空消息缓存: {cleared_count} 条")
             # 会话已无缓存消息，移除 key 防止 dict 无限膨胀
             del self.pending_messages_cache[chat_id]
 
@@ -891,7 +891,7 @@ class MessageCacheManager:
 
         if converted_count > 0:
             _token_info = f"（令牌={token}）" if token > 0 else "（无令牌，全部转换）"
-            logger.info(
+            logger.debug(
                 f"  [缓存管理器] 已将用户 {sender_id} 的 {converted_count} 条"
                 f" 窗口缓冲消息转换为普通缓存{_token_info}，避免上下文顺序错乱"
             )
@@ -920,7 +920,7 @@ class MessageCacheManager:
         if not window_msgs:
             return []
 
-        logger.info(
+        logger.debug(
             f"  [缓存管理器] Phase-2: 发现 {len(window_msgs)} 条窗口缓冲消息待转正"
         )
 
@@ -993,13 +993,13 @@ class MessageCacheManager:
                     {"role": "assistant", "content": smart_merged_reply}
                 )
                 if self.debug_mode:
-                    logger.info(
+                    logger.debug(
                         "  [缓存管理器] Phase-2 Smart合并消息: 已添加虚拟AI回复标记"
                     )
 
             if self.debug_mode:
                 sender_info = f"{cached_msg.get('sender_name')}(ID: {cached_msg.get('sender_id')})"
-                logger.info(
+                logger.debug(
                     f"  [缓存管理器] Phase-2 转正消息（发送者: {sender_info}）: {msg_content[:100]}..."
                 )
 
@@ -1051,7 +1051,7 @@ class MessageCacheManager:
             del self.pending_messages_cache[chat_id]
 
         if cleared_count > 0:
-            logger.info(
+            logger.debug(
                 f"  [缓存管理器] Phase-2: 已清理 {cleared_count} 条窗口缓冲消息"
             )
 

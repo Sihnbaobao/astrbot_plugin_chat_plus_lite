@@ -89,7 +89,7 @@ class MemoryInjector:
                 initializer = getattr(plugin_instance, "initializer", None)
                 if not initializer:
                     if DEBUG_MODE:
-                        logger.info("[LivingMemory-v2] 插件缺少 initializer 属性")
+                        logger.debug("[LivingMemory-v2] 插件缺少 initializer 属性")
                     return plugin_instance, False, None
 
                 is_initialized = getattr(
@@ -113,7 +113,7 @@ class MemoryInjector:
                         ) or getattr(initializer, "_initialization_complete", False)
                         memory_engine = getattr(initializer, "memory_engine", None)
                         if memory_engine and DEBUG_MODE:
-                            logger.info(
+                            logger.debug(
                                 "[LivingMemory-v1] 自动降级为v2路径（检测到initializer架构）"
                             )
 
@@ -121,7 +121,7 @@ class MemoryInjector:
 
         except Exception as e:
             if DEBUG_MODE:
-                logger.info(f"[LivingMemory-{version}] 获取插件状态失败: {e}")
+                logger.debug(f"[LivingMemory-{version}] 获取插件状态失败: {e}")
             return None, False, None
 
     @staticmethod
@@ -165,7 +165,7 @@ class MemoryInjector:
         """
         if compat_mode == "off":
             if DEBUG_MODE:
-                logger.info("[LivingMemory] 人格隔离开关已关闭，跳过 persona_id 解析")
+                logger.debug("[LivingMemory] 人格隔离开关已关闭，跳过 persona_id 解析")
             return None
 
         persona_mgr = getattr(context, "persona_manager", None)
@@ -204,7 +204,7 @@ class MemoryInjector:
                             conversation_persona_id = getattr(conv, "persona_id", None)
                 except Exception as e:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[LivingMemory] 通过 conversation_manager 获取 persona_id 失败: {e}"
                         )
 
@@ -224,7 +224,7 @@ class MemoryInjector:
                 return None
             except Exception as e:
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[LivingMemory] resolve_selected_persona 解析失败: {e}"
                     )
                 return None
@@ -242,7 +242,7 @@ class MemoryInjector:
                 return None
             except Exception as e:
                 if DEBUG_MODE:
-                    logger.info(f"[LivingMemory] get_default_persona_v3 解析失败: {e}")
+                    logger.debug(f"[LivingMemory] get_default_persona_v3 解析失败: {e}")
                 return None
 
         async def _try_legacy_key_lookup() -> Optional[str]:
@@ -264,7 +264,7 @@ class MemoryInjector:
                 return None
             except Exception as e:
                 if DEBUG_MODE:
-                    logger.info(f"[LivingMemory] get_personas_by_key 解析失败: {e}")
+                    logger.debug(f"[LivingMemory] get_personas_by_key 解析失败: {e}")
                 return None
 
         if compat_mode == "resolver_only":
@@ -308,19 +308,19 @@ class MemoryInjector:
                 tool_manager = context.get_llm_tool_manager()
                 if not tool_manager:
                     if DEBUG_MODE:
-                        logger.info("[Legacy模式] 无法获取LLM工具管理器")
+                        logger.debug("[Legacy模式] 无法获取LLM工具管理器")
                     return False
 
                 get_memories_tool = tool_manager.get_func("get_memories")
                 if get_memories_tool:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             "[Legacy模式] 检测到 strbot_plugin_play_sy 插件已安装"
                         )
                     return True
 
                 if DEBUG_MODE:
-                    logger.info("[Legacy模式] 未检测到 strbot_plugin_play_sy 插件")
+                    logger.debug("[Legacy模式] 未检测到 strbot_plugin_play_sy 插件")
                 return False
 
             elif mode == "livingmemory":
@@ -332,27 +332,27 @@ class MemoryInjector:
 
                 if not plugin_instance:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[LivingMemory-{version}模式] 未找到 LivingMemory 插件或未激活"
                         )
                     return False
 
                 if not is_initialized:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[LivingMemory-{version}模式] LivingMemory 插件尚未完成初始化"
                         )
                     return False
 
                 if not memory_engine:
                     if DEBUG_MODE:
-                        logger.info(
+                        logger.debug(
                             f"[LivingMemory-{version}模式] LivingMemory 插件的 memory_engine 未初始化"
                         )
                     return False
 
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[LivingMemory-{version}模式] 检测到 LivingMemory 插件已就绪"
                     )
                 return True
@@ -393,17 +393,17 @@ class MemoryInjector:
         for v in ("v2", "v1"):
             if MemoryInjector.check_memory_plugin_available(context, "livingmemory", v):
                 if DEBUG_MODE:
-                    logger.info(f"[auto模式] 检测到 LivingMemory 插件可用（{v}版本）")
+                    logger.debug(f"[auto模式] 检测到 LivingMemory 插件可用（{v}版本）")
                 return ("livingmemory", v)
 
         # 回退到 Legacy
         if MemoryInjector.check_memory_plugin_available(context, "legacy", version):
             if DEBUG_MODE:
-                logger.info("[auto模式] 检测到 Legacy 记忆插件可用")
+                logger.debug("[auto模式] 检测到 Legacy 记忆插件可用")
             return ("legacy", version)
 
         if DEBUG_MODE:
-            logger.info("[auto模式] 未检测到任何可用的记忆插件")
+            logger.debug("[auto模式] 未检测到任何可用的记忆插件")
         return (None, version)
 
     @staticmethod
@@ -462,7 +462,7 @@ class MemoryInjector:
                     return None
 
                 if hasattr(event, "unified_msg_origin"):
-                    logger.info(
+                    logger.debug(
                         f"[Legacy模式] 正在调用记忆插件获取记忆...\n"
                         f"  🔑 unified_msg_origin: {event.unified_msg_origin}"
                     )
@@ -475,12 +475,12 @@ class MemoryInjector:
                     return None
 
                 if memory_result and isinstance(memory_result, str):
-                    logger.info(f"[Legacy模式] 成功获取记忆: {len(memory_result)} 字符")
+                    logger.debug(f"[Legacy模式] 成功获取记忆: {len(memory_result)} 字符")
                     if DEBUG_MODE:
-                        logger.info(f"[Legacy模式] 记忆内容:\n{memory_result}")
+                        logger.debug(f"[Legacy模式] 记忆内容:\n{memory_result}")
                     return memory_result
                 else:
-                    logger.info("[Legacy模式] 记忆插件返回空内容")
+                    logger.debug("[Legacy模式] 记忆插件返回空内容")
                     return "当前没有任何记忆。"
 
             elif mode == "livingmemory":
@@ -530,11 +530,11 @@ class MemoryInjector:
                 actual_top_k = top_k
                 if top_k == -1:
                     actual_top_k = 1000  # 设置一个合理的上限，避免性能问题
-                    logger.info(
+                    logger.debug(
                         f"[LivingMemory-{version}模式] top_k=-1，将召回所有相关记忆（最多{actual_top_k}条）"
                     )
 
-                logger.info(
+                logger.debug(
                     f"[LivingMemory-{version}模式] 正在调用记忆引擎...\n"
                     f"  🔑 session_id: {session_id}\n"
                     f"  👤 persona_id: {persona_id}\n"
@@ -554,7 +554,7 @@ class MemoryInjector:
                 )
 
                 if not memories:
-                    logger.info(f"[LivingMemory-{version}模式] 未找到相关记忆")
+                    logger.debug(f"[LivingMemory-{version}模式] 未找到相关记忆")
                     return "当前没有任何记忆。"
 
                 # 格式化记忆内容（详细格式：类似Legacy模式，含时间戳）
@@ -608,12 +608,12 @@ class MemoryInjector:
                     memory_texts.append(memory_text)
 
                 result = "\n\n".join(memory_texts)
-                logger.info(
+                logger.debug(
                     f"[LivingMemory-{version}模式] 成功获取 {len(memories)} 条记忆，总长度: {len(result)} 字符"
                 )
 
                 if DEBUG_MODE:
-                    logger.info(
+                    logger.debug(
                         f"[LivingMemory-{version}模式] 记忆内容:\n"
                         f"{'=' * 60}\n"
                         f"{result}\n"
@@ -660,7 +660,7 @@ class MemoryInjector:
             记忆文本，失败返回None
         """
         try:
-            logger.info(
+            logger.debug(
                 f"[主动对话-{mode}-{version}模式] 调用记忆插件获取记忆\n"
                 f"  unified_msg_origin: {unified_msg_origin}"
             )
@@ -699,7 +699,7 @@ class MemoryInjector:
 
                 # 处理 top_k=-1 的情况
                 if top_k == -1:
-                    logger.info(
+                    logger.debug(
                         f"[主动对话-LivingMemory-{version}] 配置为召回所有记忆（最多1000条）"
                     )
 
@@ -745,14 +745,14 @@ class MemoryInjector:
             注入记忆后的文本
         """
         if not memories or not memories.strip():
-            logger.info("没有记忆内容需要注入")
+            logger.debug("没有记忆内容需要注入")
             return original_message
 
         # 🔧 幂等性检查：避免重复注入
         if "=== 背景信息 ===" in original_message:
             logger.warning("检测到消息中已存在背景信息标记，跳过重复注入")
             if DEBUG_MODE:
-                logger.info(
+                logger.debug(
                     f"原始消息已包含记忆内容，长度: {len(original_message)} 字符"
                 )
             return original_message
@@ -761,7 +761,7 @@ class MemoryInjector:
         injected_message = original_message + "\n\n=== 背景信息 ===\n" + memories
         injected_message += "\n\n(这些信息可能对理解当前对话有帮助，请自然地融入到你的回答中，而不要明确提及)"
 
-        logger.info(f"成功注入记忆: {len(memories)} 字符")
+        logger.debug(f"成功注入记忆: {len(memories)} 字符")
         if DEBUG_MODE:
-            logger.info(f"注入后的消息内容:\n{injected_message}")
+            logger.debug(f"注入后的消息内容:\n{injected_message}")
         return injected_message
