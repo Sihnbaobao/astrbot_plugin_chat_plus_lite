@@ -12,6 +12,7 @@ from .image_handler import ImageHandler
 from .context_manager import ContextManager
 from .decision_ai import DecisionAI
 from .reply_handler import ReplyHandler
+from .save_processor import SaveMixin
 from .command_processor import CommandMixin
 from .mention_processor import MentionMixin
 from .poke_processor import PokeMixin
@@ -50,6 +51,7 @@ __all__ = [
     "PokeMixin",
     "MentionMixin",
     "CommandMixin",
+    "SaveMixin",
     "MemoryInjector",
     "KeywordChecker",
     "MessageCleaner",
