@@ -21,8 +21,6 @@ from .ai_response_filter import AIResponseFilter
 from .platform_ltm_helper import PlatformLTMHelper
 from .image_description_cache import ImageDescriptionCache
 from .emoji_detector import EmojiDetector, EMOJI_MARKER
-from .forward_message_parser import ForwardMessageParser
-from .welcome_message_parser import WelcomeMessageParser
 from .smart_concurrent_manager import SmartConcurrentManager
 from .ai_error_formatter import format_ai_error
 
@@ -54,8 +52,6 @@ __all__ = [
     "ImageDescriptionCache",
     "EmojiDetector",
     "EMOJI_MARKER",
-    "ForwardMessageParser",
-    "WelcomeMessageParser",
     "SmartConcurrentManager",
     "format_ai_error",
     "DEBUG_MODE",

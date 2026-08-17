@@ -72,12 +72,9 @@ from .utils import (
     PlatformLTMHelper,
     EmojiDetector,
     EMOJI_MARKER,
-    ForwardMessageParser,
-    WelcomeMessageParser,
     SmartConcurrentManager,
 )
 from .utils.image_description_cache import ImageDescriptionCache
-from .utils.content_filter import ContentFilterManager
 from .utils.message_cache_manager import MessageCacheManager
 
 # aiocqhttp 平台相关（戳一戳功能仅支持该平台）
@@ -177,15 +174,6 @@ class ChatPlus(Star):
         self.pending_cache_ttl_seconds = self._cfg("pending_cache_ttl_seconds", 1800)
 
         # ========== 转发/入群解析配置 ==========
-        self.enable_forward_message_parsing = self._cfg(
-            "enable_forward_message_parsing", False
-        )
-        self.forward_max_nesting_depth = self._cfg("forward_max_nesting_depth", 3)
-        self.enable_welcome_message_parsing = self._cfg(
-            "enable_welcome_message_parsing", False
-        )
-        self.welcome_message_mode = self._cfg("welcome_message_mode", "skip_probability")
-
         # ========== 图片处理配置 ==========
         self.enable_image_processing = self._cfg("enable_image_processing", False)
         self.image_to_text_scope = self._cfg("image_to_text_scope", "mention_only")
@@ -324,14 +312,6 @@ class ChatPlus(Star):
             "smart_concurrent_claim_delay", 0.3
         )
 
-        # ========== 内容过滤配置 ==========
-        self.enable_output_content_filter = self._cfg(
-            "enable_output_content_filter", False
-        )
-        self.output_content_filter_rules = self._cfg("output_content_filter_rules", [])
-        self.enable_save_content_filter = self._cfg("enable_save_content_filter", False)
-        self.save_content_filter_rules = self._cfg("save_content_filter_rules", [])
-
         # ========== 性能警告阈值 ==========
         self.reply_timeout_warning_threshold = self._cfg(
             "reply_timeout_warning_threshold", 120
@@ -378,14 +358,6 @@ class ChatPlus(Star):
             enabled=self.enable_image_description_cache,
         )
 
-        # AI回复内容过滤器
-        self.content_filter = ContentFilterManager(
-            enable_output_filter=self.enable_output_content_filter,
-            output_filter_rules=self.output_content_filter_rules,
-            enable_save_filter=self.enable_save_content_filter,
-            save_filter_rules=self.save_content_filter_rules,
-            debug_mode=self.debug_mode,
-        )
 
         # ========== 状态容器 ==========
         # 标记本插件正在处理的消息（用于 after_message_sent 筛选）
@@ -436,7 +408,7 @@ class ChatPlus(Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - V2.6.0-lite（人格主导重构版）")
+        logger.info("群聊增强插件已加载 - V2.6.1-lite（人格主导重构 · 配置页精简）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
         logger.info(f"初始读空气概率: {self.initial_probability}")
         logger.info(f"回复后概率: {self.after_reply_probability}")
@@ -595,8 +567,6 @@ class ChatPlus(Star):
         "probability_filter_cache_delay": "probability_filter_cache_delay",
         "reply_timeout_warning_threshold": "reply_timeout_warning_threshold",
         "reply_generation_timeout_warning": "reply_generation_timeout_warning",
-        "enable_welcome_message_parsing": "enable_welcome_message_parsing",
-        "welcome_message_mode": "welcome_message_mode",
         "gcp_clear_image_cache_allowed_user_ids": "gcp_clear_image_cache_allowed_user_ids",
         "ignore_at_others_mode": "ignore_at_others_mode",
         "platform_image_caption_fast_check_count": "platform_image_caption_fast_check_count",
@@ -692,7 +662,7 @@ class ChatPlus(Star):
         )
         return json_response(
             {
-                "version": "V2.6.0-lite",
+                "version": "V2.6.1-lite",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -1537,44 +1507,6 @@ class ChatPlus(Star):
             # 用户黑名单
             if self._is_user_blacklisted(event):
                 return
-
-            # 新成员入群消息解析
-            if self.enable_welcome_message_parsing:
-                try:
-                    _welcome_parsed = await WelcomeMessageParser.try_parse_and_replace(
-                        event,
-                        include_sender_info=self.include_sender_info,
-                        include_timestamp=self.include_timestamp,
-                        debug_mode=self.debug_mode,
-                    )
-                    if _welcome_parsed:
-                        if self.debug_mode:
-                            logger.info("[入群解析] 群聊：已成功解析新成员入群事件")
-                        if self.welcome_message_mode == "parse_only":
-                            return
-                        event.set_extra("is_welcome_message", True)
-                        event.set_extra("welcome_message_mode", self.welcome_message_mode)
-                except Exception as e:
-                    logger.warning(
-                        f"[入群解析] 群聊：解析入群事件时出错（已跳过，不影响后续处理）: {e}"
-                    )
-
-            # 转发消息解析
-            if self.enable_forward_message_parsing:
-                try:
-                    _forward_parsed = await ForwardMessageParser.try_parse_and_replace(
-                        event,
-                        include_sender_info=self.include_sender_info,
-                        include_timestamp=self.include_timestamp,
-                        max_nesting_depth=self.forward_max_nesting_depth,
-                        debug_mode=self.debug_mode,
-                    )
-                    if _forward_parsed and self.debug_mode:
-                        logger.info("[转发消息] 群聊：已成功解析转发消息并替换为纯文本")
-                except Exception as e:
-                    logger.warning(
-                        f"[转发消息] 群聊：解析转发消息时出错（已跳过，不影响后续处理）: {e}"
-                    )
 
             # @全体成员过滤
             if self._should_ignore_at_all(event):
@@ -4848,10 +4780,6 @@ class ChatPlus(Star):
 
             # 应用输出内容过滤（独立于保存过滤）
             filtered_reply_text = reply_text
-            try:
-                filtered_reply_text = self.content_filter.process_for_output(reply_text)
-            except Exception:
-                logger.error("[输出过滤] 过滤时发生异常，将使用原始内容", exc_info=True)
             if filtered_reply_text != reply_text:
                 logger.info(
                     f"[输出过滤] 已过滤AI回复，原长度: {len(reply_text)}, 过滤后: {len(filtered_reply_text)}"
@@ -5097,25 +5025,13 @@ class ChatPlus(Star):
                     )
 
                 bot_reply_to_save = original_bot_reply_text
-                try:
-                    bot_reply_to_save = self.content_filter.process_for_save(
-                        original_bot_reply_text
-                    )
-                except Exception:
-                    logger.error("[保存过滤] 过滤时发生异常，将使用原始内容", exc_info=True)
-                    bot_reply_to_save = original_bot_reply_text
 
                 # 构建交错排列的工具调用+文本回复（保留时间顺序）
                 interleaved_reply = self._build_interleaved_tool_reply(
                     event, accumulated_texts
                 )
                 if interleaved_reply:
-                    try:
-                        bot_reply_to_save = self.content_filter.process_for_save(
-                            interleaved_reply
-                        )
-                    except Exception:
-                        bot_reply_to_save = interleaved_reply
+                    bot_reply_to_save = interleaved_reply
                     logger.info("[工具调用] 已构建交错排列的工具调用记录到AI回复历史")
 
                 await ContextManager.save_bot_message(
@@ -5597,23 +5513,13 @@ class ChatPlus(Star):
             )
 
             bot_reply_to_save = original_bot_reply_text
-            try:
-                bot_reply_to_save = self.content_filter.process_for_save(
-                    original_bot_reply_text
-                )
-            except Exception:
-                logger.error("[保存过滤] 过滤时发生异常，将使用原始内容", exc_info=True)
+
 
             interleaved_reply = self._build_interleaved_tool_reply(
                 event, accumulated_texts
             )
             if interleaved_reply:
-                try:
-                    bot_reply_to_save = self.content_filter.process_for_save(
-                        interleaved_reply
-                    )
-                except Exception:
-                    bot_reply_to_save = interleaved_reply
+                bot_reply_to_save = interleaved_reply
                 logger.info("[工具调用] 兜底保存: 已构建交错排列的工具调用记录")
 
             await ContextManager.save_bot_message(
