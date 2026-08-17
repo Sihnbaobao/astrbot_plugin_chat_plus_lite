@@ -83,17 +83,6 @@ function renderHeader() {
   $("#smartPill").textContent = "并发：" + (state.values.concurrent_mode ?? "legacy");
 }
 
-function renderStats() {
-  const rt = state.runtime || {};
-  const boxes = [
-    ["运行版本", state.version || "-"],
-    ["概率状态会话", rt.probability_session_count ?? "-"],
-    ["Smart 批次快照", rt.smart_batch_snapshot_count ?? "-"],
-    ["处理中会话", rt.processing_session_count ?? "-"],
-  ];
-  $("#statsRow").innerHTML = boxes.map(([k, v]) => `<div class="stat-box"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("");
-}
-
 function renderPipeline() {
   $("#pipeline").innerHTML = STAGE_ORDER.map((s, idx) => {
     const html = `
@@ -148,12 +137,12 @@ function renderGroup() {
       <span class="save-status" id="saveStatus">${configDirty ? "⚠️ 有未保存改动" : "修改后点击保存生效"}</span>
       <button class="btn" id="saveBtn">保存本组</button>
     </div>`;
-  $("#groupPos").textContent = `${activeIdx + 1} / ${groups.length}`;
   $("#configPanel").querySelector("#saveBtn").addEventListener("click", saveGroup);
   // 改动标记
   $("#configPanel").querySelectorAll("[data-key]").forEach((el) => {
     el.addEventListener("input", () => { configDirty = true; const s = $("#saveStatus"); if (s) s.textContent = "⚠️ 有未保存改动"; });
   });
+  bindHints(); // 每次重绘后重新绑定 ⓘ 说明
 }
 
 function selectTab(idx) {
@@ -166,13 +155,6 @@ function selectTab(idx) {
 function goToGroup(gid) {
   const idx = groupIdList().indexOf(gid);
   if (idx >= 0) { configDirty = false; activeIdx = idx; renderGroup(); }
-}
-
-function prevNex(dir) {
-  if (configDirty && !confirm("当前分组有未保存的改动，切换将丢弃。确定继续？")) return;
-  configDirty = false;
-  activeIdx = (activeIdx + dir + (state.groups || []).length) % (state.groups || []).length;
-  renderGroup();
 }
 
 /* ============ 字段控件（长说明收进 ⓘ） ============ */
@@ -325,7 +307,6 @@ function renderAll() {
   renderTabs();
   renderGroup();
   renderPipeline();
-  renderStats();
 }
 
 async function loadStatus() {
@@ -339,21 +320,14 @@ async function loadStatus() {
     state.groups = data.groups || [];
     buildMeta(state.groups);
     renderAll();
-    bindHints();
   } catch (err) {
     $("#mainSwitch").textContent = "状态加载失败：" + err.message;
     toast("状态加载失败：" + err.message, "err");
   }
 }
 
-function bindPager() {
-  $("#prevGroup").addEventListener("click", () => prevNex(-1));
-  $("#nextGroup").addEventListener("click", () => prevNex(1));
-}
-
 async function init() {
   try { await bridge.ready(); } catch (e) { /* 非 iframe 环境也能加载 */ }
-  bindPager();
   await loadStatus();
   renderPrompts();
 }

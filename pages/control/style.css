@@ -123,8 +123,6 @@ body {
 .btn.ghost { background: var(--card); color: var(--text-sub); border: 1px solid var(--border); font-family: inherit; }
 .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
 
-.pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; }
-.pager .pos { font-size: 13px; color: var(--text-sub); min-width: 48px; text-align: center; }
 
 /* ===== pipeline ===== */
 .pipeline { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
@@ -139,11 +137,6 @@ body {
 .capsule .cap-state { font-size: 11px; color: var(--text-sub); text-align: center; }
 .arrow { display: flex; align-items: center; color: var(--text-sub); padding: 0 4px; }
 
-/* ===== stats ===== */
-.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.stat-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-align: center; }
-.stat-box .v { font-size: 18px; font-weight: 700; color: var(--accent); }
-.stat-box .k { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
 
 /* ===== prompt preview ===== */
 .prompt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
