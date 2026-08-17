@@ -1625,6 +1625,25 @@ class ChatPlus(Star):
     # 消息处理主流程
     # ============================================================
 
+    async def _format_ai_context(
+        self,
+        history_messages,
+        current_message,
+        bot_id,
+        window_msgs=None,
+        poke_notice="",
+    ) -> str:
+        """统一格式化 AI 上下文（集中 include 配置，减少主流程重复）。"""
+        return await ContextManager.format_context_for_ai(
+            history_messages,
+            current_message,
+            bot_id,
+            include_timestamp=self.include_timestamp,
+            include_sender_info=self.include_sender_info,
+            window_buffered_messages=window_msgs,
+            poke_notice=poke_notice,
+        )
+
     async def _process_message(self, event: AstrMessageEvent):
         """
         消息处理主流程
@@ -2035,14 +2054,9 @@ class ChatPlus(Star):
                 smart_batch_messages = self._smart_batch_snapshots.get(early_message_id, [])
                 if smart_batch_messages:
                     try:
-                        decision_context = await ContextManager.format_context_for_ai(
-                            history_messages,
-                            current_message_for_ai,
-                            event.get_self_id(),
-                            include_timestamp=self.include_timestamp,
-                            include_sender_info=self.include_sender_info,
-                            window_buffered_messages=smart_batch_messages,
-                            poke_notice=poke_notice_text,
+                        decision_context = await self._format_ai_context(
+                            history_messages, current_message_for_ai, event.get_self_id(),
+                            window_msgs=smart_batch_messages, poke_notice=poke_notice_text,
                         )
                     except Exception as smart_ctx_err:
                         logger.warning(
@@ -2090,6 +2104,7 @@ class ChatPlus(Star):
         max_wait_loops = self.concurrent_wait_max_loops
         wait_interval = self.concurrent_wait_interval
 
+        _concurrent_waited = False
         for loop_count in range(max_wait_loops):
             if self.concurrent_mode == "smart":
                 consumed = await SmartConcurrentManager.is_consumed(message_id)
@@ -2147,11 +2162,7 @@ class ChatPlus(Star):
                     f"⚠️ [并发检测] 会话 {chat_id} 中有 {len(existing_processing)} 条消息正在处理中，"
                     f"开始等待（最多 {max_wait_loops} 次，每次 {wait_interval} 秒）..."
                 )
-                try:
-                    setattr(self, f"_concurrent_wait_start_{message_id}", True)
-                except Exception:
-                    pass
-
+            _concurrent_waited = True
             await asyncio.sleep(wait_interval)
 
             if self.debug_mode:
@@ -2172,16 +2183,7 @@ class ChatPlus(Star):
                 if self.debug_mode:
                     logger.info(f"  已标记消息 {message_id[:30]}... 为本插件处理中")
 
-        # 并发等待后刷新上下文
-        _concurrent_waited = False
-        try:
-            _wait_start_attr = f"_concurrent_wait_start_{message_id}"
-            if hasattr(self, _wait_start_attr):
-                _concurrent_waited = True
-                delattr(self, _wait_start_attr)
-        except Exception:
-            pass
-
+        # 并发等待后刷新上下文（仅当本消息确实等待过更早消息）
         if _concurrent_waited and history_messages is not None:
             try:
                 _refreshed_history = await self._refresh_history_after_wait(
@@ -2193,14 +2195,9 @@ class ChatPlus(Star):
                     _window_buffered_msgs = (
                         self.cache_manager.get_window_buffered_messages(chat_id)
                     )
-                    formatted_context = await ContextManager.format_context_for_ai(
-                        history_messages,
-                        current_message_for_ai,
-                        _bot_id,
-                        include_timestamp=self.include_timestamp,
-                        include_sender_info=self.include_sender_info,
-                        window_buffered_messages=_window_buffered_msgs,
-                        poke_notice=poke_notice_text,
+                    formatted_context = await self._format_ai_context(
+                        history_messages, current_message_for_ai, _bot_id,
+                        window_msgs=_window_buffered_msgs, poke_notice=poke_notice_text,
                     )
                     if self.debug_mode:
                         logger.info(
@@ -2219,13 +2216,9 @@ class ChatPlus(Star):
                 message_text = EmojiDetector.add_emoji_marker(message_text)
                 current_message_for_ai = _build_current_message_for_ai(message_text)
                 bot_id = event.get_self_id()
-                formatted_context = await ContextManager.format_context_for_ai(
-                    history_messages,
-                    current_message_for_ai,
-                    bot_id,
-                    include_timestamp=self.include_timestamp,
-                    include_sender_info=self.include_sender_info,
-                    window_buffered_messages=self.cache_manager.get_window_buffered_messages(chat_id),
+                formatted_context = await self._format_ai_context(
+                    history_messages, current_message_for_ai, bot_id,
+                    window_msgs=self.cache_manager.get_window_buffered_messages(chat_id),
                     poke_notice=poke_notice_text,
                 )
                 emoji_marker_applied = True
@@ -2236,14 +2229,9 @@ class ChatPlus(Star):
                 smart_batch_messages = self._smart_batch_snapshots.get(message_id, [])
                 if smart_batch_messages:
                     try:
-                        formatted_context = await ContextManager.format_context_for_ai(
-                            history_messages,
-                            current_message_for_ai,
-                            event.get_self_id(),
-                            include_timestamp=self.include_timestamp,
-                            include_sender_info=self.include_sender_info,
-                            window_buffered_messages=smart_batch_messages,
-                            poke_notice=poke_notice_text,
+                        formatted_context = await self._format_ai_context(
+                            history_messages, current_message_for_ai, event.get_self_id(),
+                            window_msgs=smart_batch_messages, poke_notice=poke_notice_text,
                         )
                     except Exception as smart_reply_ctx_err:
                         logger.warning(
@@ -3104,14 +3092,9 @@ class ChatPlus(Star):
 
         # 格式化上下文
         bot_id = event.get_self_id()
-        formatted_context = await ContextManager.format_context_for_ai(
-            history_messages,
-            message_text_for_ai,
-            bot_id,
-            include_timestamp=self.include_timestamp,
-            include_sender_info=self.include_sender_info,
-            window_buffered_messages=window_buffered_msgs,
-            poke_notice=_poke_notice_text,
+        formatted_context = await self._format_ai_context(
+            history_messages, message_text_for_ai, bot_id,
+            window_msgs=window_buffered_msgs, poke_notice=_poke_notice_text,
         )
 
         if self.debug_mode:
