@@ -292,7 +292,7 @@ class DecisionAI:
                     f"{log_prefix} 已回退到当前会话人格: {result['persona_name']}"
                 )
             elif not configured_name:
-                logger.debug(
+                logger.info(
                     f"{log_prefix} 已使用当前会话人格: {result['persona_name']}"
                 )
             return result
@@ -541,7 +541,7 @@ class DecisionAI:
                     + _decision_sender_tail
                 )
 
-            logger.debug(
+            logger.info(
                 f"正在调用决策AI判断是否回复（当前发送者：{sender_name or '未知'}，ID:{sender_id}，"
                 f"倾向：{reply_tendency}）..."
             )
@@ -582,9 +582,9 @@ class DecisionAI:
             decision = DecisionAI._parse_decision(decision_answer or "")
 
             if decision:
-                logger.debug("决策AI判断: 应该回复这条消息 (yes)")
+                logger.info("决策AI判断: 应该回复这条消息 (yes)")
             else:
-                logger.debug("决策AI判断: 不应该回复这条消息 (no)")
+                logger.info("决策AI判断: 不应该回复这条消息 (no)")
 
             return decision
 
