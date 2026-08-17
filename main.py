@@ -2465,10 +2465,9 @@ class ChatPlus(PokeMixin, MentionMixin, Star):
                 logger.info(f"[决策AI] 记忆插件({memory_mode}模式)不可用，判定前跳过记忆注入")
 
         # 判断是否需要进行AI决策
-        # @消息必定跳过AI决策；触发关键词：智能模式下需要AI决策，非智能模式跳过
-        should_do_ai_decision = not is_at_message and (
-            not has_trigger_keyword or keyword_smart_mode
-        )
+        # @消息也交给读空气AI按人格判断是否回复（真人被@也不一定回）；
+        # 触发关键词按 keyword_smart_mode 决定是否交AI判断（非智能模式才必回）
+        should_do_ai_decision = not has_trigger_keyword or keyword_smart_mode
 
         if should_do_ai_decision:
             if self.debug_mode:
@@ -2524,11 +2523,8 @@ class ChatPlus(PokeMixin, MentionMixin, Star):
             logger.info("决策AI判断: 应该回复此消息")
             return True
         else:
-            if self.debug_mode:
-                if is_at_message:
-                    logger.info("【步骤9】@消息,跳过AI决策,必定回复")
-                elif has_trigger_keyword and not keyword_smart_mode:
-                    logger.info("【步骤9】触发关键词(非智能模式),跳过AI决策,必定回复")
+            if self.debug_mode and has_trigger_keyword and not keyword_smart_mode:
+                logger.info("【步骤9】触发关键词(非智能模式),跳过AI决策,必定回复")
             try:
                 ckey = ProbabilityManager.get_chat_key(
                     platform_name, is_private, chat_id
