@@ -3,7 +3,7 @@
 负责调用AI生成回复
 
 作者: Sihnbaobao（重构）
-版本: 0.0.2
+版本: 0.0.3
 
 重构要点（REFACTOR_DESIGN.md）：
 - 删除 SYSTEM_REPLY_PROMPT（约100行系统行为指令）—— 这是群聊人格漂移的最大来源

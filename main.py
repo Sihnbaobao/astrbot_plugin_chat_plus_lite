@@ -28,7 +28,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者/维护: Sihnbaobao
-版本: 0.0.2（重生重构 · 读空气主导/接管群聊）
+版本: 0.0.3（读空气主导 · 消息库清理 · reset彻底）
 """
 
 import random
@@ -91,7 +91,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Sihnbaobao",
     "一个以AI读空气为主的群聊聊天效果增强插件（人格主导，简洁配置）",
-    "0.0.2",
+    "0.0.3",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
@@ -379,7 +379,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - 0.0.2（重生重构版）")
+        logger.info("群聊增强插件已加载 - 0.0.3（消息库清理/概率移除/reset彻底版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
 
         logger.info(f"启用的群组: {self.enabled_groups} (留空=全部)")
@@ -591,7 +591,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "0.0.2",
+                "version": "0.0.3",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
