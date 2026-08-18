@@ -130,12 +130,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.enabled_groups = self._cfg("enabled_groups", [])
 
         # ========== 概率相关配置 ==========
-        self.enable_random_probability_filter = self._cfg(
-            "enable_random_probability_filter", False
-        )  # 随机读空气总开关：关闭时普通消息直接交给人格 AI 判断
-        self.initial_probability = self._cfg("initial_probability", 0.02)
-        self.after_reply_probability = 0.8
-        self.probability_duration = 120
 
         # ========== 决策AI（读空气）配置 ==========
         self.decision_ai_provider_id = self._cfg("decision_ai_provider_id", "")
@@ -201,9 +195,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.platform_image_caption_fast_check_count = self._cfg(
             "platform_image_caption_fast_check_count", 5
         )
-        self.probability_filter_cache_delay = self._cfg(
-            "probability_filter_cache_delay", 500
-        )
 
         # ========== 表情包标记配置 ==========
         self.enable_emoji_filter = self._cfg("enable_emoji_filter", False)
@@ -252,9 +243,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.enable_ignore_at_all = self._cfg("enable_ignore_at_all", False)
         self.ignore_at_all_enabled = self.enable_ignore_at_all
         self.at_all_message_mode = self._cfg("at_all_message_mode", "skip_probability")
-        self.at_all_probability_boost_value = self._cfg(
-            "at_all_probability_boost_value", 0.3
-        )
 
         # ========== 戳一戳配置 ==========
         self.poke_message_mode = self._cfg("poke_message_mode", "bot_only")
@@ -394,8 +382,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         logger.info("=" * 50)
         logger.info("群聊增强插件已加载 - 0.0.2（重生重构版）")
         logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
-        logger.info(f"初始读空气概率: {self.initial_probability}")
-        logger.info(f"回复后概率: {self.after_reply_probability}")
+
         logger.info(f"启用的群组: {self.enabled_groups} (留空=全部)")
         logger.info(f"详细日志模式: {'开启' if self.debug_mode else '关闭'}")
         logger.info("=" * 50)
@@ -1210,18 +1197,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 except Exception as e:
                     logger.warning(f"【步骤2.7】🎭 表情包检测失败，跳过: {e}")
 
-        # 步骤3: 概率判断（第一道核心过滤）
-        should_process = await self._check_probability_before_processing(
-            event,
-            platform_name,
-            is_private,
-            chat_id,
-            is_at_message,
-            has_trigger_keyword,
-            poke_info_for_probability,
-            is_emoji_message=is_emoji_message,
-            is_at_all_message=is_at_all_message,
-        )
+        # 步骤3: 概率判断（传统概率模式已移除，默认AI主导，恒处理）
+        should_process = True
         if not should_process:
             # 未通过概率筛选时，缓存消息（避免上下文断裂）
             try:
@@ -1230,9 +1207,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 )
                 await asyncio.sleep(0)
                 has_image = PlatformLTMHelper.has_image_in_message(event)
-                if has_image:
-                    if self.probability_filter_cache_delay > 0:
-                        await asyncio.sleep(self.probability_filter_cache_delay / 1000.0)
                 is_pure_image = PlatformLTMHelper.is_pure_image_message(event)
 
                 processed_text = None
@@ -1845,160 +1819,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     # ============================================================
     # 概率判断
     # ============================================================
-
-    async def _check_probability_before_processing(
-        self,
-        event: AstrMessageEvent,
-        platform_name: str,
-        is_private: bool,
-        chat_id: str,
-        is_at_message: bool,
-        has_trigger_keyword: bool,
-        poke_info: dict = None,
-        is_emoji_message: bool = False,
-        is_at_all_message: bool = False,
-    ) -> bool:
-        """
-        执行概率判断（在图片处理之前）
-
-        Returns:
-            True=继续处理, False=丢弃消息
-        """
-        # 戳机器人的特殊处理：配置允许时跳过概率判断
-        skip_probability_for_poke = False
-        if poke_info and self.poke_bot_skip_probability:
-            inner_poke_info = poke_info.get("poke_info", {})
-            if inner_poke_info.get("is_poke_bot"):
-                skip_probability_for_poke = True
-
-        # 新成员入群消息的特殊处理
-        skip_probability_for_welcome = False
-        is_welcome_message = (
-            event.get_extra("is_welcome_message") if hasattr(event, "get_extra") else False
-        )
-        welcome_mode = (
-            event.get_extra("welcome_message_mode")
-            if hasattr(event, "get_extra")
-            else "normal"
-        )
-        if is_welcome_message and welcome_mode in ("skip_probability", "skip_all"):
-            skip_probability_for_welcome = True
-
-        # @全体成员消息的特殊处理
-        skip_probability_for_at_all = False
-        at_all_transient_probability_boost = 0.0
-        if is_at_all_message:
-            at_all_mode = str(self.at_all_message_mode or "skip_probability")
-            if at_all_mode in ("skip_probability", "skip_all"):
-                skip_probability_for_at_all = True
-            elif at_all_mode == "probability_boost":
-                at_all_transient_probability_boost = max(
-                    0.0, min(1.0, self.at_all_probability_boost_value)
-                )
-
-        # 随机读空气筛选总开关：关闭时普通消息也直接交给 AI 人格判断（AI 全权主导）
-        random_filter_active = self.enable_random_probability_filter
-        if (
-            not is_at_message
-            and not has_trigger_keyword
-            and not skip_probability_for_poke
-            and not skip_probability_for_welcome
-            and not skip_probability_for_at_all
-            and random_filter_active
-        ):
-            if self.debug_mode:
-                logger.info("【步骤5】开始读空气概率判断")
-
-            should_process = await self._check_probability(
-                platform_name,
-                is_private,
-                chat_id,
-                event,
-                poke_info=poke_info,
-                is_emoji_message=is_emoji_message,
-                transient_probability_boost=at_all_transient_probability_boost,
-            )
-            if not should_process:
-                logger.info("【步骤5】未通过概率筛选，消息已缓存（避免上下文断裂）")
-                if self.debug_mode:
-                    logger.info("=" * 60)
-                return False
-
-            logger.info("读空气概率判断: 决定处理此消息")
-        else:
-            if not random_filter_active and self.debug_mode:
-                logger.info("【步骤5】随机概率筛选已关闭（AI 判断全权主导），普通消息直接进入 AI 判断")
-            if is_at_message and self.debug_mode:
-                logger.info("【步骤5】@消息,跳过概率判断,必定处理")
-            if has_trigger_keyword and self.debug_mode:
-                keyword_smart_mode = self.keyword_smart_mode
-                if keyword_smart_mode:
-                    logger.info("【步骤5】触发关键词消息(智能模式),跳过概率判断,但保留读空气判断")
-                else:
-                    logger.info("【步骤5】触发关键词消息,跳过概率判断,必定处理")
-
-        return True
-
-    async def _check_probability(
-        self,
-        platform_name: str,
-        is_private: bool,
-        chat_id: str,
-        event: AstrMessageEvent,
-        poke_info: dict = None,
-        is_emoji_message: bool = False,
-        transient_probability_boost: float = 0.0,
-    ) -> bool:
-        """
-        读空气概率检查，决定是否处理消息
-
-        Returns:
-            True=处理，False=跳过
-        """
-        current_probability = await ProbabilityManager.get_current_probability(
-            platform_name,
-            is_private,
-            chat_id,
-            self.initial_probability,
-        )
-
-        if self.debug_mode:
-            logger.info(f"  当前概率: {current_probability:.2f}")
-            logger.info(f"  初始概率: {self.initial_probability:.2f}")
-
-        # 表情包概率衰减
-        if is_emoji_message and self.enable_emoji_filter:
-            if current_probability >= self.emoji_decay_min_probability:
-                old_probability = current_probability
-                decay_factor = max(0.0, 1.0 - self.emoji_probability_decay)
-                current_probability = current_probability * decay_factor
-                logger.info(
-                    f"  【表情包衰减】检测到表情包，概率衰减: "
-                    f"{old_probability:.2f} -> {current_probability:.2f} "
-                    f"(衰减因子={self.emoji_probability_decay}, 乘数={decay_factor:.2f})"
-                )
-
-        # @全体成员临时概率提升
-        if transient_probability_boost > 0:
-            old_probability = current_probability
-            current_probability = current_probability + transient_probability_boost
-            logger.info(
-                f"  【@全体成员-当前消息临时提升】概率调整: {old_probability:.2f} -> {current_probability:.2f} "
-                f"(+{transient_probability_boost:.2f})"
-            )
-
-        # 系统硬性边界 [0, 1]
-        current_probability = max(0.0, min(1.0, current_probability))
-
-        # 随机判断
-        roll = random.random()
-        should_process = roll < current_probability
-        if self.debug_mode:
-            logger.info(
-                f"读空气概率检查: 当前概率={current_probability:.2f}, 随机值={roll:.2f}, 结果={'触发' if should_process else '未触发'}"
-            )
-
-        return should_process
 
     # ============================================================
     # AI决策判断（读空气）
@@ -2967,17 +2787,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     -max_cache_size:
                 ]
 
-        # 调整读空气概率（传统模式：回复后提升）
-        if self.debug_mode:
-            logger.info("【步骤15】调整读空气概率（传统模式）")
-
-        await ProbabilityManager.boost_probability(
-            platform_name,
-            is_private,
-            chat_id,
-            self.after_reply_probability,
-            self.probability_duration,
-        )
 
         if self.debug_mode:
             logger.info("=" * 60)
