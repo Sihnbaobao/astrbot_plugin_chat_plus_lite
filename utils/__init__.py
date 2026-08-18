@@ -3,7 +3,7 @@
 导出所有工具类供主插件使用
 
 作者: Sihnbaobao（重构）
-版本: 0.0.1
+版本: 0.0.2
 """
 
 from .probability_manager import ProbabilityManager

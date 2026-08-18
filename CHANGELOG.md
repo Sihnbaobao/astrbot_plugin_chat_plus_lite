@@ -1,5 +1,13 @@
 ## 📝 更新日志
 
+## 0.0.2 (2026-08-18)
+
+- **@/触发关键词与普通消息一视同仁**：被@、点名、触发关键词（含bot名字）都交给读空气AI按人格判断，不再因@/关键词而必回；keyword_smart_mode 默认开启。
+- **接管群聊回复**：新增 takeover_group_reply（默认开），stop_event 挡住 AstrBot 主对话的兜底响应——判 no 时不再被主 LLM 兜底回复（@ 必回真因）。
+- **修 bug**：孤儿 @staticmethod 误令 _is_enabled 变静态方法；_safe_sender_display 迁移丢装饰器；孤儿 after_message_sent 装饰器令非协程 hook 触发 AssertionError；判断日志去重。
+- 行为调整：@ 提示词改为与普通消息一视同仁（不再倾向回）。
+- 结构：main.py 由 6059 行精简至约 3800 行（戳一戳/@识别/指令/回复保存拆为 PokeMixin/MentionMixin/CommandMixin/SaveMixin）。
+
 ## 0.0.1 (2026-08-18) — 重生版
 
 彻底重构并重置版本号：
