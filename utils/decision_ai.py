@@ -465,7 +465,7 @@ class DecisionAI:
             if is_keyword_triggered and matched_keyword:
                 keyword_context = (
                     f"\n\n[系统信息-关键词触发] 触发关键词: 「{matched_keyword}」\n"
-                    f"说明：消息已跳过概率筛选，但不代表必须回复，仍需综合判断：\n"
+                    f"说明：这条消息命中了触发关键词，但不代表必须回复，仍需综合判断：\n"
                     f"  * 消息是否是发给你的？\n"
                     f"  * 内容是否值得回复？\n"
                 )

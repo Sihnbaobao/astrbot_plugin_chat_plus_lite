@@ -9,7 +9,6 @@
 
 保留功能：
 1. AI读空气判断 - 智能决定是否回复消息（DecisionAI，独立调用只输出 yes/no）
-2. 概率筛选 - 非@消息按概率回复
 3. 关键词触发 - 特定词触发（可配智能模式）
 4. @消息与普通消息同样由读空气判断
 5. 图片识别（转文字/多模态直传）、表情包标记、媒体路径内联
@@ -1200,7 +1199,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 步骤3: 概率判断（传统概率模式已移除，默认AI主导，恒处理）
         should_process = True
         if not should_process:
-            # 未通过概率筛选时，缓存消息（避免上下文断裂）
+            # 历史概率模式残留分支（恒不进入，保留以兼容旧结构）
             try:
                 original_message_text = MessageCleaner.extract_raw_message_from_event(
                     event, self_id=str(event.get_self_id())
