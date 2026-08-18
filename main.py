@@ -3098,8 +3098,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             logger.warning(f"[并发刷新] 获取最新历史失败: {e}")
             return None
 
-    @staticmethod
-
     # ============================================================
     # 黑名单与启用检查
     # ============================================================
