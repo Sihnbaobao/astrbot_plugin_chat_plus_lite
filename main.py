@@ -224,6 +224,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.trigger_keywords = self._cfg("trigger_keywords", [])
         self.blacklist_keywords = self._cfg("blacklist_keywords", [])
         self.keyword_smart_mode = self._cfg("keyword_smart_mode", True)  # 默认：关键词命中（含bot名字/被@）也交给读空气判断
+        self.takeover_group_reply = self._cfg("takeover_group_reply", True)  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
         self.enable_user_blacklist = self._cfg("enable_user_blacklist", False)
         self.blacklist_user_ids = self._cfg("blacklist_user_ids", [])
 
@@ -1087,12 +1088,20 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
     async def _process_message(self, event: AstrMessageEvent):
         """
-        消息处理主流程
+        消息处理主流程''  # 占位
 
         流程：
         初始检查 → 消息触发器（@/关键词）→ 戳一戳/@提及 → 概率判断 →
         内容处理（图片/媒体/上下文）→ Smart并发 → AI决策（读空气）→ 生成并发送回复
         """
+        # 接管群聊回复：挡住 AstrBot 主对话对消息（含@/触发词）的兜底响应，是否回复只由读空气决定
+        if self.takeover_group_reply:
+            try:
+                if hasattr(event, "stop_event"):
+                    event.stop_event()
+            except Exception:
+                pass
+
         # 步骤1: 初始检查（最基本的过滤）
         (should_continue, platform_name, is_private, chat_id) = await self._perform_initial_checks(event)
         if not should_continue:
@@ -3490,8 +3499,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         except Exception as e:
             logger.error(f"[装饰阶段] 去重处理失败: {e}", exc_info=True)
-
-    @filter.after_message_sent()
 
     # ============================================================
     # Smart 并发批次提示

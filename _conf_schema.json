@@ -31,6 +31,12 @@
                     "force_standard"
                 ],
                 "hint": "auto 自动识别桌面端/服务端。"
+            },
+            "takeover_group_reply": {
+                "description": "接管群聊回复",
+                "type": "bool",
+                "default": true,
+                "hint": "开启=由本插件的读空气全权决定是否回复，挡住 AstrBot 主对话（避免 @/点名被兜底必回）；关闭=交给 AstrBot 默认行为。"
             }
         }
     },
