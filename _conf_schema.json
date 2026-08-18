@@ -44,18 +44,6 @@
         "description": "🧠 读空气（决定要不要回）",
         "type": "object",
         "items": {
-            "enable_random_probability_filter": {
-                "description": "随机概率筛选",
-                "type": "bool",
-                "default": false,
-                "hint": "关闭=AI全权判断要不要回；开启=先按概率抽签。建议保持关闭。"
-            },
-            "initial_probability": {
-                "description": "初始概率",
-                "type": "float",
-                "default": 0.02,
-                "hint": "开启随机筛选时的基础回复概率(0-1)。"
-            },
             "decision_ai_provider_id": {
                 "description": "判断用模型",
                 "type": "string",

@@ -171,7 +171,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # ========== 上下文配置 ==========
         self.max_context_messages = self._cfg("max_context_messages", -1)
-        self.custom_storage_max_messages = 500
+        self.custom_storage_max_messages = 0  # 已禁用自定义存储：历史只存官方库（0=禁用并清理历史文件）
         self.pending_cache_max_count = self._cfg("pending_cache_max_count", 10)
         self.pending_cache_ttl_seconds = self._cfg("pending_cache_ttl_seconds", 1800)
 
