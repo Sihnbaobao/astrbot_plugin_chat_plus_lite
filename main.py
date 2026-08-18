@@ -941,6 +941,32 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     await ContextManager.clear_official_history_for_event(
                         self.context, event
                     )
+                    # 同步清插件进程内滞留的消息缓存，防止内存历史被继续当上下文（正常保存路径未接管时的残留）
+                    try:
+                        _ck = (
+                            event.get_group_id()
+                            if not event.is_private_chat()
+                            else event.get_sender_id()
+                        )
+                        if hasattr(self, "cache_manager") and hasattr(
+                            self.cache_manager, "pending_messages_cache"
+                        ):
+                            self.cache_manager.pending_messages_cache.pop(str(_ck), None)
+                        if hasattr(self, "recent_replies_cache"):
+                            self.recent_replies_cache.pop(str(_ck), None)
+                        for _attr in (
+                            "_pending_bot_replies",
+                            "_message_cache_snapshots",
+                            "_smart_batch_snapshots",
+                            "raw_reply_cache",
+                        ):
+                            _o = getattr(self, _attr, None)
+                            if isinstance(_o, dict):
+                                _o.clear()
+                        if self.debug_mode:
+                            logger.info("已同步清空插件进程内消息缓存（reset 彻底清）")
+                    except Exception as _ce:
+                        logger.warning(f"reset 清插件缓存失败: {_ce}")
                     if self.debug_mode:
                         logger.info("已联动清空该会话官方历史（reset 彻底清）")
             except Exception as _rst_err:
