@@ -6,7 +6,10 @@
 """
 
 from astrbot.api import logger
-from astrbot.api.all import *  # noqa: F403
+from astrbot.api.all import *
+from .context_manager import ContextManager
+from .message_cleaner import MessageCleaner
+from .message_processor import MessageProcessor  # noqa: F403
 from astrbot.api.event import filter
 
 

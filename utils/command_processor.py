@@ -9,7 +9,9 @@ functools.partial(方法, 实例) 显式绑定，故迁移到 mixin 后注册与
 import time
 
 from astrbot.api import logger
-from astrbot.api.all import *  # noqa: F403  （与 main.py 保持一致）
+from astrbot.api.all import *
+from .context_manager import ContextManager
+from .probability_manager import ProbabilityManager  # noqa: F403  （与 main.py 保持一致）
 from astrbot.api.event import filter
 
 

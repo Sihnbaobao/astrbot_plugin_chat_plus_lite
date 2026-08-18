@@ -9,7 +9,9 @@ import random
 import time
 import asyncio
 
-from astrbot.api.all import *  # noqa: F403  （与 main.py 保持一致）
+from astrbot.api.all import *
+from .context_manager import ContextManager
+from .message_processor import MessageProcessor  # noqa: F403  （与 main.py 保持一致）
 
 
 class PokeMixin:
