@@ -114,8 +114,8 @@
             "keyword_smart_mode": {
                 "description": "关键词智能模式",
                 "type": "bool",
-                "default": false,
-                "hint": "开启=命中关键词仍交给读空气判断，而非必回。"
+                "default": true,
+                "hint": "开启=命中关键词（如bot名字/被@）也交给读空气AI按人格判断是否回复（推荐）；关闭=命中关键词则必回（仅对关键词命中生效，@仍按判断）。"
             }
         }
     },

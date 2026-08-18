@@ -223,7 +223,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # ========== 关键词/黑名单配置 ==========
         self.trigger_keywords = self._cfg("trigger_keywords", [])
         self.blacklist_keywords = self._cfg("blacklist_keywords", [])
-        self.keyword_smart_mode = self._cfg("keyword_smart_mode", False)
+        self.keyword_smart_mode = self._cfg("keyword_smart_mode", True)  # 默认：关键词命中（含bot名字/被@）也交给读空气判断
         self.enable_user_blacklist = self._cfg("enable_user_blacklist", False)
         self.blacklist_user_ids = self._cfg("blacklist_user_ids", [])
 
@@ -2036,9 +2036,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.info(f"[决策AI] 记忆插件({memory_mode}模式)不可用，判定前跳过记忆注入")
 
         # 判断是否需要进行AI决策
-        # @消息也交给读空气AI按人格判断是否回复（真人被@也不一定回）；
-        # 触发关键词按 keyword_smart_mode 决定是否交AI判断（非智能模式才必回）
-        should_do_ai_decision = not has_trigger_keyword or keyword_smart_mode
+        # 所有消息一律交给读空气AI按人格判断：@、触发关键词（bot名/“璃月”等）都只是
+        # 判断上下文里的信息，不因命中而必回；keyword_smart_mode=关时关键词命中才按“必回”处理
+        should_do_ai_decision = keyword_smart_mode or not has_trigger_keyword
 
         if should_do_ai_decision:
             if self.debug_mode:
