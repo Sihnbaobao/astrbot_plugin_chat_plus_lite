@@ -3037,8 +3037,12 @@ class ContextManager:
             did = False
             if hasattr(context, "message_history_manager"):
                 try:
+                    # 该 API 语义为"删除 created_at>=now-offset 的记录"（删较新的），
+                    # 用超大 offset 使 cutoff 足够早，从而删除该会话全部历史记录。
                     await context.message_history_manager.delete(
-                        platform_id=platform_id, user_id=chat_id, offset_sec=0
+                        platform_id=platform_id,
+                        user_id=chat_id,
+                        offset_sec=10 * 365 * 24 * 3600,
                     )
                     logger.info(
                         f"[reset] ✅ 已清空官方消息历史(platform_message_history: {platform_id}/{chat_id})"
