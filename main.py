@@ -1094,11 +1094,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         初始检查 → 消息触发器（@/关键词）→ 戳一戳/@提及 → 概率判断 →
         内容处理（图片/媒体/上下文）→ Smart并发 → AI决策（读空气）→ 生成并发送回复
         """
-        # 接管群聊回复：挡住 AstrBot 主对话对消息（含@/触发词）的兜底响应，是否回复只由读空气决定
+        # 接管群聊回复：标记为“不交 AstrBot 主对话”，挡住它对消息（含@/触发词）的兜底响应；
+        # 是否回复只由读空气决定，判 yes 时本插件经 event.request_llm 生成回复（不受此标记影响）
         if self.takeover_group_reply:
             try:
-                if hasattr(event, "stop_event"):
-                    event.stop_event()
+                event.call_llm = False
             except Exception:
                 pass
 
