@@ -9,8 +9,8 @@ from astrbot.api.all import *  # noqa: F403  （与 main.py 保持一致）
 
 
 class MentionMixin:
-    @staticmethod
-    def _safe_sender_display(event: AstrMessageEvent) -> str:
+        @staticmethod
+        def _safe_sender_display(event: AstrMessageEvent) -> str:
             """从事件获取安全的发送者显示名，解析失败时返回'未知用户'。"""
             try:
                 name = str(event.get_sender_name() or "").strip()
