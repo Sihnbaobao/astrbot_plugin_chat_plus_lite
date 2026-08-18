@@ -2085,7 +2085,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.info(f"【步骤9】决策AI判断完成，耗时: {_decision_elapsed:.2f}秒")
 
             if not should_reply:
-                logger.info("决策AI判断: 不应该回复此消息")
+                logger.debug("决策AI判断: 不应该回复此消息")
                 # 清理pre_decision缓存（防止内存残留）
                 try:
                     ckey = ProbabilityManager.get_chat_key(
@@ -2100,7 +2100,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     pass
                 return False
 
-            logger.info("决策AI判断: 应该回复此消息")
+            logger.debug("决策AI判断: 应该回复此消息")
             return True
         else:
             if self.debug_mode and has_trigger_keyword and not keyword_smart_mode:
