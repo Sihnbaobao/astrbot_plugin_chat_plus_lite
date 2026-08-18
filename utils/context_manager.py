@@ -3017,6 +3017,50 @@ class ContextManager:
             return False
 
     @staticmethod
+    @staticmethod
+    async def clear_official_history_for_event(context, event) -> bool:
+        """彻底清空该会话的官方历史（platform_message_history + conversations.content），供 reset 使用。
+
+        Args:
+            context: AstrBot Context 对象
+            event: 消息事件
+
+        Returns:
+            是否执行了清理
+        """
+        try:
+            platform_id = event.get_platform_id()
+            is_private = event.is_private_chat()
+            chat_id = (
+                event.get_group_id() if not is_private else event.get_sender_id()
+            )
+            did = False
+            if hasattr(context, "message_history_manager"):
+                try:
+                    await context.message_history_manager.delete(
+                        platform_id=platform_id, user_id=chat_id, offset_sec=0
+                    )
+                    logger.info(
+                        f"[reset] ✅ 已清空官方消息历史(platform_message_history: {platform_id}/{chat_id})"
+                    )
+                    did = True
+                except Exception as e:
+                    logger.warning(f"[reset] 清空官方消息历史失败: {e}")
+            try:
+                cm = context.conversation_manager
+                umo = event.unified_msg_origin
+                cid = await cm.get_curr_conversation_id(umo)
+                if cid:
+                    await cm.update_conversation(umo, cid, [])
+                    logger.info(f"[reset] ✅ 已清空官方对话内容(conversations: {cid})")
+                    did = True
+            except Exception as e:
+                logger.warning(f"[reset] 清空官方对话失败: {e}")
+            return did
+        except Exception as e:
+            logger.warning(f"[reset] 清理失败: {e}")
+            return False
+
     async def save_to_official_conversation_with_cache(
         event: AstrMessageEvent,
         cached_messages: list,

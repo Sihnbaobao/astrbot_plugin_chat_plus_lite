@@ -931,6 +931,21 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             if not self.enable_group_chat or event.is_private_chat():
                 return
 
+            # reset 指令联动：彻底清空该会话官方历史（platform_message_history + conversations），
+            # 避免官方 reset 只清 conversations 而 plugin 仍从 platform_message_history 读到旧记录
+            try:
+                _rst_txt = (
+                    (event.get_message_str() or "").strip().replace("@", "").strip().lower()
+                )
+                if _rst_txt in ("reset", "/reset"):
+                    await ContextManager.clear_official_history_for_event(
+                        self.context, event
+                    )
+                    if self.debug_mode:
+                        logger.info("已联动清空该会话官方历史（reset 彻底清）")
+            except Exception as _rst_err:
+                logger.warning(f"reset 联动清理失败: {_rst_err}")
+
             # 直接打掉平台产生的真空消息
             _raw_msg_str = event.get_message_str()
             _msg_components = None
