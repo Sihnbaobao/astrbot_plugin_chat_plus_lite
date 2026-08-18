@@ -2702,6 +2702,22 @@ class ContextManager:
             except Exception as e:
                 logger.warning(f"[官方保存] 记录CM信息失败: {e}")
 
+            # [优先] 使用官方标准 API 直接保存（签名: update_conversation(unified_msg_origin, conversation_id, history)）
+            try:
+                await cm.update_conversation(
+                    unified_msg_origin,
+                    conversation_id=conversation_id,
+                    history=history_list,
+                )
+                logger.info(
+                    f"[官方保存] ✅ 已通过 update_conversation 写入官方库(对话ID={conversation_id}, {len(history_list)}条)"
+                )
+                return True
+            except TypeError as _te:
+                logger.warning(f"[官方保存] update_conversation 类型不匹配: {_te}")
+            except Exception as _e:
+                logger.warning(f"[官方保存] update_conversation 调用失败: {_e}")
+
             # 优先尝试以列表直接保存（按照旧插件的方式）
             for m in methods:
                 if hasattr(cm, m):
