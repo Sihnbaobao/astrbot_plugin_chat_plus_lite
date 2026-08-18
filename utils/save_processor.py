@@ -5,6 +5,8 @@
 交错工具调用记录、批次汇总提示等。通过 self 访问 ChatPlus 状态与工具。
 """
 
+import time
+
 from astrbot.api import logger
 from astrbot.api.all import *
 from .context_manager import ContextManager
