@@ -2,12 +2,12 @@
 
 面向 AstrBot 的群聊与私聊消息增强插件。它负责消息筛选、触发判断、媒体整理、上下文组织和连续消息批处理；正式回复仍通过 AstrBot 的正常 LLM 链路生成，并使用当前会话人格。
 
-[![Version](https://img.shields.io/badge/version-0.0.8-blue.svg)](https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite)
+[![Version](https://img.shields.io/badge/version-0.0.9-blue.svg)](https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.11.0-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![Plugin Pages](https://img.shields.io/badge/Plugin%20Pages-v4.25.3%2B-purple.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange.svg)](LICENSE)
 
-> 当前版本：0.0.8。插件元数据兼容 AstrBot >= 4.11.0；插件页管理控制台需要支持插件页的 AstrBot 版本，建议 4.25.3+。
+> 当前版本：0.0.9。插件元数据兼容 AstrBot >= 4.11.0；插件页管理控制台需要支持插件页的 AstrBot 版本，建议 4.25.3+。
 
 ## 功能概览
 
@@ -71,7 +71,7 @@ Smart 的含义是“短时间连发合并”，不是“只要机器人还没�
     刚才那个问题你看到了吗
     我再补充一句
 
-如果这些消息在约 4500ms 的短窗口内到达，会被组织成一轮输入并只生成一条综合回复。模型可以选择性回应其中需要回应的部分，但不会为同一批消息逐条调用正式回复。
+如果这些消息在约 4500ms 的短窗口内到达，会被组织成一轮输入并只生成一条综合回复。关键词或 @ 只影响是否触发回复，不会绕过这个私聊 Smart 等待窗口。模型可以选择性回应其中需要回应的部分，但不会为同一批消息逐条调用正式回复。
 
 相隔几秒的消息属于不同轮次。窗口外的后续消息不会再额外等待前一个模型请求十秒，而是快速进入自己的处理流程。因此，增大窗口可以合并更慢的连发，但也会增加首条消息的等待时间，建议在 3000-6000ms 范围内调整。
 
@@ -154,7 +154,7 @@ Smart 的含义是“短时间连发合并”，不是“只要机器人还没�
 
 ### 私聊回复为什么仍然慢？
 
-每条私聊 Smart 消息最多增加配置窗口的等待时间；图片描述、记忆检索和模型生成也会增加耗时。当前版本已经移除了旧的“同会话最多等待十秒”私聊保护。可以先将 private_batch_wait_ms 调到 800，并分别检查图片处理、记忆注入和模型本身的耗时。
+每条私聊 Smart 消息最多增加配置窗口的等待时间；图片描述、记忆检索和模型生成也会增加耗时。当前版本已经移除了旧的“同会话最多等待十秒”私聊保护。如果更重视响应速度，可以将 private_batch_wait_ms 调到 3000；同时分别检查图片处理、记忆注入和模型本身的耗时。
 
 ### 表情包为什么不回复？
 

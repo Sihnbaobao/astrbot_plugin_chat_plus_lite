@@ -28,7 +28,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者/维护: Sihnbaobao
-版本: 0.0.8（私聊短连发合并与并发延迟修复）
+版本: 0.0.9（私聊短连发合并与并发延迟修复）
 """
 
 import random
@@ -91,7 +91,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Sihnbaobao",
     "一个支持群聊与私聊批处理、以AI读空气为主的聊天效果增强插件（人格主导，简洁配置）",
-    "0.0.8",
+    "0.0.9",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
@@ -413,7 +413,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - 0.0.8（私聊短连发合并/并发延迟修复版）")
+        logger.info("群聊增强插件已加载 - 0.0.9（私聊短连发合并/并发延迟修复版）")
         logger.info(
             f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}"
         )
@@ -630,7 +630,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "0.0.8",
+                "version": "0.0.9",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -1654,9 +1654,23 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
             # Smart 模式下先按 arrival_seq 等待更早消息，确保只有 anchor 进入 AI 决策
             smart_claim = None
-            smart_wait_loops = (
-                3 if is_private else max(1, self.concurrent_wait_max_loops)
-            )
+            if is_private:
+                try:
+                    wait_interval_seconds = max(
+                        float(self.concurrent_wait_interval), 0.1
+                    )
+                    private_window_seconds = max(
+                        float(self.private_batch_wait_ms) / 1000, 0.0
+                    )
+                    # Let followers observe the anchor claim across the configured window.
+                    smart_wait_loops = max(
+                        3,
+                        int(private_window_seconds / wait_interval_seconds) + 2,
+                    )
+                except (TypeError, ValueError):
+                    smart_wait_loops = 6
+            else:
+                smart_wait_loops = max(1, self.concurrent_wait_max_loops)
             for smart_wait_idx in range(smart_wait_loops):
                 if await SmartConcurrentManager.is_consumed(processing_id):
                     logger.info(
@@ -1759,6 +1773,22 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             ]
                     break
             else:
+                # The anchor can claim the follower immediately after the last poll.
+                if await SmartConcurrentManager.is_consumed(processing_id):
+                    logger.info(
+                        f"[Smart] Private message {processing_id[:20]}... was absorbed after the final wait poll"
+                    )
+                    if takeover_reply:
+                        try:
+                            event.stop_event()
+                        except Exception:
+                            pass
+                    else:
+                        event.call_llm = True
+                    await SmartConcurrentManager.remove_self(chat_id, processing_id)
+                    self._message_cache_snapshots.pop(processing_id, None)
+                    self._smart_batch_snapshots.pop(processing_id, None)
+                    return
                 logger.warning(
                     f"⚠️ [Smart并发] 消息 {processing_id[:20]}... 在决策前等待更早消息超时，按当前单条消息继续"
                 )
@@ -2072,6 +2102,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         logger.warning(
                             f"[Smart并发] 回复阶段重建批次上下文失败，回退原上下文: {smart_reply_ctx_err}"
                         )
+
+                if is_private and use_smart_batch:
+                    logged_private_input = reply_message_text.replace("\n", " | ")
+                    logger.info(
+                        f"[Private Smart] Formal input ({1 + len(smart_batch_messages)} messages): "
+                        f"{logged_private_input[:500]}"
+                    )
 
                 if (
                     use_smart_batch

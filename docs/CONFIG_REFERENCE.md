@@ -986,7 +986,7 @@ for rule in rules:
 | `private_image_mode` | string | `decide` | 纯图片使用 `ignore` / `decide` / `always` |
 | `private_emoji_mode` | string | `ignore` | 纯表情包使用 `ignore` / `decide` / `always` |
 | `private_concurrent_mode` | string | `smart` | 私聊并发模式；Smart 会把短时间连发视为同一轮输入，只生成一条综合回复 |
-| `private_batch_wait_ms` | int | `4500` | 私聊 Smart 短连发等待窗口；超过窗口的消息不并入该批次，窗口越大单条消息等待越久 |
+| `private_batch_wait_ms` | int | `4500` | 私聊 Smart 短连发等待窗口；超过窗口的消息不并入该批次，关键词/@触发也遵守该窗口，窗口越大单条消息等待越久 |
 | `private_batch_max_size` | int | `10` | 单个私聊批次最多合并的消息数 |
 | `collapse_reply_newlines` | bool | `false` | 开启后收敛普通纯文本回复的主动换行，代码块和 Markdown 列表保留原格式 |
 

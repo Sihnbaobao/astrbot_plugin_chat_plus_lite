@@ -1,5 +1,11 @@
 ## 📝 更新日志
 
+## 0.0.9
+
+- **Private Smart ordering**: Follower polling now follows the configured private batch window instead of using a fixed three-second limit.
+- **Duplicate-request fix**: A follower that times out at the anchor boundary is rechecked before it can start an independent reply.
+- **Input tracing**: Added a concise private Smart log showing the exact formal input and message count sent to the reply path.
+
 ## 0.0.8
 
 - **Forced private messages**: Trigger keywords and @-forced messages now still honor the private Smart batching window; forced status only affects reply decision behavior.
