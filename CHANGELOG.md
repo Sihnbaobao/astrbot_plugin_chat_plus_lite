@@ -1,5 +1,10 @@
 ## 📝 更新日志
 
+## 0.0.11
+
+- **Repeated-message context**: Smart now identifies exact repeated private text and tells the reply model to follow the active persona's attitude toward repetition and verbosity.
+- **Persona fidelity**: Repetition is no longer presented only as a neutral batch, so personas that dislike nagging can respond naturally without forcing annoyance for every character.
+
 ## 0.0.10
 
 - **Private forced batching**: Private Smart now merges consecutive keyword/@ messages from the same sender; group Smart keeps forced-message boundaries.

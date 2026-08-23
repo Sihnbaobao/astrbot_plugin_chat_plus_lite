@@ -28,7 +28,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者/维护: Sihnbaobao
-版本: 0.0.10（私聊短连发合并与并发延迟修复）
+版本: 0.0.11（私聊短连发合并与并发延迟修复）
 """
 
 import random
@@ -91,7 +91,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Sihnbaobao",
     "一个支持群聊与私聊批处理、以AI读空气为主的聊天效果增强插件（人格主导，简洁配置）",
-    "0.0.10",
+    "0.0.11",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
@@ -413,7 +413,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - 0.0.10（私聊短连发合并/并发延迟修复版）")
+        logger.info("群聊增强插件已加载 - 0.0.11（私聊短连发合并/并发延迟修复版）")
         logger.info(
             f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}"
         )
@@ -630,7 +630,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "0.0.10",
+                "version": "0.0.11",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -2131,6 +2131,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         smart_batch_summary = self._summarize_smart_batch_messages(
                             smart_batch_messages,
                             anchor_sender_id=event.get_sender_id(),
+                            anchor_content=message_text,
                         )
                         smart_batch_reply_hint = self._build_smart_batch_reply_hint(
                             event, smart_batch_summary
@@ -3854,9 +3855,22 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     # ============================================================
 
     def _summarize_smart_batch_messages(
-        self, smart_batch_messages: list, anchor_sender_id: str
+        self,
+        smart_batch_messages: list,
+        anchor_sender_id: str,
+        anchor_content: str = "",
     ) -> dict:
-        """汇总 Smart 批次追加消息，用于构建回复阶段提示。"""
+        """Summarize appended messages for the reply-stage batch hint.
+
+        Args:
+            smart_batch_messages: Messages appended after the anchor.
+            anchor_sender_id: Sender ID of the anchor message.
+            anchor_content: Text content of the anchor message.
+
+        Returns:
+            A summary containing sender counts, message labels, and exact-text
+            duplicate groups.
+        """
         summary = {
             "total_messages": 0,
             "other_sender_count": 0,
@@ -3865,6 +3879,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             "has_same_sender_followups": False,
             "senders": [],
             "summary_lines": [],
+            "duplicate_text_groups": [],
         }
         if not smart_batch_messages:
             return summary
@@ -3920,6 +3935,25 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         )
         summary["has_same_sender_followups"] = summary["same_sender_count"] > 0
 
+        duplicate_counts = OrderedDict()
+        normalized_anchor = ContextManager._content_to_safe_text(anchor_content).strip()
+        if normalized_anchor and anchor_sender_id:
+            duplicate_counts[normalized_anchor] = 1
+        for msg in smart_batch_messages:
+            sender_id = str(msg.get("sender_id") or "unknown")
+            if sender_id != anchor_sender_id:
+                continue
+            content = ContextManager._content_to_safe_text(
+                msg.get("content", "")
+            ).strip()
+            if content:
+                duplicate_counts[content] = duplicate_counts.get(content, 0) + 1
+        summary["duplicate_text_groups"] = [
+            {"content": content[:120], "count": count}
+            for content, count in duplicate_counts.items()
+            if count > 1
+        ]
+
         summary_lines = []
         for item in senders:
             flags = []
@@ -3944,7 +3978,15 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     def _build_smart_batch_reply_hint(
         self, event: AstrMessageEvent, smart_batch_summary: dict
     ) -> str:
-        """构建 Smart 并发批次回复提示。"""
+        """Build a Smart batch hint for the formal reply.
+
+        Args:
+            event: Anchor message event for the batch.
+            smart_batch_summary: Summary produced for appended messages.
+
+        Returns:
+            A prompt fragment describing the batch and any repeated content.
+        """
         if not smart_batch_summary or not smart_batch_summary.get("summary_lines"):
             return ""
 
@@ -3966,11 +4008,24 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         scenario_text = "，".join(scenario_parts)
 
         summary_block = "\n".join(smart_batch_summary.get("summary_lines", []))
+        duplicate_groups = smart_batch_summary.get("duplicate_text_groups", [])
+        duplicate_block = ""
+        if duplicate_groups:
+            duplicate_lines = "\n".join(
+                f"- 同一内容重复发送 {group['count']} 次：{group['content']}"
+                for group in duplicate_groups
+            )
+            duplicate_block = (
+                "重复消息提示：同一位用户在短时间内重复发送了相同内容。"
+                "这不是多个独立问题，请只回复一次；请按当前 Persona 对重复和啰嗦的态度自然回应。\n"
+                f"{duplicate_lines}\n"
+            )
         if event.is_private_chat():
             return (
                 "\n\n[系统提示-Smart私聊批次]\n"
                 f"这是 {sender_name}(ID:{sender_id}) 在短时间内连续发送的一组消息，{scenario_text}。\n"
                 f"追加消息摘要：\n{summary_block}\n"
+                f"{duplicate_block}"
                 "请把当前消息和追加消息视为同一轮输入，合并理解后只生成一条完整回复；"
                 "可以选择性回应其中需要回应的内容，但不要逐条回复，也不要解释或分析批处理过程。\n"
             )
@@ -3980,6 +4035,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             f"又紧接着出现了 {total_messages} 条追加消息。{scenario_text}。\n"
             "这些追加消息已按发送者名字和ID标出，帮你理解完整对话背景：\n"
             f"{summary_block}\n"
+            f"{duplicate_block}"
             f"你只需回复 {sender_name}(ID:{sender_id}) 的当前消息。追加消息是背景参考，"
             f"直接自然说话即可，不要逐条回复、不要进行任何判断或分析。\n"
         )
