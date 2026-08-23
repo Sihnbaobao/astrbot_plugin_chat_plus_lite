@@ -243,10 +243,10 @@
                 "hint": "私聊单独控制；smart 会把短时间连续私聊合并为一轮输入后只生成一条回复。"
             },
             "private_batch_wait_ms": {
-                "description": "私聊批次等待(毫秒)",
+                "description": "私聊短连发等待(毫秒)",
                 "type": "int",
-                "default": 1200,
-                "hint": "私聊首条消息等待后续消息的时间；用于短时间连发合并，建议 800-2000。"
+                "default": 3000,
+                "hint": "Smart 首条消息等待后续短连发的时间；默认 3000，窗口越大越容易合并，但单条消息也会等待更久。"
             },
             "private_batch_max_size": {
                 "description": "私聊批次上限",

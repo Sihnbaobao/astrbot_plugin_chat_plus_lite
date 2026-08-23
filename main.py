@@ -28,7 +28,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者/维护: Sihnbaobao
-版本: 0.0.5（私聊短连发合并与并发延迟修复）
+版本: 0.0.6（私聊短连发合并与并发延迟修复）
 """
 
 import random
@@ -91,7 +91,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
     "astrbot_plugin_chat_plus_lite",
     "Sihnbaobao",
     "一个支持群聊与私聊批处理、以AI读空气为主的聊天效果增强插件（人格主导，简洁配置）",
-    "0.0.5",
+    "0.0.6",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
@@ -413,7 +413,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - 0.0.5（私聊短连发合并/并发延迟修复版）")
+        logger.info("群聊增强插件已加载 - 0.0.6（私聊短连发合并/并发延迟修复版）")
         logger.info(
             f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}"
         )
@@ -630,7 +630,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "0.0.5",
+                "version": "0.0.6",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,

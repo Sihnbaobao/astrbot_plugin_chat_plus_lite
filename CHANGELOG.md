@@ -1,5 +1,10 @@
 ## 📝 更新日志
 
+## 0.0.6
+
+- **Private Smart window**: Increased the default private burst window to 3000ms as a latency and mergeability compromise.
+- **Behavior clarification**: Messages separated by several seconds remain separate turns; Smart does not wait for an unanswered conversation indefinitely.
+
 ## 0.0.5
 
 - **Private Smart batching**: Short bursts from the same private user are combined into one logical turn and produce one comprehensive reply instead of replying to each message separately.
