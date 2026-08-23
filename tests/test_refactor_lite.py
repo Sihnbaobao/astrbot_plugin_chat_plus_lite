@@ -31,6 +31,7 @@ def _run(coro):
         return asyncio.run(coro)
     return loop.run_until_complete(coro)
 
+
 REPO_ROOT = Path(__file__).parents[1]
 UTILS_DIR = REPO_ROOT / "utils"
 
@@ -60,6 +61,7 @@ class _ProviderRequest:
         self.audio_urls = kwargs.get("audio_urls", [])
         self.contexts = kwargs.get("contexts", [])
         self.func_tool = kwargs.get("tool_set", None)
+        self.conversation = kwargs.get("conversation")
 
 
 class _Event:
@@ -85,6 +87,9 @@ class _Event:
     def get_self_id(self):
         return "bot_self"
 
+    def get_platform_name(self):
+        return "aiocqhttp"
+
     def set_extra(self, key, value):
         self._extras[key] = value
 
@@ -100,7 +105,23 @@ class _PersonaManager:
         self._prompt = prompt
 
     async def get_default_persona_v3(self, umo):
-        return {"prompt": self._prompt, "name": "测试人格", "_begin_dialogs_processed": []}
+        return {
+            "prompt": self._prompt,
+            "name": "测试人格",
+            "_begin_dialogs_processed": [],
+        }
+
+    async def resolve_selected_persona(self, **_kwargs):
+        return (
+            "active",
+            {
+                "prompt": "当前会话人格",
+                "name": "当前人格",
+                "_begin_dialogs_processed": [],
+            },
+            None,
+            False,
+        )
 
 
 class _ToolManager:
@@ -108,13 +129,28 @@ class _ToolManager:
         return None
 
 
+class _ConversationManager:
+    def __init__(self, conversation):
+        self._conversation = conversation
+
+    async def get_curr_conversation_id(self, _umo):
+        return "conversation-1" if self._conversation is not None else None
+
+    async def get_conversation(self, _umo, _conversation_id):
+        return self._conversation
+
+
 class _Context:
-    def __init__(self, persona_prompt):
+    def __init__(self, persona_prompt, conversation=None):
         self.persona_manager = _PersonaManager(persona_prompt)
+        self.conversation_manager = _ConversationManager(conversation)
         self._tools = _ToolManager()
 
     def get_llm_tool_manager(self):
         return self._tools
+
+    def get_config(self, umo=None):
+        return {"provider_settings": {}}
 
 
 def _install_astrbot_stubs(monkeypatch):
@@ -172,7 +208,9 @@ def _load_module(monkeypatch, rel_path, module_name, stubs=None):
         monkeypatch.setitem(sys.modules, f"{package_name}.utils.{sub}", stub_module)
 
     full_name = f"{package_name}.utils.{module_name}"
-    spec = importlib.util.spec_from_file_location(full_name, UTILS_DIR / f"{module_name}.py")
+    spec = importlib.util.spec_from_file_location(
+        full_name, UTILS_DIR / f"{module_name}.py"
+    )
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, full_name, module)
     spec.loader.exec_module(module)
@@ -182,6 +220,7 @@ def _load_module(monkeypatch, rel_path, module_name, stubs=None):
 # ---------------------------------------------------------------------------
 # ReplyHandler
 # ---------------------------------------------------------------------------
+
 
 def test_reply_handler_has_no_system_reply_prompt(monkeypatch):
     handler = _load_module(monkeypatch, "reply_handler.py", "reply_handler")
@@ -216,6 +255,26 @@ def test_generate_reply_system_prompt_is_exactly_persona(monkeypatch):
     for banned in ("严禁元叙述", "系统行为指令", "回复身份", "严禁重复", "请开始回复"):
         assert banned not in full_prompt
     assert "请直接输出你的回复" in full_prompt
+
+
+def test_generate_reply_resolves_current_conversation_persona(monkeypatch):
+    """The reply request uses the persona selected for the active conversation."""
+    handler = _load_module(monkeypatch, "reply_handler.py", "reply_handler")
+    event = _Event(message_str="切换后测试")
+    context = _Context(persona_prompt="旧默认人格", conversation=object())
+
+    req = _run(
+        handler.ReplyHandler.generate_reply(
+            event,
+            context,
+            formatted_message="当前会话上下文",
+            extra_prompt="",
+            prompt_mode="append",
+        )
+    )
+
+    assert req.system_prompt == "当前会话人格"
+    assert req.conversation is None
 
 
 def test_generate_reply_sets_marker_extras(monkeypatch):
@@ -254,6 +313,7 @@ def test_generate_reply_sets_marker_extras(monkeypatch):
 # DecisionAI
 # ---------------------------------------------------------------------------
 
+
 def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     decision = _load_module(
         monkeypatch,
@@ -265,15 +325,26 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
         },
     )
     prompt = decision.DecisionAI.SYSTEM_DECISION_PROMPT
-    for removed in ("对话疲劳", "判断记录", "兴趣话题", "时间与活跃度", "主动对话", "拟人"):
+    for removed in (
+        "对话疲劳",
+        "判断记录",
+        "兴趣话题",
+        "时间与活跃度",
+        "主动对话",
+        "拟人",
+    ):
         assert removed not in prompt
     assert "是否回复" in prompt
     assert "yes或no" in prompt
+
+    assert "一对一私聊" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
+    assert "安静、冷淡或话少" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
 
 
 # ---------------------------------------------------------------------------
 # MessageCacheManager expiry filter
 # ---------------------------------------------------------------------------
+
 
 def _load_cache_manager(monkeypatch):
     return _load_module(
@@ -309,9 +380,7 @@ def test_expiry_filter_respects_max_count(monkeypatch):
     import time as _time
 
     now = _time.time()
-    messages = [
-        {"content": f"m{i}", "timestamp": now - 100 + i} for i in range(5)
-    ]
+    messages = [{"content": f"m{i}", "timestamp": now - 100 + i} for i in range(5)]
     filtered = manager._filter_expired_cached_messages(
         messages, cache_ttl_seconds=600, max_cache_count=2
     )
@@ -323,6 +392,7 @@ def test_expiry_filter_respects_max_count(monkeypatch):
 # ---------------------------------------------------------------------------
 # KeywordChecker
 # ---------------------------------------------------------------------------
+
 
 def test_keyword_checker_triggers_and_blacklist(monkeypatch):
     checker = _load_module(

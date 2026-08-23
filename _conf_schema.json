@@ -9,6 +9,34 @@
                 "default": true,
                 "hint": "关闭后本插件不处理任何群聊消息。"
             },
+            "enable_private_chat": {
+                "description": "启用私聊增强",
+                "type": "bool",
+                "default": false,
+                "hint": "开启后处理私聊；关闭时保持原有群聊-only 行为。"
+            },
+            "enabled_private_users": {
+                "description": "启用的私聊用户",
+                "type": "list",
+                "default": [],
+                "hint": "留空=所有私聊用户；填用户ID则只处理指定用户。"
+            },
+            "takeover_private_reply": {
+                "description": "接管私聊回复",
+                "type": "bool",
+                "default": true,
+                "hint": "开启=插件决定不回复时阻止 AstrBot 默认兜底回复。"
+            },
+            "private_reply_mode": {
+                "description": "私聊回复策略",
+                "type": "string",
+                "options": [
+                    "direct",
+                    "decide"
+                ],
+                "default": "direct",
+                "hint": "direct=普通私聊直接回应，不受群聊安静人格规则影响；decide=使用私聊专用读空气。纯图片/表情包仍按各自媒体策略处理。"
+            },
             "enable_debug_log": {
                 "description": "调试日志",
                 "type": "bool",
@@ -136,6 +164,12 @@
                 "default": true,
                 "hint": "消息上下文标注发送者。"
             },
+            "collapse_reply_newlines": {
+                "description": "收敛普通回复换行",
+                "type": "bool",
+                "default": false,
+                "hint": "开启后将普通纯文本回复中的主动换行合并为空格；代码块和 Markdown 列表保留原格式。"
+            },
             "max_context_messages": {
                 "description": "历史消息条数",
                 "type": "int",
@@ -197,6 +231,28 @@
                     "smart"
                 ],
                 "hint": "legacy=逐条独立；smart=短时多条合并一批再判断回复。"
+            },
+            "private_concurrent_mode": {
+                "description": "私聊并发模式",
+                "type": "string",
+                "default": "smart",
+                "options": [
+                    "legacy",
+                    "smart"
+                ],
+                "hint": "私聊单独控制；smart 会把短时间连续私聊合并为一轮输入后只生成一条回复。"
+            },
+            "private_batch_wait_ms": {
+                "description": "私聊批次等待(毫秒)",
+                "type": "int",
+                "default": 1200,
+                "hint": "私聊首条消息等待后续消息的时间；用于短时间连发合并，建议 800-2000。"
+            },
+            "private_batch_max_size": {
+                "description": "私聊批次上限",
+                "type": "int",
+                "default": 10,
+                "hint": "单个私聊批次最多合并的消息数。"
             }
         }
     },
@@ -209,6 +265,40 @@
                 "type": "bool",
                 "default": false,
                 "hint": "把图片转成文字描述喂给AI。"
+            },
+            "private_image_mode": {
+                "description": "私聊纯图片策略",
+                "type": "string",
+                "default": "decide",
+                "options": [
+                    "ignore",
+                    "decide",
+                    "always"
+                ],
+                "hint": "ignore=忽略纯图片；decide=交给读空气；always=直接处理。含文字的图文消息仍按普通消息处理。"
+            },
+            "private_emoji_mode": {
+                "description": "私聊纯表情包策略",
+                "type": "string",
+                "default": "ignore",
+                "options": [
+                    "ignore",
+                    "decide",
+                    "always"
+                ],
+                "hint": "ignore=忽略水消息；decide=让读空气判断是否回应；always=直接处理。"
+            },
+            "private_collapse_duplicate_emoji": {
+                "description": "折叠重复表情包",
+                "type": "bool",
+                "default": true,
+                "hint": "同一批次或短时间内重复发送相同表情包时只保留一份。"
+            },
+            "private_duplicate_emoji_window_ms": {
+                "description": "重复表情窗口(毫秒)",
+                "type": "int",
+                "default": 1500,
+                "hint": "同一表情包在窗口内重复发送时直接折叠。"
             },
             "image_to_text_provider_id": {
                 "description": "图片转文字模型",

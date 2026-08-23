@@ -145,14 +145,21 @@ class SmartConcurrentManager:
     _MAX_BATCH_SIZE: int = 20
 
     @classmethod
-    async def claim_batch(cls, chat_id: str, processing_id: str) -> dict:
-        """
-        尝试让当前消息成为 anchor，并吸收后续已准备好的消息。
+    async def claim_batch(
+        cls,
+        chat_id: str,
+        processing_id: str,
+        max_batch_size: int | None = None,
+    ) -> dict:
+        """Claim the current message as an anchor and merge ready followers.
 
-        返回：
-        - is_consumed=True: 当前消息已被更早的 anchor 吸收，应直接退出
-        - is_anchor=True: 当前消息是本批次 anchor，merged_entries 为已吸收的后续消息
-        - is_anchor=False: 当前消息暂时还不是 anchor（理论上前面已有等待逻辑）
+        Args:
+            chat_id: Conversation identifier used for batch coordination.
+            processing_id: Processing identifier of the current message.
+            max_batch_size: Optional follower limit for this claim.
+
+        Returns:
+            A claim result containing consumed, anchor, or merged-entry state.
         """
         try:
             lock = cls._get_lock()
@@ -199,6 +206,12 @@ class SmartConcurrentManager:
 
                 merged_entries: List[dict] = []
                 current_is_forced = bool(current.get("is_forced", False))
+                batch_limit = cls._MAX_BATCH_SIZE
+                if max_batch_size is not None:
+                    try:
+                        batch_limit = max(1, int(max_batch_size))
+                    except (TypeError, ValueError):
+                        batch_limit = cls._MAX_BATCH_SIZE
 
                 for entry in ordered_entries[1:]:
                     entry_pid = entry.get("processing_id")
@@ -206,7 +219,7 @@ class SmartConcurrentManager:
                         continue
 
                     # 达到批次上限：停止吸收，剩余消息留在 pending 由下一批次处理
-                    if len(merged_entries) >= cls._MAX_BATCH_SIZE:
+                    if len(merged_entries) >= batch_limit:
                         break
 
                     # 后续强制消息永远作为新的边界，不被前一个批次吞掉

@@ -1,10 +1,10 @@
-# 群聊增强插件 (Chat Plus) — 精简重构版
+# 聊天增强插件 (Chat Plus) — 精简重构版
 
 ---
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-V2.1.0--lite-blue.svg)](https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite)
+[![Version](https://img.shields.io/badge/version-0.0.5-blue.svg)](https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A5v4.11.0-green.svg)](https://github.com/AstrBotDevs/AstrBot)<!-- 插件页需 v4.25.3+ -->
 [![Plugin Pages](https://img.shields.io/badge/Plugin%20Pages-v4.25.3%2B-purple.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange.svg)](LICENSE)
@@ -24,18 +24,18 @@
 主动对话标记等文本，导致**群聊中 bot 的人格表现与私聊明显不同**（说话更短、更直接、少解释性语言）。
 
 本次重构删除了所有注入到 LLM 请求的行为指令：
-- 群聊回复请求的 system_prompt **只含人格设定**（persona_manager 原样输出）
+- 回复请求把当前会话交给 AstrBot 核心解析人格，支持强制人格、会话人格和默认人格切换
 - prompt **只含纯上下文**（历史消息 + [时间] 昵称(ID): 消息 发送者标注）
-- 群聊里 AI 看到的指令与私聊几乎相同，只多"谁在说话"的必要信息
+- 群聊和私聊使用不同的回复策略：群聊读空气决定是否插话，私聊默认把发送者视为当前对话对象
 
 ## ✅ 保留功能
 
 | 功能 | 说明 |
 |---|---|
-| AI 读空气 | 独立 LLM 调用判断"要不要回复"，只输出 yes/no，不影响回复人格 |
-| 概率筛选 | 非@消息按概率回复，回复后概率提升 |
-| 关键词触发 | 命中关键词必回（可开智能模式：跳过概率但保留读空气判断） |
-| @机器人必回 | @消息跳过所有判断直接回复 |
+| AI 读空气 | 群聊使用独立 LLM 判断"要不要插话"；私聊默认 direct 直接回应，decide 模式使用私聊专用判断；不影响正式回复人格 |
+| 概率筛选 | 默认关闭；保留相关兼容配置 |
+| 关键词触发 | 非智能模式可直接触发，智能模式交给读空气判断 |
+| @机器人 | 作为当前消息上下文交给群聊读空气判断 |
 | 图片识别 | 图片转文字（可配独立提供商）/ 多模态直传，平台图片描述提取与缓存（省钱） |
 | 转发消息解析 | QQ/OneBot 合并转发消息自动展开为纯文本 |
 | 黑名单 | 用户 ID 黑名单 + 关键词黑名单 |
@@ -43,16 +43,17 @@
 | 记忆注入 | livingmemory 集成（v1/v2 自动兼容，会话+人格隔离） |
 | 插件页管理控制台 | AstrBot Dashboard 内嵌插件页：卡片式流程可视化 + 一键配置 + 提示词预览（无需单独端口/密码） |
 | 戳一戳 | 回复后戳 / 收到戳后反戳 / 戳过追踪提示 / 群白名单 |
-| Smart 并发 | 同群同期消息智能合并为批次统一回复，支持批次上下文提示 |
+| Smart 并发 | 群聊和私聊分别合并连续消息为批次统一回复，支持批次上下文提示 |
 | 其他 | 指令过滤、@全体成员/@他人过滤、回复去重、内容过滤（输出/保存）、新成员入群解析、表情包标记、官方历史同步 |
+
+## 💬 私聊行为
+
+私聊默认关闭，以保持升级兼容。开启 enable_private_chat 后，enabled_private_users 留空表示所有私聊用户，填写用户 ID 则只处理指定用户。private_reply_mode 默认是 direct：普通私聊直接回应，不受群聊安静人格规则影响；改为 decide 后使用私聊专用读空气，问候、提问、请求和连续对话优先回应。takeover_private_reply 控制插件明确判定不回复时是否阻止 AstrBot 默认兜底，读空气异常时会放行核心链路。
 
 ## ❌ 已删除功能（迁移指南）
 
-以下功能与配置项在 V2.5.0-lite 中已移除，升级后相关配置自动失效（保留在旧配置文件中也无效）：
-
 | 已删除 | 影响 | 替代方案 |
 |---|---|---|
-| 私聊处理（enable_private_chat 及全部 private_* 配置） | 私聊完全交给 AstrBot 默认链路 | 无需替代，这正是重构目标 |
 | 情绪系统（enable_mood_system 及 mood_*） | 不再注入情绪参考提示 | 无 |
 | 注意力机制（enable_attention_mechanism 及 attention_*、cooldown_*、pending_cooldown_*） | 概率调整回到传统模式 | 概率参数（保留） |
 | 主动对话（enable_proactive_chat 及 proactive_*、score_*、complaint_*） | bot 不再主动发起话题 | 平台自带的主动回复/主动对话功能 |
@@ -75,10 +76,16 @@
    - initial_probability：初始读空气概率（0~1）
    - trigger_keywords：触发关键词列表
 3. 可选配置：
+   - enable_private_chat：开启私聊增强；enabled_private_users 留空表示全部用户
+   - private_reply_mode：私聊使用 direct（默认，普通消息直接回应）或 decide（私聊专用读空气）
+   - private_image_mode：纯图片使用 ignore / decide / always 策略
+   - private_emoji_mode：纯表情包使用 ignore / decide / always 策略，默认 ignore
+   - collapse_reply_newlines：将普通纯文本回复中的主动换行合并为空格
+   - private_collapse_duplicate_emoji：折叠短时间内重复的相同表情包
    - enable_image_processing + image_to_text_provider_id：图片转文字（推荐）
    - enable_memory_injection：livingmemory 记忆注入（需安装 astrbot_plugin_livingmemory）
    - enable_poke_after_reply：回复后戳一戳（仅 QQ + aiocqhttp）
-   - concurrent_mode = "smart"：Smart 并发合并
+   - concurrent_mode = "smart"：Smart 群聊合并；private_concurrent_mode = "smart"：Smart 私聊把短时间连发合并为一轮，只生成一条综合回复
 4. 可视化管理：AstrBot Dashboard → 插件 → 本插件 → 打开「管理控制台」页面
    （v4.26.0+ 也可从侧边栏插件 WebUI 入口进入），卡片式流程与一键配置无需单独端口
 

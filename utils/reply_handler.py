@@ -7,8 +7,8 @@
 
 重构要点（REFACTOR_DESIGN.md）：
 - 删除 SYSTEM_REPLY_PROMPT（约100行系统行为指令）—— 这是群聊人格漂移的最大来源
-- 回复请求的 system_prompt 只含人格（persona_manager.get_default_persona_v3()）
-- prompt 只含纯上下文（历史 + 发送者标注），不注入任何行为指令/情绪/注意力文本
+- 回复请求的 system_prompt 使用当前会话最终生效的人格
+- prompt 只含纯上下文（历史 + 发送者标注），不注入情绪/注意力文本
 - 保留标记机制：on_llm_request 钩子（priority=-1）据此恢复完整 prompt，
   同时保留其他插件（emotionai/livingmemory 等）对请求的注入
 - 保留短消息占位机制：event.request_llm() 的 prompt 传当前消息短文本，
@@ -55,6 +55,7 @@ class ReplyHandler:
         "\n\n---\n以上是消息上下文，请直接输出你的回复。"
         "\n直接自然地回应即可：不要复述对方消息的措辞（例如把对方刚说的词原样重复再带上'啊'字），"
         "不要用固定句式给每条回复开头，不要提及上下文中的标注或格式。"
+        "普通聊天默认输出一条连续消息，不要主动分段或换行；只有列表、代码或用户明确要求时才换行。"
     )
 
     @staticmethod
@@ -116,9 +117,7 @@ class ReplyHandler:
                         f"[系统信息-当前对话对象] {sender_name}（ID:{sender_id}）"
                     )
                 else:
-                    sender_emphasis = (
-                        f"[系统信息-当前对话对象] 用户ID:{sender_id}"
-                    )
+                    sender_emphasis = f"[系统信息-当前对话对象] 用户ID:{sender_id}"
 
             smart_hint_text = (smart_batch_reply_hint or "").strip()
 
@@ -158,16 +157,64 @@ class ReplyHandler:
             except Exception:
                 pass
 
-            # 获取人格作为 system_prompt（不再叠加任何插件指令）
+            # Resolve the final persona for this conversation on every request.
+            # This keeps session-forced and conversation-selected personas in sync
+            # without passing a conversation to request_llm (which would duplicate
+            # the plugin's existing official-history save path).
             system_prompt = ""
-            begin_dialogs_text = ""
+            conversation = None
             try:
-                default_persona = await context.persona_manager.get_default_persona_v3(
-                    event.unified_msg_origin
-                )
-                system_prompt = default_persona.get("prompt", "") or ""
+                conversation_manager = getattr(context, "conversation_manager", None)
+                if conversation_manager is not None:
+                    conversation_id = (
+                        await conversation_manager.get_curr_conversation_id(
+                            event.unified_msg_origin
+                        )
+                    )
+                    if conversation_id:
+                        conversation = await conversation_manager.get_conversation(
+                            event.unified_msg_origin, conversation_id
+                        )
 
-                begin_dialogs = default_persona.get("_begin_dialogs_processed", [])
+                persona_manager = context.persona_manager
+                active_persona = None
+                if conversation is not None and hasattr(
+                    persona_manager, "resolve_selected_persona"
+                ):
+                    config_getter = getattr(context, "get_config", None)
+                    provider_settings = {}
+                    if callable(config_getter):
+                        provider_config = config_getter(umo=event.unified_msg_origin)
+                        provider_settings = (
+                            provider_config.get("provider_settings", {})
+                            if provider_config
+                            else {}
+                        )
+                    (
+                        _,
+                        active_persona,
+                        _,
+                        _,
+                    ) = await persona_manager.resolve_selected_persona(
+                        umo=event.unified_msg_origin,
+                        conversation_persona_id=getattr(
+                            conversation, "persona_id", None
+                        ),
+                        platform_name=(
+                            event.get_platform_name()
+                            if hasattr(event, "get_platform_name")
+                            else ""
+                        ),
+                        provider_settings=provider_settings,
+                    )
+
+                if active_persona is None:
+                    active_persona = await persona_manager.get_default_persona_v3(
+                        event.unified_msg_origin
+                    )
+                system_prompt = active_persona.get("prompt", "") or ""
+
+                begin_dialogs = active_persona.get("_begin_dialogs_processed", [])
                 if begin_dialogs:
                     dialog_parts = []
                     for dialog in begin_dialogs:
@@ -178,20 +225,26 @@ class ReplyHandler:
                         elif role == "assistant":
                             dialog_parts.append(f"AI: {content}")
                     if dialog_parts:
-                        begin_dialogs_text = (
-                            "\n=== 预设对话 ===\n"
-                            + "\n".join(dialog_parts)
-                            + "\n\n"
+                        full_prompt += (
+                            "\n=== 预设对话 ===\n" + "\n".join(dialog_parts) + "\n\n"
                         )
                 if DEBUG_MODE:
                     logger.debug(
-                        f"✅ 已获取人格配置（persona_manager），长度: {len(system_prompt)} 字符"
+                        f"Resolved reply persona prompt length: {len(system_prompt)}"
                     )
             except Exception as e:
-                logger.warning(f"获取人格设定失败: {e}，使用空人格")
-
-            if begin_dialogs_text:
-                full_prompt += begin_dialogs_text
+                logger.warning(f"Failed to resolve the active persona: {e}")
+                try:
+                    default_persona = (
+                        await context.persona_manager.get_default_persona_v3(
+                            event.unified_msg_origin
+                        )
+                    )
+                    system_prompt = default_persona.get("prompt", "") or ""
+                except Exception as fallback_error:
+                    logger.warning(
+                        f"Failed to resolve the default persona: {fallback_error}"
+                    )
 
             # 标记请求来源，供 on_llm_request 钩子识别
             event.set_extra(PLUGIN_REQUEST_MARKER, True)

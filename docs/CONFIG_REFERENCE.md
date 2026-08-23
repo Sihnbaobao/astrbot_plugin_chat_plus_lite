@@ -44,7 +44,7 @@
 - [内容过滤](#内容过滤)
 - [回复生成](#回复生成)
 - [历史管理指令](#历史管理指令)
-- [私聊功能（开发中）](#私聊功能开发中)
+- [私聊功能](#私聊功能)
 
 ---
 
@@ -973,20 +973,26 @@ for rule in rules:
 
 ---
 
-## 私聊功能（开发中）
+## 私聊功能
 
-> **⚠️ 警告：私聊功能目前仍在开发测试阶段，请勿启用！当前版本的私聊模块尚未完善，开启可能导致异常行为。**
+私聊已经支持独立开关、用户白名单、Smart 批处理、图片/表情包策略和独立的回复决策。普通私聊默认使用 `direct`，不经过群聊式安静人格读空气；纯图片和表情包仍按各自媒体策略处理。
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enable_private_chat` | bool | `false` | **⚠️ 请保持 false！** 私聊处理总开关 |
+| `enable_private_chat` | bool | `false` | 私聊处理总开关 |
+| `enabled_private_users` | list | `[]` | 留空处理全部私聊；填写用户ID后只处理指定用户 |
+| `takeover_private_reply` | bool | `true` | 插件明确判定不回复时是否阻止 AstrBot 默认兜底；读空气异常时放行核心链路 |
+| `private_reply_mode` | string | `direct` | `direct`=普通私聊直接回应；`decide`=使用私聊专用读空气 |
+| `private_image_mode` | string | `decide` | 纯图片使用 `ignore` / `decide` / `always` |
+| `private_emoji_mode` | string | `ignore` | 纯表情包使用 `ignore` / `decide` / `always` |
+| `private_concurrent_mode` | string | `smart` | 私聊并发模式；Smart 会把短时间连发视为同一轮输入，只生成一条综合回复 |
+| `private_batch_wait_ms` | int | `1200` | 私聊 Smart 短连发批次等待后续消息的时间；超过窗口的消息不并入该批次 |
+| `private_batch_max_size` | int | `10` | 单个私聊批次最多合并的消息数 |
+| `collapse_reply_newlines` | bool | `false` | 开启后收敛普通纯文本回复的主动换行，代码块和 Markdown 列表保留原格式 |
 
-私聊模块有独立的 30+ 个配置项（类似群聊的简化版），包含消息聚合、用户过滤、图片处理等功能。当前文档先补充两点关键链路说明：
-
-- **私信回复生成**：与群聊回复生成保持同类调用方式，先通过 `event.request_llm()` 触发 Hook 链，再恢复完整上下文
-- **私信主动对话生成**：与群聊主动对话保持同类调用方式，使用 `ProviderRequest + OnLLMRequestEvent` 兼容链路恢复完整 prompt
-
-待正式发布后将补充完整文档。
+- **人格切换**：正式回复每次解析当前会话最终人格，支持会话强制人格、会话选择人格和默认人格；不把会话对象传给 `request_llm`，避免与插件现有官方历史保存重复。
+- **私聊媒体**：纯图片和纯表情包独立处理，默认忽略纯表情包；含文字的图文消息按普通私聊处理。
+- **私聊读空气**：`decide` 模式的问候、提问、请求和连续对话倾向 `yes`；安静人格只影响回复风格和长度，不会让所有私聊都变成 `no`。
 
 ---
 

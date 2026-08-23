@@ -1,5 +1,19 @@
 ## 📝 更新日志
 
+## 0.0.5
+
+- **Private Smart batching**: Short bursts from the same private user are combined into one logical turn and produce one comprehensive reply instead of replying to each message separately.
+- **Latency**: Removed the legacy ten-second per-chat wait from private Smart processing; messages outside the short burst window proceed without waiting for an earlier model request to finish.
+- **Batch window**: Increased the default private burst window to 1200ms and clarified that longer gaps are separate turns.
+
+## 0.0.4
+
+- **Private chat support**: Added an opt-in private-chat switch, user whitelist, takeover control, and private Smart batching.
+- **Media routing**: Pure private images and stickers now have independent ignore / decide / always policies.
+- **Sticker deduplication**: Repeated identical stickers are collapsed within a short window and inside one private batch.
+- **Persona switching**: Formal replies now resolve the active conversation persona instead of always using the configured default persona.
+- **Private reply strategy**: Added direct private replies by default, a private-specific decide mode, AI-error fallback to the core pipeline, and optional plain-text newline collapsing.
+
 ## 0.0.3 (2026-08-18)
 
 - **消息库统一官方**：禁用插件自定义存储（custom_storage_max_messages=0），历史只存 AstrBot 官方库。

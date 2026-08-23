@@ -1,6 +1,6 @@
 """
-群聊增强插件 - Group Chat Plus（精简重构版 refactor-lite）
-基于AI读空气的群聊增强插件，让bot更懂氛围
+聊天增强插件 - Group Chat Plus（精简重构版 refactor-lite）
+基于AI读空气的群聊与私聊增强插件，让bot更懂氛围
 
 重构核心原则：
 - 插件只决定"要不要回复"，不决定"说什么"
@@ -23,12 +23,12 @@
 14. 官方历史同步（用户消息/AI回复/缓存转正）
 
 删除功能（详见 docs/REFACTOR_DESIGN.md）：
-私聊全套、情绪系统、注意力机制、主动对话、等待窗口、对话疲劳、
+情绪系统、注意力机制、主动对话、等待窗口、对话疲劳、
 错字生成、打字模拟、拟人模式、消息质量评分、回复密度、频率调整、
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者/维护: Sihnbaobao
-版本: 0.0.3（读空气主导 · 消息库清理 · reset彻底）
+版本: 0.0.5（私聊短连发合并与并发延迟修复）
 """
 
 import random
@@ -90,13 +90,13 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
 @register(
     "astrbot_plugin_chat_plus_lite",
     "Sihnbaobao",
-    "一个以AI读空气为主的群聊聊天效果增强插件（人格主导，简洁配置）",
-    "0.0.3",
+    "一个支持群聊与私聊批处理、以AI读空气为主的聊天效果增强插件（人格主导，简洁配置）",
+    "0.0.5",
     "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
 )
 class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     """
-    群聊增强插件主类（精简重构版）
+    聊天增强插件主类（精简重构版）
 
     采用事件监听而非消息拦截，确保与其他插件兼容
     """
@@ -125,8 +125,29 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # ========== 基础配置 ==========
         self.enable_group_chat = self._cfg("enable_group_chat", True)
+        self.enable_private_chat = self._cfg("enable_private_chat", False)
         self.debug_mode = self._cfg("enable_debug_log", False)
         self.enabled_groups = self._cfg("enabled_groups", [])
+        self.enabled_private_users = self._cfg("enabled_private_users", [])
+        self.takeover_private_reply = self._cfg("takeover_private_reply", True)
+        self.private_reply_mode = self._cfg("private_reply_mode", "direct")
+        if self.private_reply_mode not in ("direct", "decide"):
+            self.private_reply_mode = "direct"
+
+        # ========== Private chat media policy ==========
+        legacy_media_mode = self._cfg("private_media_mode", "decide")
+        self.private_image_mode = self._cfg("private_image_mode", legacy_media_mode)
+        self.private_emoji_mode = self._cfg("private_emoji_mode", "ignore")
+        if self.private_image_mode not in ("ignore", "decide", "always"):
+            self.private_image_mode = "decide"
+        if self.private_emoji_mode not in ("ignore", "decide", "always"):
+            self.private_emoji_mode = "ignore"
+        self.private_collapse_duplicate_emoji = self._cfg(
+            "private_collapse_duplicate_emoji", True
+        )
+        self.private_duplicate_emoji_window_ms = self._cfg(
+            "private_duplicate_emoji_window_ms", 1500
+        )
 
         # ========== 概率相关配置 ==========
 
@@ -161,10 +182,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.reply_ai_prompt_mode = self._cfg("reply_ai_prompt_mode", "append")
         self.include_timestamp = self._cfg("include_timestamp", True)
         self.include_sender_info = self._cfg("include_sender_info", True)
+        self.collapse_reply_newlines = self._cfg("collapse_reply_newlines", False)
 
         # ========== 上下文配置 ==========
         self.max_context_messages = self._cfg("max_context_messages", -1)
-        self.custom_storage_max_messages = 0  # 已禁用自定义存储：历史只存官方库（0=禁用并清理历史文件）
+        self.custom_storage_max_messages = (
+            0  # 已禁用自定义存储：历史只存官方库（0=禁用并清理历史文件）
+        )
         self.pending_cache_max_count = self._cfg("pending_cache_max_count", 10)
         self.pending_cache_ttl_seconds = self._cfg("pending_cache_ttl_seconds", 1800)
 
@@ -213,8 +237,12 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # ========== 关键词/黑名单配置 ==========
         self.trigger_keywords = self._cfg("trigger_keywords", [])
         self.blacklist_keywords = self._cfg("blacklist_keywords", [])
-        self.keyword_smart_mode = self._cfg("keyword_smart_mode", True)  # 默认：关键词命中（含bot名字/被@）也交给读空气判断
-        self.takeover_group_reply = self._cfg("takeover_group_reply", True)  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
+        self.keyword_smart_mode = self._cfg(
+            "keyword_smart_mode", True
+        )  # 默认：关键词命中（含bot名字/被@）也交给读空气判断
+        self.takeover_group_reply = self._cfg(
+            "takeover_group_reply", True
+        )  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
         self.enable_user_blacklist = self._cfg("enable_user_blacklist", False)
         self.blacklist_user_ids = self._cfg("blacklist_user_ids", [])
 
@@ -224,7 +252,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.enable_full_command_detection = self._cfg(
             "enable_full_command_detection", False
         )
-        self.full_command_list = self._cfg("full_command_list", ["new", "help", "reset"])
+        self.full_command_list = self._cfg(
+            "full_command_list", ["new", "help", "reset"]
+        )
         self.enable_command_prefix_match = self._cfg(
             "enable_command_prefix_match", False
         )
@@ -252,9 +282,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         )
         self.poke_after_reply_delay = self._cfg("poke_after_reply_delay", 0.5)
         self.poke_trace_enabled = self._cfg("enable_poke_trace_prompt", False)
-        self.poke_trace_max_tracked_users = self._cfg(
-            "poke_trace_max_tracked_users", 5
-        )
+        self.poke_trace_max_tracked_users = self._cfg("poke_trace_max_tracked_users", 5)
         self.poke_trace_ttl_seconds = self._cfg("poke_trace_ttl_seconds", 300)
         self.poke_enabled_groups = []  # 精简后固定默认：全部群可用戳一戳
 
@@ -286,6 +314,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.smart_concurrent_claim_delay = self._cfg(
             "smart_concurrent_claim_delay", 0.3
         )
+        self.private_concurrent_mode = self._cfg("private_concurrent_mode", "smart")
+        self.private_batch_wait_ms = self._cfg("private_batch_wait_ms", 1200)
+        self.private_batch_max_size = self._cfg("private_batch_max_size", 10)
 
         # ========== 性能警告阈值 ==========
         self.reply_timeout_warning_threshold = 120
@@ -329,7 +360,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             enabled=self.enable_image_description_cache,
         )
 
-
         # ========== 状态容器 ==========
         # 标记本插件正在处理的消息（用于 after_message_sent 筛选）
         self.processing_sessions: dict = {}
@@ -348,6 +378,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 最近回复缓存（去重）{chat_id: [{"content": str, "timestamp": float}]}
         self.recent_replies_cache: dict = {}
         self.raw_reply_cache: dict = {}
+        # Recent private emoji signatures {chat_id: {signature: monotonic_time}}.
+        self._private_recent_emoji: dict = {}
         # 多轮工具调用累积AI回复文本 {message_id: [text, ...]}
         self._pending_bot_replies: dict = {}
         # 群聊消息序号 {chat_key: int}
@@ -367,7 +399,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # Smart 并发参数同步
         try:
-            SmartConcurrentManager._EXPIRE_SECONDS = float(self.smart_concurrent_merge_wait)
+            SmartConcurrentManager._EXPIRE_SECONDS = float(
+                self.smart_concurrent_merge_wait
+            )
         except (TypeError, ValueError):
             pass
         try:
@@ -379,8 +413,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - 0.0.3（消息库清理/概率移除/reset彻底版）")
-        logger.info(f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}")
+        logger.info("群聊增强插件已加载 - 0.0.5（私聊短连发合并/并发延迟修复版）")
+        logger.info(
+            f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}"
+        )
 
         logger.info(f"启用的群组: {self.enabled_groups} (留空=全部)")
         logger.info(f"详细日志模式: {'开启' if self.debug_mode else '关闭'}")
@@ -395,7 +431,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.session = aiohttp.ClientSession()
         # 同步 Smart并发参数
         try:
-            SmartConcurrentManager._EXPIRE_SECONDS = float(self.smart_concurrent_merge_wait)
+            SmartConcurrentManager._EXPIRE_SECONDS = float(
+                self.smart_concurrent_merge_wait
+            )
         except (TypeError, ValueError):
             pass
         try:
@@ -547,6 +585,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             for key in group["items"]:
                 mapping[key] = self._ATTR_MAP.get(key, key)
         return mapping
+
     def _register_web_apis(self):
         """注册插件页 Web API（需要 AstrBot >= 4.25.3 的 Plugin Pages 支持）。"""
         try:
@@ -591,7 +630,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "0.0.3",
+                "version": "0.0.5",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -685,8 +724,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             )
 
         decision_custom = bool(
-            self.decision_ai_extra_prompt
-            and str(self.decision_ai_extra_prompt).strip()
+            self.decision_ai_extra_prompt and str(self.decision_ai_extra_prompt).strip()
         )
         if decision_custom and self.decision_ai_prompt_mode == "override":
             decision_text = str(self.decision_ai_extra_prompt).strip()
@@ -743,7 +781,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 await self.context.send_message(
                     session=restart_umo,
                     message_chain=MessageChain(
-                        [Plain("⚠️ 重启完成提示发送失败：当前平台不支持重启提示功能（仅支持aiocqhttp平台）")]
+                        [
+                            Plain(
+                                "⚠️ 重启完成提示发送失败：当前平台不支持重启提示功能（仅支持aiocqhttp平台）"
+                            )
+                        ]
                     ),
                 )
             except Exception as e:
@@ -759,7 +801,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             try:
                 await self.context.send_message(
                     session=restart_umo,
-                    message_chain=MessageChain([Plain("⚠️ 重启完成提示发送失败：未找到CQHttp客户端实例")]),
+                    message_chain=MessageChain(
+                        [Plain("⚠️ 重启完成提示发送失败：未找到CQHttp客户端实例")]
+                    ),
                 )
             except Exception as e:
                 logger.error(f"发送重启失败提示时出错: {e}")
@@ -777,12 +821,16 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         try:
             await asyncio.wait_for(ws_connected.wait(), timeout=10)
         except asyncio.TimeoutError:
-            logger.warning("等待 aiocqhttp WebSocket 连接超时，可能未能发送重启完成提示。")
+            logger.warning(
+                "等待 aiocqhttp WebSocket 连接超时，可能未能发送重启完成提示。"
+            )
 
         elapsed = time.time() - float(restart_start_ts)
         await self.context.send_message(
             session=restart_umo,
-            message_chain=MessageChain([Plain(f"AstrBot重启完成（耗时{elapsed:.2f}秒）")]),
+            message_chain=MessageChain(
+                [Plain(f"AstrBot重启完成（耗时{elapsed:.2f}秒）")]
+            ),
         )
         self.config["restart_umo"] = ""
         self.config["restart_start_ts"] = 0
@@ -837,10 +885,14 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         """多重策略检测是否运行在 AstrBot 桌面端环境。"""
         mode = self.desktop_mode_setting
         if mode == "force_desktop":
-            logger.info("🖥️ [桌面端] 用户强制配置为桌面端模式（desktop_mode=force_desktop）")
+            logger.info(
+                "🖥️ [桌面端] 用户强制配置为桌面端模式（desktop_mode=force_desktop）"
+            )
             return True
         if mode == "force_standard":
-            logger.info("🖥️ [桌面端] 用户强制配置为标准版模式（desktop_mode=force_standard）")
+            logger.info(
+                "🖥️ [桌面端] 用户强制配置为标准版模式（desktop_mode=force_standard）"
+            )
             return False
 
         detected_reason = ""
@@ -861,7 +913,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             if webui_dir and "resources" in webui_dir.replace("\\", "/").lower():
                 detected_reason = f"env:ASTRBOT_WEBUI_DIR={webui_dir}"
         if not detected_reason:
-            if os.environ.get("PYTHONNOUSERSITE") == "1" and os.environ.get("ASTRBOT_ROOT"):
+            if os.environ.get("PYTHONNOUSERSITE") == "1" and os.environ.get(
+                "ASTRBOT_ROOT"
+            ):
                 detected_reason = "env:PYTHONNOUSERSITE=1+ASTRBOT_ROOT"
 
         is_desktop = bool(detected_reason)
@@ -897,31 +951,38 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     # 指令过滤与重置指令
     # ============================================================
 
-    @filter.event_message_type(filter.EventMessageType.ALL, priority=sys.maxsize - 1)
-
     # ============================================================
-    # 群消息入口
+    # 群聊和私聊入口
     # ============================================================
 
-    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE, priority=-1)
+    @filter.event_message_type(
+        filter.EventMessageType.GROUP_MESSAGE | filter.EventMessageType.PRIVATE_MESSAGE,
+        priority=-1,
+    )
     async def on_group_message(self, event: AstrMessageEvent):
         """
-        群消息事件监听
+        Process enabled group and private messages.
 
-        优先级设置为 -1（低于默认的 0），确保其他插件先执行。
-        如果其他插件已经发送了回复，本插件跳过处理，避免重复回复。
+        Args:
+            event: Incoming AstrBot message event.
         """
         _cleanup_message_id = None
         try:
-            # 检查群聊功能总开关
-            if not self.enable_group_chat or event.is_private_chat():
+            is_private_chat = event.is_private_chat()
+            if (is_private_chat and not self.enable_private_chat) or (
+                not is_private_chat and not self.enable_group_chat
+            ):
                 return
 
             # reset 指令联动：彻底清空该会话官方历史（platform_message_history + conversations），
             # 避免官方 reset 只清 conversations 而 plugin 仍从 platform_message_history 读到旧记录
             try:
                 _rst_txt = (
-                    (event.get_message_str() or "").strip().replace("@", "").strip().lower()
+                    (event.get_message_str() or "")
+                    .strip()
+                    .replace("@", "")
+                    .strip()
+                    .lower()
                 )
                 if _rst_txt in ("reset", "/reset"):
                     await ContextManager.clear_official_history_for_event(
@@ -937,7 +998,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         if hasattr(self, "cache_manager") and hasattr(
                             self.cache_manager, "pending_messages_cache"
                         ):
-                            self.cache_manager.pending_messages_cache.pop(str(_ck), None)
+                            self.cache_manager.pending_messages_cache.pop(
+                                str(_ck), None
+                            )
                         if hasattr(self, "recent_replies_cache"):
                             self.recent_replies_cache.pop(str(_ck), None)
                         for _attr in (
@@ -962,7 +1025,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             _raw_msg_str = event.get_message_str()
             _msg_components = None
             try:
-                if hasattr(event, "message_obj") and hasattr(event.message_obj, "message"):
+                if hasattr(event, "message_obj") and hasattr(
+                    event.message_obj, "message"
+                ):
                     _msg_components = event.message_obj.message
             except Exception:
                 pass
@@ -980,14 +1045,24 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             current_time = time.time()
             if len(self._seen_message_ids) > 100:
                 self._seen_message_ids = {
-                    k: v for k, v in self._seen_message_ids.items() if current_time - v < 60
+                    k: v
+                    for k, v in self._seen_message_ids.items()
+                    if current_time - v < 60
                 }
             if source_event_id in self._seen_message_ids:
                 if self.debug_mode:
                     logger.info(
                         f"[消息去重] 检测到重复消息 {source_event_id[:30]}...，跳过处理"
                     )
-                event.call_llm = True
+                if (
+                    self.takeover_private_reply
+                    if is_private_chat
+                    else self.takeover_group_reply
+                ):
+                    try:
+                        event.stop_event()
+                    except Exception:
+                        pass
                 return
             self._seen_message_ids[source_event_id] = current_time
 
@@ -1035,7 +1110,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                                 "is_empty_at": False,
                             }
                             self.cache_manager.add_to_cache(
-                                chat_id, cached_message, source="插件兼容-其他插件已回复"
+                                chat_id,
+                                cached_message,
+                                source="插件兼容-其他插件已回复",
                             )
                 except Exception as e:
                     logger.warning(f"[插件兼容] 缓存消息时出错（不影响后续）: {e}")
@@ -1060,7 +1137,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             message_str = event.get_message_str()
             if MessageCleaner.is_only_poke_marker(message_str):
                 if self.debug_mode:
-                    logger.info("【戳一戳标识符过滤】消息只包含[Poke:poke]标识符，跳过处理")
+                    logger.info(
+                        "【戳一戳标识符过滤】消息只包含[Poke:poke]标识符，跳过处理"
+                    )
                 return
 
             # @他人过滤
@@ -1123,15 +1202,35 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         """
 
         # 步骤1: 初始检查（最基本的过滤）
-        (should_continue, platform_name, is_private, chat_id) = await self._perform_initial_checks(event)
+        (
+            should_continue,
+            platform_name,
+            is_private,
+            chat_id,
+        ) = await self._perform_initial_checks(event)
         if not should_continue:
             return
 
+        use_smart_batch = (
+            self.private_concurrent_mode == "smart"
+            if is_private
+            else self.concurrent_mode == "smart"
+        )
+        takeover_reply = (
+            self.takeover_private_reply if is_private else self.takeover_group_reply
+        )
+
         # 步骤2: 检查消息触发器（决定是否跳过概率判断）
-        _chat_key_for_seq = ProbabilityManager.get_chat_key(platform_name, is_private, chat_id)
+        _chat_key_for_seq = ProbabilityManager.get_chat_key(
+            platform_name, is_private, chat_id
+        )
         current_group_seq = self._group_message_seq.get(_chat_key_for_seq, 0) + 1
         self._group_message_seq[_chat_key_for_seq] = current_group_seq
-        (is_at_message, has_trigger_keyword, matched_trigger_keyword) = await self._check_message_triggers(event)
+        (
+            is_at_message,
+            has_trigger_keyword,
+            matched_trigger_keyword,
+        ) = await self._check_message_triggers(event)
 
         # 步骤2.5: 检测@全体成员与戳一戳信息（概率判断前提取）
         is_at_all_message = False
@@ -1159,18 +1258,28 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             if _poke_info_inner:
                 try:
                     persistent_poke_event_text = (
-                        MessageProcessor.build_persistent_poke_event_text(_poke_info_inner)
+                        MessageProcessor.build_persistent_poke_event_text(
+                            _poke_info_inner
+                        )
                     )
                 except Exception:
                     pass
                 try:
                     _is_pb = _poke_info_inner.get("is_poke_bot", False)
                     _sid = str(_poke_info_inner.get("sender_id", "") or "")
-                    _sname = str(_poke_info_inner.get("sender_name", "") or "").strip() or "未知用户"
+                    _sname = (
+                        str(_poke_info_inner.get("sender_name", "") or "").strip()
+                        or "未知用户"
+                    )
                     _tid = str(_poke_info_inner.get("target_id", "") or "")
-                    _tname = str(_poke_info_inner.get("target_name", "") or "").strip() or "未知用户"
+                    _tname = (
+                        str(_poke_info_inner.get("target_name", "") or "").strip()
+                        or "未知用户"
+                    )
                     if _is_pb:
-                        poke_notice_text = f"[戳一戳提示]有人在戳你，戳你的人是{_sname}(ID:{_sid})"
+                        poke_notice_text = (
+                            f"[戳一戳提示]有人在戳你，戳你的人是{_sname}(ID:{_sid})"
+                        )
                     else:
                         poke_notice_text = f"[戳一戳提示]这是一个戳一戳消息，但不是戳你的，是{_sname}(ID:{_sid})在戳{_tname}(ID:{_tid})"
                 except Exception:
@@ -1182,9 +1291,12 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 关键逻辑：触发关键词等同于@消息
         should_treat_as_at = is_at_message or has_trigger_keyword
 
-        # 步骤2.7: 表情包检测（概率判断前，用于概率衰减和标记注入，仅QQ平台）
+        # Detect stickers independently from ordinary images.
         is_emoji_message = False
-        if self.enable_emoji_filter:
+        emoji_signature = ""
+        if self.enable_emoji_filter or (
+            is_private and self.private_collapse_duplicate_emoji
+        ):
             platform_name_lower = platform_name.lower() if platform_name else ""
             is_qq_platform = any(
                 kw in platform_name_lower
@@ -1194,7 +1306,118 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 try:
                     is_emoji_message = EmojiDetector.is_emoji_message(event)
                 except Exception as e:
-                    logger.warning(f"【步骤2.7】🎭 表情包检测失败，跳过: {e}")
+                    logger.warning(f"Emoji detection failed: {e}")
+
+        if is_emoji_message:
+            signature_parts = []
+            message_chain = getattr(getattr(event, "message_obj", None), "message", [])
+            for component in message_chain or []:
+                try:
+                    component_data = (
+                        component.toDict() if hasattr(component, "toDict") else None
+                    )
+                    if not isinstance(component_data, dict):
+                        component_data = {
+                            key: getattr(component, key, None)
+                            for key in (
+                                "type",
+                                "id",
+                                "face_id",
+                                "faceId",
+                                "file",
+                                "url",
+                                "summary",
+                                "sub_type",
+                                "subType",
+                            )
+                            if getattr(component, key, None) is not None
+                        }
+                    stable_data = {
+                        key: component_data[key]
+                        for key in (
+                            "type",
+                            "id",
+                            "face_id",
+                            "faceId",
+                            "file",
+                            "url",
+                            "summary",
+                            "sub_type",
+                            "subType",
+                        )
+                        if key in component_data
+                    }
+                    if stable_data:
+                        signature_parts.append(stable_data)
+                except Exception:
+                    continue
+
+            fallback_text = (event.get_message_str() or "").strip()
+            if signature_parts or fallback_text not in ("", "[图片]", "[表情]"):
+                signature_payload = {
+                    "parts": signature_parts,
+                    "text": fallback_text,
+                }
+                emoji_signature = hashlib.sha1(
+                    json.dumps(
+                        signature_payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest()
+
+        if is_private and emoji_signature and self.private_collapse_duplicate_emoji:
+            try:
+                duplicate_window = max(
+                    0.0, float(self.private_duplicate_emoji_window_ms) / 1000
+                )
+            except (TypeError, ValueError):
+                duplicate_window = 1.5
+            now = time.monotonic()
+            recent_signatures = self._private_recent_emoji.setdefault(chat_id, {})
+            for signature, seen_at in list(recent_signatures.items()):
+                if now - seen_at > duplicate_window:
+                    recent_signatures.pop(signature, None)
+            previous_seen_at = recent_signatures.get(emoji_signature)
+            recent_signatures[emoji_signature] = now
+            if (
+                previous_seen_at is not None
+                and now - previous_seen_at <= duplicate_window
+            ):
+                if self.debug_mode:
+                    logger.info("Collapsed a repeated private sticker message")
+                if self.takeover_private_reply:
+                    event.stop_event()
+                return
+
+        force_private_media_reply = False
+        private_media_kind = ""
+        if is_private:
+            try:
+                has_image = PlatformLTMHelper.has_image_in_message(event)
+                is_pure_image = PlatformLTMHelper.is_pure_image_message(event)
+            except Exception:
+                has_image = False
+                is_pure_image = False
+            if is_pure_image:
+                if is_emoji_message:
+                    private_media_kind = "sticker"
+                    private_media_policy = self.private_emoji_mode
+                elif has_image:
+                    private_media_kind = "image"
+                    private_media_policy = self.private_image_mode
+                else:
+                    private_media_policy = "decide"
+                if private_media_policy == "ignore":
+                    if self.debug_mode:
+                        logger.info(
+                            f"Ignored a private {private_media_kind or 'media'}-only message"
+                        )
+                    if self.takeover_private_reply:
+                        event.stop_event()
+                    return
+                force_private_media_reply = private_media_policy == "always"
 
         # 步骤3: 概率判断（传统概率模式已移除，默认AI主导，恒处理）
         should_process = True
@@ -1213,15 +1436,16 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 success = False
 
                 if has_image:
-                    (success, platform_processed_text) = (
-                        await PlatformLTMHelper.extract_image_caption_from_platform(
-                            self.context,
-                            event,
-                            original_message_text,
-                            max_wait=self.platform_image_caption_max_wait,
-                            retry_interval=self.platform_image_caption_retry_interval,
-                            fast_check_count=self.platform_image_caption_fast_check_count,
-                        )
+                    (
+                        success,
+                        platform_processed_text,
+                    ) = await PlatformLTMHelper.extract_image_caption_from_platform(
+                        self.context,
+                        event,
+                        original_message_text,
+                        max_wait=self.platform_image_caption_max_wait,
+                        retry_interval=self.platform_image_caption_retry_interval,
+                        fast_check_count=self.platform_image_caption_fast_check_count,
                     )
                     if success and platform_processed_text:
                         processed_text = platform_processed_text
@@ -1229,7 +1453,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             event, platform_processed_text
                         )
                     else:
-                        cache_fallback_text = await self._try_cache_fallback_for_images(event)
+                        cache_fallback_text = await self._try_cache_fallback_for_images(
+                            event
+                        )
                         if cache_fallback_text:
                             processed_text = cache_fallback_text
                             success = True
@@ -1274,7 +1500,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         "image_urls": [],
                         "is_empty_at": False,
                     }
-                    source_label = "概率过滤-带图片描述" if (has_image and success) else "概率过滤"
+                    source_label = (
+                        "概率过滤-带图片描述" if (has_image and success) else "概率过滤"
+                    )
                     self.cache_manager.add_to_cache(
                         chat_id, cached_message, source=source_label
                     )
@@ -1303,6 +1531,20 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.info(f"{trigger_label}已被其他插件处理,跳过后续流程")
                 return
 
+        # Register before image, memory, and other expensive preparation so
+        # burst ordering follows message arrival rather than processing speed.
+        processing_id = self._get_processing_id(event)
+        source_event_id = self._build_source_event_id(event)
+        arrival_seq, arrival_monotonic = self._ensure_arrival_metadata(event)
+        if use_smart_batch:
+            await SmartConcurrentManager.register_arrival(
+                chat_id=chat_id,
+                processing_id=processing_id,
+                source_event_id=source_event_id,
+                arrival_seq=arrival_seq,
+                arrival_monotonic=arrival_monotonic,
+            )
+
         # 步骤4-6: 处理消息内容（图片处理等耗时操作）
         result = await self._process_message_content(
             event,
@@ -1314,10 +1556,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             poke_info,
             raw_is_at_message=is_at_message,
             is_emoji_message=is_emoji_message,
+            emoji_signature=emoji_signature,
             is_at_all_message=is_at_all_message,
             persistent_poke_event_text=persistent_poke_event_text,
         )
         if not result[0]:
+            if use_smart_batch:
+                await SmartConcurrentManager.remove_self(chat_id, processing_id)
             return
 
         (
@@ -1384,21 +1629,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             logger.warning(f"[图片缓存] 合并图片URL失败: {e}")
 
         current_message_cache = cached_message_data
-        processing_id = self._get_processing_id(event)
-        source_event_id = self._build_source_event_id(event)
-        arrival_seq, arrival_monotonic = self._ensure_arrival_metadata(event)
         early_message_id = processing_id
 
-        if self.concurrent_mode == "smart":
-            await SmartConcurrentManager.register_arrival(
-                chat_id=chat_id,
-                processing_id=processing_id,
-                source_event_id=source_event_id,
-                arrival_seq=arrival_seq,
-                arrival_monotonic=arrival_monotonic,
-            )
-
-        if self.concurrent_mode == "smart" and cached_message_data:
+        if use_smart_batch and cached_message_data:
             try:
                 _smart_content = MessageCleaner.clean_message(message_text or "")
             except Exception:
@@ -1421,38 +1654,62 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
             # Smart 模式下先按 arrival_seq 等待更早消息，确保只有 anchor 进入 AI 决策
             smart_claim = None
-            for smart_wait_idx in range(max(1, self.concurrent_wait_max_loops)):
+            smart_wait_loops = (
+                3 if is_private else max(1, self.concurrent_wait_max_loops)
+            )
+            for smart_wait_idx in range(smart_wait_loops):
                 if await SmartConcurrentManager.is_consumed(processing_id):
                     logger.info(
                         f"🔀 [Smart并发] 消息 {processing_id[:20]}... 已在决策前被更早批次吸收，跳过独立处理"
                     )
-                    event.call_llm = True
+                    if takeover_reply:
+                        try:
+                            event.stop_event()
+                        except Exception:
+                            pass
+                    else:
+                        event.call_llm = True
                     await SmartConcurrentManager.remove_self(chat_id, processing_id)
                     self._message_cache_snapshots.pop(processing_id, None)
                     self._smart_batch_snapshots.pop(processing_id, None)
                     return
 
-                if await SmartConcurrentManager.has_earlier_pending(chat_id, processing_id):
+                if await SmartConcurrentManager.has_earlier_pending(
+                    chat_id, processing_id
+                ):
                     if smart_wait_idx == 0 and self.debug_mode:
-                        logger.info("🔀 [Smart并发] 决策前检测到更早到达的消息尚未完成，等待其先成为 anchor")
+                        logger.info(
+                            "🔀 [Smart并发] 决策前检测到更早到达的消息尚未完成，等待其先成为 anchor"
+                        )
                     await asyncio.sleep(self.concurrent_wait_interval)
                     continue
 
-                if (
-                    smart_wait_idx == 0
-                    and not _is_forced
-                    and self.smart_concurrent_claim_delay > 0
-                ):
-                    await asyncio.sleep(self.smart_concurrent_claim_delay)
+                claim_delay = (
+                    max(0.0, float(self.private_batch_wait_ms) / 1000)
+                    if is_private
+                    else self.smart_concurrent_claim_delay
+                )
+                if smart_wait_idx == 0 and not _is_forced and claim_delay > 0:
+                    await asyncio.sleep(claim_delay)
 
                 smart_claim = await SmartConcurrentManager.claim_batch(
-                    chat_id, processing_id
+                    chat_id,
+                    processing_id,
+                    max_batch_size=(
+                        self.private_batch_max_size if is_private else None
+                    ),
                 )
                 if smart_claim.get("is_consumed"):
                     logger.info(
                         f"🔀 [Smart并发] 消息 {processing_id[:20]}... 已在 claim 阶段被更早 anchor 吸收，跳过独立处理"
                     )
-                    event.call_llm = True
+                    if takeover_reply:
+                        try:
+                            event.stop_event()
+                        except Exception:
+                            pass
+                    else:
+                        event.call_llm = True
                     await SmartConcurrentManager.remove_self(chat_id, processing_id)
                     self._message_cache_snapshots.pop(processing_id, None)
                     self._smart_batch_snapshots.pop(processing_id, None)
@@ -1472,6 +1729,26 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             _sm_cache_entry["smart_merged"] = True
                             _sm_cache_entry["smart_batch_dynamic_hint"] = True
                             smart_window_messages.append(_sm_cache_entry)
+                        if is_private and self.private_collapse_duplicate_emoji:
+                            seen_emoji_signatures = set()
+                            anchor_signature = (current_message_cache or {}).get(
+                                "emoji_signature", ""
+                            )
+                            if anchor_signature:
+                                seen_emoji_signatures.add(anchor_signature)
+                            deduplicated_messages = []
+                            for smart_message in smart_window_messages:
+                                signature = smart_message.get("emoji_signature", "")
+                                if signature and signature in seen_emoji_signatures:
+                                    continue
+                                if signature:
+                                    seen_emoji_signatures.add(signature)
+                                deduplicated_messages.append(smart_message)
+                            if len(deduplicated_messages) != len(smart_window_messages):
+                                logger.info(
+                                    "Collapsed repeated stickers inside one private batch"
+                                )
+                            smart_window_messages = deduplicated_messages
                         if smart_window_messages:
                             self._smart_batch_snapshots[processing_id] = [
                                 copy.deepcopy(_msg) for _msg in smart_window_messages
@@ -1505,15 +1782,26 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             should_reply = True
             if self.debug_mode:
                 logger.info("【步骤7】skip_all 模式消息，跳过AI决策，强制处理")
+        elif force_private_media_reply:
+            should_reply = True
+            if self.debug_mode:
+                logger.info(
+                    f"Forced handling for private {private_media_kind or 'media'}-only message"
+                )
         else:
             decision_context = formatted_context
-            if self.concurrent_mode == "smart":
-                smart_batch_messages = self._smart_batch_snapshots.get(early_message_id, [])
+            if use_smart_batch:
+                smart_batch_messages = self._smart_batch_snapshots.get(
+                    early_message_id, []
+                )
                 if smart_batch_messages:
                     try:
                         decision_context = await self._format_ai_context(
-                            history_messages, current_message_for_ai, event.get_self_id(),
-                            window_msgs=smart_batch_messages, poke_notice=poke_notice_text,
+                            history_messages,
+                            current_message_for_ai,
+                            event.get_self_id(),
+                            window_msgs=smart_batch_messages,
+                            poke_notice=poke_notice_text,
                         )
                     except Exception as smart_ctx_err:
                         logger.warning(
@@ -1527,23 +1815,31 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 merged_image_urls,
                 matched_trigger_keyword=matched_trigger_keyword,
                 original_message_text=original_message_text,
+                force_ai_decision=is_private and bool(private_media_kind),
             )
 
         if not should_reply:
-            # 判定为不回复：拦停事件，防止 AstrBot 主对话对(含@/触发词)消息兜底回复
-            if self.takeover_group_reply:
+            # Let the core pipeline answer when private decision AI failed.
+            decision_ai_failed = bool(getattr(event, "_decision_ai_error", False))
+            if takeover_reply and not decision_ai_failed:
                 try:
                     event.stop_event()
                 except Exception:
                     pass
+            else:
+                event.call_llm = True
             # AI决策判定不通过时，将消息添加到缓存
             if cached_message_data:
-                self.cache_manager.add_to_cache(chat_id, cached_message_data, source="AI决策过滤")
+                self.cache_manager.add_to_cache(
+                    chat_id, cached_message_data, source="AI决策过滤"
+                )
                 logger.debug("📦 决策AI判断: 不回复此消息，已缓存消息，等待后续转正")
 
             # Smart 批次下被吸收但未触发回复的后续消息回落为普通缓存
-            if self.concurrent_mode == "smart":
-                smart_batch_messages = self._smart_batch_snapshots.pop(early_message_id, [])
+            if use_smart_batch:
+                smart_batch_messages = self._smart_batch_snapshots.pop(
+                    early_message_id, []
+                )
                 for _smart_msg in smart_batch_messages:
                     _fallback_cache = dict(_smart_msg)
                     _fallback_cache.pop("window_buffered", None)
@@ -1562,30 +1858,42 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.info("=" * 60)
             return
 
-        # 并发保护：使用锁保护检查-标记流程，避免竞态条件
+        # Private Smart already coordinates burst ownership; do not add the
+        # legacy ten-second per-chat wait on top of it.
         message_id = processing_id
-        max_wait_loops = self.concurrent_wait_max_loops
-        wait_interval = self.concurrent_wait_interval
+        private_smart_claimed = bool(use_smart_batch and is_private)
+        max_wait_loops = 1 if private_smart_claimed else self.concurrent_wait_max_loops
+        wait_interval = 0 if private_smart_claimed else self.concurrent_wait_interval
 
         _concurrent_waited = False
         for loop_count in range(max_wait_loops):
-            if self.concurrent_mode == "smart":
+            if use_smart_batch:
                 consumed = await SmartConcurrentManager.is_consumed(message_id)
                 if consumed:
                     logger.info(
                         f"🔀 [Smart并发] 消息 {message_id[:20]}... 已被更早批次吸收，跳过独立回复"
                     )
-                    event.call_llm = True
+                    if takeover_reply:
+                        try:
+                            event.stop_event()
+                        except Exception:
+                            pass
+                    else:
+                        event.call_llm = True
                     await SmartConcurrentManager.remove_self(chat_id, message_id)
                     self._message_cache_snapshots.pop(message_id, None)
-                    _smart_batch_followers = self._smart_batch_snapshots.pop(message_id, None)
+                    _smart_batch_followers = self._smart_batch_snapshots.pop(
+                        message_id, None
+                    )
                     if _smart_batch_followers:
                         for _sm in _smart_batch_followers:
                             _fallback = dict(_sm)
                             _fallback.pop("window_buffered", None)
                             _fallback.pop("smart_batch_dynamic_hint", None)
                             self.cache_manager.add_to_cache(
-                                chat_id, _fallback, source="Smart并发-决策后被吸收-followers"
+                                chat_id,
+                                _fallback,
+                                source="Smart并发-决策后被吸收-followers",
                             )
                     if cached_message_data:
                         self.cache_manager.add_to_cache(
@@ -1595,17 +1903,29 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         )
                     return
 
-                if await SmartConcurrentManager.has_earlier_pending(chat_id, message_id):
+                if await SmartConcurrentManager.has_earlier_pending(
+                    chat_id, message_id
+                ):
                     if loop_count == 0 and self.debug_mode:
-                        logger.info("🔀 [Smart并发] 检测到更早到达的消息尚未完成，等待其先成为 anchor")
+                        logger.info(
+                            "🔀 [Smart并发] 检测到更早到达的消息尚未完成，等待其先成为 anchor"
+                        )
                     await asyncio.sleep(wait_interval)
                     continue
 
             # 获取锁进行原子性检查和标记
             async with self.concurrent_lock:
                 if message_id in self.processing_sessions:
-                    logger.info(f"🚫 [并发去重] 消息 {message_id[:30]}... 已在处理中，跳过重复处理")
-                    event.call_llm = True
+                    logger.info(
+                        f"🚫 [并发去重] 消息 {message_id[:30]}... 已在处理中，跳过重复处理"
+                    )
+                    if takeover_reply:
+                        try:
+                            event.stop_event()
+                        except Exception:
+                            pass
+                    else:
+                        event.call_llm = True
                     return
 
                 existing_processing = [
@@ -1620,16 +1940,19 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         logger.info(f"  已标记消息 {message_id[:30]}... 为本插件处理中")
                     break
 
-            if loop_count == 0:
+            if loop_count == 0 and not private_smart_claimed:
                 logger.warning(
                     f"⚠️ [并发检测] 会话 {chat_id} 中有 {len(existing_processing)} 条消息正在处理中，"
                     f"开始等待（最多 {max_wait_loops} 次，每次 {wait_interval} 秒）..."
                 )
-            _concurrent_waited = True
+            if not private_smart_claimed:
+                _concurrent_waited = True
             await asyncio.sleep(wait_interval)
 
             if self.debug_mode:
-                logger.info(f"  [并发等待] 第 {loop_count + 1}/{max_wait_loops} 次检测...")
+                logger.info(
+                    f"  [并发等待] 第 {loop_count + 1}/{max_wait_loops} 次检测..."
+                )
         else:
             async with self.concurrent_lock:
                 still_processing = [
@@ -1637,7 +1960,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     for msg_id, cid in self.processing_sessions.items()
                     if cid == chat_id and msg_id != message_id
                 ]
-                if still_processing:
+                if still_processing and not private_smart_claimed:
                     logger.warning(
                         f"⚠️ [并发警告] 等待 {max_wait_loops * wait_interval:.1f} 秒后仍有 "
                         f"{len(still_processing)} 条消息在处理，强制继续执行（可能产生竞争）"
@@ -1659,8 +1982,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         self.cache_manager.get_window_buffered_messages(chat_id)
                     )
                     formatted_context = await self._format_ai_context(
-                        history_messages, current_message_for_ai, _bot_id,
-                        window_msgs=_window_buffered_msgs, poke_notice=poke_notice_text,
+                        history_messages,
+                        current_message_for_ai,
+                        _bot_id,
+                        window_msgs=_window_buffered_msgs,
+                        poke_notice=poke_notice_text,
                     )
                     if self.debug_mode:
                         logger.info(
@@ -1668,7 +1994,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             f"上下文长度: {len(formatted_context)} 字符"
                         )
             except Exception as _refresh_err:
-                logger.warning(f"🔄 [并发刷新] 刷新上下文失败，使用原始上下文: {_refresh_err}")
+                logger.warning(
+                    f"🔄 [并发刷新] 刷新上下文失败，使用原始上下文: {_refresh_err}"
+                )
 
         # 表情包标记回退逻辑（处理跳过路径）
         if is_emoji_message and self.enable_emoji_filter and not emoji_marker_applied:
@@ -1680,29 +2008,69 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 current_message_for_ai = _build_current_message_for_ai(message_text)
                 bot_id = event.get_self_id()
                 formatted_context = await self._format_ai_context(
-                    history_messages, current_message_for_ai, bot_id,
-                    window_msgs=self.cache_manager.get_window_buffered_messages(chat_id),
+                    history_messages,
+                    current_message_for_ai,
+                    bot_id,
+                    window_msgs=self.cache_manager.get_window_buffered_messages(
+                        chat_id
+                    ),
                     poke_notice=poke_notice_text,
                 )
                 emoji_marker_applied = True
 
         try:
             smart_batch_reply_hint = ""
-            if self.concurrent_mode == "smart":
+            reply_message_text = message_text
+            if use_smart_batch:
                 smart_batch_messages = self._smart_batch_snapshots.get(message_id, [])
                 if smart_batch_messages:
                     try:
-                        formatted_context = await self._format_ai_context(
-                            history_messages, current_message_for_ai, event.get_self_id(),
-                            window_msgs=smart_batch_messages, poke_notice=poke_notice_text,
-                        )
+                        if is_private:
+                            combined_parts = []
+                            if message_text and message_text.strip():
+                                combined_parts.append(message_text.strip())
+                            for batch_message in smart_batch_messages:
+                                batch_content = ContextManager._content_to_safe_text(
+                                    batch_message.get("content", "")
+                                ).strip()
+                                if batch_content:
+                                    combined_parts.append(batch_content)
+                            if combined_parts:
+                                reply_message_text = "\n".join(combined_parts)
+                                current_message_for_ai = _build_current_message_for_ai(
+                                    reply_message_text
+                                )
+                                formatted_context = await self._format_ai_context(
+                                    history_messages,
+                                    current_message_for_ai,
+                                    event.get_self_id(),
+                                    window_msgs=[],
+                                    poke_notice=poke_notice_text,
+                                )
+                                for batch_message in smart_batch_messages:
+                                    merged_image_urls.extend(
+                                        batch_message.get("image_urls") or []
+                                    )
+                                merged_image_urls = list(
+                                    dict.fromkeys(merged_image_urls)
+                                )
+                            else:
+                                reply_message_text = message_text
+                        else:
+                            formatted_context = await self._format_ai_context(
+                                history_messages,
+                                current_message_for_ai,
+                                event.get_self_id(),
+                                window_msgs=smart_batch_messages,
+                                poke_notice=poke_notice_text,
+                            )
                     except Exception as smart_reply_ctx_err:
                         logger.warning(
                             f"[Smart并发] 回复阶段重建批次上下文失败，回退原上下文: {smart_reply_ctx_err}"
                         )
 
                 if (
-                    self.concurrent_mode == "smart"
+                    use_smart_batch
                     and self.enable_smart_batch_reply_hint
                     and smart_batch_messages
                 ):
@@ -1723,7 +2091,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             async for result in self._generate_and_send_reply(
                 event,
                 formatted_context,
-                message_text,
+                reply_message_text,
                 platform_name,
                 is_private,
                 chat_id,
@@ -1741,7 +2109,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 if owner and owner.get("processing_id") == message_id:
                     self._chat_flow_owners.pop(chat_id, None)
 
-            if self.concurrent_mode == "smart":
+            if use_smart_batch:
                 await SmartConcurrentManager.remove_self(chat_id, message_id)
 
     # ============================================================
@@ -1800,7 +2168,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         is_at_message = MessageProcessor.is_at_message(event)
 
         if self.debug_mode:
-            logger.info(f"【步骤3】@消息检测: {'是@消息' if is_at_message else '非@消息'}")
+            logger.info(
+                f"【步骤3】@消息检测: {'是@消息' if is_at_message else '非@消息'}"
+            )
 
         trigger_keywords = self.trigger_keywords
         has_trigger_keyword, matched_trigger_keyword = (
@@ -1832,9 +2202,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         image_urls: Optional[List[str]] = None,
         matched_trigger_keyword: str = "",
         original_message_text: str = "",
+        force_ai_decision: bool = False,
     ) -> bool:
         """
         执行AI决策判断（在处理完消息内容后）
+
+        Args:
+            force_ai_decision: Keep AI gating for private media in direct mode.
 
         Returns:
             True=应该回复, False=不回复
@@ -1844,6 +2218,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         platform_name = event.get_platform_name()
         is_private = event.is_private_chat()
         chat_id = event.get_group_id() if not is_private else event.get_sender_id()
+
+        # Direct private chat treats the sender as the conversation target.
+        # Keep AI gating available for private media and an explicit decide mode.
+        if is_private and self.private_reply_mode == "direct" and not force_ai_decision:
+            if self.debug_mode:
+                logger.info("Private direct mode: bypassing group-style reply decision")
+            return True
 
         # 在读空气AI之前注入记忆（可选，pre_decision 模式）
         decision_formatted_context = formatted_context
@@ -1901,7 +2282,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 except Exception as e:
                     logger.warning(f"[决策AI] 判定前注入记忆失败: {e}", exc_info=True)
             elif self.debug_mode:
-                logger.info(f"[决策AI] 记忆插件({memory_mode}模式)不可用，判定前跳过记忆注入")
+                logger.info(
+                    f"[决策AI] 记忆插件({memory_mode}模式)不可用，判定前跳过记忆注入"
+                )
 
         # 判断是否需要进行AI决策
         # 所有消息一律交给读空气AI按人格判断：@、触发关键词（bot名/“璃月”等）都只是
@@ -1937,6 +2320,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 include_persona=self.decision_ai_include_persona,
                 configured_persona_name=self.decision_ai_persona_name,
                 reply_tendency=self.decision_ai_reply_tendency,
+                is_private=is_private,
             )
 
             if self.debug_mode:
@@ -1990,6 +2374,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         poke_info: dict = None,
         raw_is_at_message: bool = None,
         is_emoji_message: bool = False,
+        emoji_signature: str = "",
         is_at_all_message: bool = False,
         persistent_poke_event_text: str = "",
     ) -> tuple:
@@ -2057,9 +2442,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 提取非图片媒体文件（语音/视频/文件）的路径并内联注入
         _media_audio_urls: list = []
         try:
-            (_media_audio_urls, _media_video_paths, _media_file_infos) = (
-                await ImageHandler.extract_media_urls(event)
-            )
+            (
+                _media_audio_urls,
+                _media_video_paths,
+                _media_file_infos,
+            ) = await ImageHandler.extract_media_urls(event)
             if _media_audio_urls or _media_video_paths or _media_file_infos:
                 processed_message = ImageHandler.enrich_media_markers(
                     processed_message,
@@ -2106,6 +2493,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             "persistent_poke_event_text": persistent_poke_event_text,
             "image_urls": image_urls or [],
             "audio_urls": _media_audio_urls,
+            "is_emoji_message": is_emoji_message,
+            "emoji_signature": emoji_signature,
             "is_at_all_message": is_at_all_message,
             "is_empty_at": is_empty_at,
         }
@@ -2220,7 +2609,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                                     official_history = json.loads(conv.history)
                                 except Exception:
                                     official_history = None
-                            if official_history is None and getattr(conv, "content", None):
+                            if official_history is None and getattr(
+                                conv, "content", None
+                            ):
                                 if isinstance(conv.content, list):
                                     official_history = conv.content
                                 else:
@@ -2228,7 +2619,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                                         official_history = json.loads(conv.content)
                                     except Exception:
                                         official_history = None
-                        if isinstance(official_history, list) and len(official_history) > 0:
+                        if (
+                            isinstance(official_history, list)
+                            and len(official_history) > 0
+                        ):
                             hist_msgs = []
                             self_id = event.get_self_id()
                             platform_name = event.get_platform_name()
@@ -2250,8 +2644,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                                     and "content" in msg
                                 ):
                                     m = AstrBotMessage()
-                                    m.message_str = ContextManager._content_to_safe_text(
-                                        msg.get("content")
+                                    m.message_str = (
+                                        ContextManager._content_to_safe_text(
+                                            msg.get("content")
+                                        )
                                     )
                                     m.platform_name = platform_name
                                     _ts = (
@@ -2398,8 +2794,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 格式化上下文
         bot_id = event.get_self_id()
         formatted_context = await self._format_ai_context(
-            history_messages, message_text_for_ai, bot_id,
-            window_msgs=window_buffered_msgs, poke_notice=_poke_notice_text,
+            history_messages,
+            message_text_for_ai,
+            bot_id,
+            window_msgs=window_buffered_msgs,
+            poke_notice=_poke_notice_text,
         )
 
         if self.debug_mode:
@@ -2465,7 +2864,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     )
 
             # 清理跳过决策AI的标记
-            if hasattr(self, "_ai_decision_skipped") and ckey in self._ai_decision_skipped:
+            if (
+                hasattr(self, "_ai_decision_skipped")
+                and ckey in self._ai_decision_skipped
+            ):
                 try:
                     self._ai_decision_skipped.discard(ckey)
                 except Exception:
@@ -2512,7 +2914,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             f"  已注入记忆({memory_mode}模式),长度增加: {len(final_message) - len(formatted_context)} 字符"
                         )
             else:
-                logger.warning(f"记忆插件({memory_mode}模式)未安装或不可用,跳过记忆注入")
+                logger.warning(
+                    f"记忆插件({memory_mode}模式)未安装或不可用,跳过记忆注入"
+                )
 
         # 调用AI生成回复
         if self.debug_mode:
@@ -2620,7 +3024,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     raw_content,
                     last_cached.get("sender_id", event.get_sender_id()),
                     last_cached.get("sender_name", event.get_sender_name()),
-                    last_cached.get("message_timestamp") or last_cached.get("timestamp"),
+                    last_cached.get("message_timestamp")
+                    or last_cached.get("timestamp"),
                     self.include_timestamp,
                     self.include_sender_info,
                     last_cached.get("mention_info"),
@@ -2726,7 +3131,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     if current_time - recent_timestamp >= time_limit:
                         continue
                 if recent_content and reply_text == recent_content.strip():
-                    logger.info("[消息过滤]回复与最近发送的回复重复，已拦截发送（后续流程继续执行）")
+                    logger.info(
+                        "[消息过滤]回复与最近发送的回复重复，已拦截发送（后续流程继续执行）"
+                    )
                     is_duplicate_blocked = True
                     break
 
@@ -2739,7 +3146,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 return
 
             if self.debug_mode:
-                logger.info(f"【步骤13.9】准备发送回复，类型: {type(reply_result).__name__}")
+                logger.info(
+                    f"【步骤13.9】准备发送回复，类型: {type(reply_result).__name__}"
+                )
 
             # 插件发起 LLM 请求时标记已调用 LLM，阻止框架对 @消息触发第二次默认 LLM 调用
             if isinstance(reply_result, ProviderRequest):
@@ -2760,7 +3169,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 try:
                     await self._finalize_bot_reply_save(event, message_id)
                 except Exception as fallback_err:
-                    logger.error(f"[安全兜底] 兜底保存失败: {fallback_err}", exc_info=True)
+                    logger.error(
+                        f"[安全兜底] 兜底保存失败: {fallback_err}", exc_info=True
+                    )
 
             if self.debug_mode:
                 logger.info("【步骤13.9】回复已通过yield发送")
@@ -2785,7 +3196,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 self.recent_replies_cache[chat_id] = self.recent_replies_cache[chat_id][
                     -max_cache_size:
                 ]
-
 
         if self.debug_mode:
             logger.info("=" * 60)
@@ -2961,17 +3371,22 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
     def _is_enabled(self, event: AstrMessageEvent) -> bool:
         """
-        检查当前群组是否启用插件
+        Check whether the current conversation is enabled.
 
-        判断逻辑：
-        - 私聊直接返回False（不处理）
-        - enabled_groups为空则全部群聊启用
-        - enabled_groups有值则仅列表内的群启用
+        Args:
+            event: Incoming message event.
+
+        Returns:
+            True when the event belongs to an enabled group or private user.
         """
         if event.is_private_chat():
-            if self.debug_mode:
-                logger.info("插件不处理私聊消息")
-            return False
+            if not self.enable_private_chat:
+                return False
+            enabled_private_users = self.enabled_private_users
+            if not enabled_private_users:
+                return True
+            sender_id = str(event.get_sender_id())
+            return any(str(user_id) == sender_id for user_id in enabled_private_users)
 
         enabled_groups = self.enabled_groups
 
@@ -3011,7 +3426,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
             if is_blacklisted:
                 if self.debug_mode:
-                    logger.info(f"🚫 [用户黑名单] 用户 {sender_id} 在黑名单中，本插件跳过处理该消息")
+                    logger.info(
+                        f"🚫 [用户黑名单] 用户 {sender_id} 在黑名单中，本插件跳过处理该消息"
+                    )
                 return True
 
             return False
@@ -3060,7 +3477,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             plugin_audio_urls = event.get_extra("_plugin_audio_urls", []) or []
 
             if self.debug_mode:
-                logger.info("🔧 [on_llm_request] 检测到本插件的 LLM 请求，开始恢复内容...")
+                logger.info(
+                    "🔧 [on_llm_request] 检测到本插件的 LLM 请求，开始恢复内容..."
+                )
 
             # 1. 恢复 prompt：保留框架前缀（如 prompt_prefix）与第三方后缀注入
             #    用短消息在快照中定位，前后部分原样保留
@@ -3076,7 +3495,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             extra_contexts = []
             if isinstance(req.contexts, list) and req.contexts:
                 if plugin_contexts:
-                    extra_contexts = [c for c in req.contexts if c not in plugin_contexts]
+                    extra_contexts = [
+                        c for c in req.contexts if c not in plugin_contexts
+                    ]
                 else:
                     extra_contexts = list(req.contexts)
             req.contexts = list(plugin_contexts or []) + extra_contexts
@@ -3114,7 +3535,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     plugin_tools = []
                 if req.func_tool is None:
                     req.func_tool = plugin_tool_set
-                elif hasattr(req.func_tool, "merge") and hasattr(plugin_tool_set, "tools"):
+                elif hasattr(req.func_tool, "merge") and hasattr(
+                    plugin_tool_set, "tools"
+                ):
                     req.func_tool.merge(plugin_tool_set)
                 elif hasattr(req.func_tool, "add_tool"):
                     for tool in plugin_tools:
@@ -3139,16 +3562,16 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 skills = skill_manager.list_skills(active_only=True)
                 if skills:
                     skills_prompt = build_skills_prompt(skills)
-                    req.system_prompt = (req.system_prompt or "") + f"\n{skills_prompt}\n"
+                    req.system_prompt = (
+                        req.system_prompt or ""
+                    ) + f"\n{skills_prompt}\n"
             except Exception as e:
                 logger.warning(f"⚠️ 注入 Skills 提示词时出错（不影响主流程）: {e}")
 
             if self.debug_mode:
                 logger.info("  ✅ 已恢复插件自定义上下文:")
                 logger.info(f"    - contexts 数量: {len(req.contexts)}")
-                logger.info(
-                    f"    - system_prompt 长度: {len(req.system_prompt or '')}"
-                )
+                logger.info(f"    - system_prompt 长度: {len(req.system_prompt or '')}")
                 logger.info(f"    - prompt 长度: {len(req.prompt or '')}")
                 logger.info(
                     f"    - image_urls 数量: {len(req.image_urls) if req.image_urls else 0}"
@@ -3247,6 +3670,31 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             ).strip()
             if not reply_text:
                 return
+
+            if self.collapse_reply_newlines and "\n" in reply_text:
+                has_structured_format = bool(
+                    re.search(
+                        r"\x60{3}|^\s*(?:[-*+]|\d+[.)])\s",
+                        reply_text,
+                        re.MULTILINE,
+                    )
+                )
+                text_components = [
+                    comp for comp in result.chain if hasattr(comp, "text")
+                ]
+                if (
+                    not has_structured_format
+                    and text_components
+                    and len(text_components) == len(result.chain)
+                ):
+                    normalized_reply_text = re.sub(
+                        r"[ \t]*\r?\n[ \t]*", " ", reply_text
+                    ).strip()
+                    if normalized_reply_text != reply_text:
+                        text_components[0].text = normalized_reply_text
+                        for comp in text_components[1:]:
+                            comp.text = ""
+                        reply_text = normalized_reply_text
 
             self.raw_reply_cache[message_id] = reply_text
 
@@ -3457,7 +3905,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         scenario_parts = []
         if has_same_sender_followups:
-            scenario_parts.append("当前这个人又补发了后续消息")
+            scenario_parts.append("同一位私聊对象连续补发了后续消息")
         if has_other_senders:
             scenario_parts.append("期间还有其他用户插话")
         if not scenario_parts:
@@ -3465,6 +3913,14 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         scenario_text = "，".join(scenario_parts)
 
         summary_block = "\n".join(smart_batch_summary.get("summary_lines", []))
+        if event.is_private_chat():
+            return (
+                "\n\n[系统提示-Smart私聊批次]\n"
+                f"这是 {sender_name}(ID:{sender_id}) 在短时间内连续发送的一组消息，{scenario_text}。\n"
+                f"追加消息摘要：\n{summary_block}\n"
+                "请把当前消息和追加消息视为同一轮输入，合并理解后只生成一条完整回复；"
+                "可以选择性回应其中需要回应的内容，但不要逐条回复，也不要解释或分析批处理过程。\n"
+            )
         return (
             "\n\n[系统提示-Smart并发]\n"
             f"你这次面对的是一个 Smart 并发批次：在 {sender_name}(ID:{sender_id}) 这条当前消息之后，"
@@ -3502,9 +3958,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             if not image_components:
                 return
 
-            descriptions = re.findall(
-                r"[图片内容:s*([^]]+)]", platform_processed_text
-            )
+            descriptions = re.findall(r"[图片内容:s*([^]]+)]", platform_processed_text)
             if not descriptions:
                 return
 
@@ -3565,7 +4019,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     try:
                         image_path = await component.convert_to_file_path()
                         if image_path:
-                            cached_desc = self.image_description_cache.lookup(image_path)
+                            cached_desc = self.image_description_cache.lookup(
+                                image_path
+                            )
                             if cached_desc:
                                 result_parts.append(f"[图片内容: {cached_desc}]")
                                 cache_hit_count += 1
@@ -3694,4 +4150,3 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             return arrival_seq, arrival_monotonic
         except Exception:
             return 0, time.monotonic()
-

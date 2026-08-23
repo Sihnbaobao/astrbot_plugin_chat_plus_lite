@@ -2,7 +2,7 @@
 
 > 依据 REFACTOR_HANDOFF.md 与用户补充确认（livingmemory 记忆注入保留）。
 > 目标：main.py 从 14493 行降到 <3000 行；_conf_schema.json 从 349 项降到 <100 项；
-> 群聊与私聊的 LLM 可见指令一致——只多"谁在说话"的必要信息。
+> 群聊与私聊的正式回复都遵循当前会话人格；群聊和私聊使用不同的是否回复策略。
 
 ## 一、保留 / 删除清单
 
@@ -45,7 +45,7 @@ enable_emoji_filter 组（并入图片处理，默认开启语义）、reply_tim
 ## 二、回复构建（核心变更）
 
 `ReplyHandler.generate_reply` 重构后只做：
-1. 人格：`persona_manager.get_default_persona_v3(event.unified_msg_origin)` → system_prompt（原样，不叠加任何插件指令）
+1. 人格：每次解析当前会话最终生效的人格（会话强制 > 会话人格 > 默认人格）→ system_prompt（不叠加行为规则）
 2. 上下文：formatted_message（历史 + [时间] 昵称(ID): 消息，发送者标注），不加 SYSTEM_REPLY_PROMPT
 3. 可保留最小结尾："请直接输出你的回复"（或完全去掉，仅保留上下文文本）——决定：去掉 SYSTEM_REPLY_PROMPT，
    保留 `\n\n---\n以上是消息上下文，请直接输出你的回复` 一句引导（非人格指令，仅输出形式）
