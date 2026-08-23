@@ -1,5 +1,10 @@
 ## 📝 更新日志
 
+## 0.0.7
+
+- **Private Smart window**: Increased the default private burst window from 3000ms to 4500ms to cover messages arriving near the previous boundary.
+- **Latency boundary**: Kept the window bounded; this does not turn private Smart into indefinite unanswered-message collection.
+
 ## 0.0.6
 
 - **Private Smart window**: Increased the default private burst window to 3000ms as a latency and mergeability compromise.

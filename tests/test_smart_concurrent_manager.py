@@ -98,7 +98,7 @@ def test_private_media_modes_are_configured_separately():
     assert runtime["gcp_reply"]["collapse_reply_newlines"] is True
     assert runtime["gcp_enhance"]["private_image_mode"] == "decide"
     assert runtime["gcp_enhance"]["private_emoji_mode"] == "ignore"
-    assert runtime["gcp_concurrent"]["private_batch_wait_ms"] == 3000
+    assert runtime["gcp_concurrent"]["private_batch_wait_ms"] == 4500
 
 
 def test_arrival_order_survives_payload_processing_race(monkeypatch):
