@@ -71,6 +71,56 @@ def test_claim_batch_honors_private_batch_limit(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_private_forced_followups_merge_but_group_forced_messages_split(monkeypatch):
+    """Private Smart merges forced follow-ups while group Smart preserves boundaries."""
+
+    async def scenario():
+        manager = _load_manager(monkeypatch)
+        manager._pending = {}
+        manager._consumed = {}
+        manager._lock = None
+
+        for chat_id in ("private-user", "group-1"):
+            await manager.register_arrival(
+                chat_id,
+                "first",
+                arrival_seq=1,
+                arrival_monotonic=1.0,
+            )
+            await manager.register_arrival(
+                chat_id,
+                "second",
+                arrival_seq=2,
+                arrival_monotonic=2.0,
+            )
+            for processing_id, content in (
+                ("first", "璃月喜欢什么歌"),
+                ("second", "璃月再说一句"),
+            ):
+                await manager.attach_payload(
+                    chat_id,
+                    processing_id,
+                    content=content,
+                    sender_name="User",
+                    sender_id="42",
+                    cached_data={"content": content},
+                    is_forced=True,
+                )
+
+        private_result = await manager.claim_batch(
+            "private-user", "first", max_batch_size=10
+        )
+        assert [
+            entry["processing_id"] for entry in private_result["merged_entries"]
+        ] == ["second"]
+
+        group_result = await manager.claim_batch("group-1", "first")
+        assert group_result["merged_entries"] == []
+        assert "second" in manager._pending["group-1"]
+
+    asyncio.run(scenario())
+
+
 def test_private_media_modes_are_configured_separately():
     """The schema and local config expose image and sticker policies separately."""
     root = Path(__file__).parents[1]

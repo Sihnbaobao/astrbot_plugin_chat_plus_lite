@@ -2,12 +2,12 @@
 
 面向 AstrBot 的群聊与私聊消息增强插件。它负责消息筛选、触发判断、媒体整理、上下文组织和连续消息批处理；正式回复仍通过 AstrBot 的正常 LLM 链路生成，并使用当前会话人格。
 
-[![Version](https://img.shields.io/badge/version-0.0.9-blue.svg)](https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite)
+[![Version](https://img.shields.io/badge/version-0.0.10-blue.svg)](https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%E2%89%A54.11.0-green.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![Plugin Pages](https://img.shields.io/badge/Plugin%20Pages-v4.25.3%2B-purple.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-orange.svg)](LICENSE)
 
-> 当前版本：0.0.9。插件元数据兼容 AstrBot >= 4.11.0；插件页管理控制台需要支持插件页的 AstrBot 版本，建议 4.25.3+。
+> 当前版本：0.0.10。插件元数据兼容 AstrBot >= 4.11.0；插件页管理控制台需要支持插件页的 AstrBot 版本，建议 4.25.3+。
 
 ## 功能概览
 

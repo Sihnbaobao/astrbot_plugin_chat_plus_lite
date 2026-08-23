@@ -222,8 +222,9 @@ class SmartConcurrentManager:
                     if len(merged_entries) >= batch_limit:
                         break
 
-                    # 后续强制消息永远作为新的边界，不被前一个批次吞掉
-                    if entry.get("is_forced", False):
+                    # Keep forced messages as group boundaries, but private
+                    # Smart batches belong to one sender and may merge them.
+                    if entry.get("is_forced", False) and max_batch_size is None:
                         break
 
                     # 只有已准备好载荷的消息才可被当前批次吸收

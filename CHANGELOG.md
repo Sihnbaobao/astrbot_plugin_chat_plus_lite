@@ -1,5 +1,10 @@
 ## 📝 更新日志
 
+## 0.0.10
+
+- **Private forced batching**: Private Smart now merges consecutive keyword/@ messages from the same sender; group Smart keeps forced-message boundaries.
+- **Diagnostics**: Private arrival logs now include the platform message ID, arrival sequence, and compact message text for duplicate-delivery diagnosis.
+
 ## 0.0.9
 
 - **Private Smart ordering**: Follower polling now follows the configured private batch window instead of using a fixed three-second limit.
