@@ -227,6 +227,32 @@ def test_reply_handler_has_no_system_reply_prompt(monkeypatch):
     assert not hasattr(handler.ReplyHandler, "SYSTEM_REPLY_PROMPT")
 
 
+def test_reply_handler_removes_current_message_echo_prefix(monkeypatch):
+    handler = _load_module(monkeypatch, "reply_handler.py", "reply_handler")
+
+    assert (
+        handler.ReplyHandler.remove_echo_prefix(
+            "...剧场版啊...《企鹅公路》和《海兽之子》都挺冷门的...",
+            "你还知道啥冷门的好看的吗？特别是剧场版的",
+        )
+        == "...《企鹅公路》和《海兽之子》都挺冷门的..."
+    )
+    assert (
+        handler.ReplyHandler.remove_echo_prefix(
+            "...悠哉日常大王吧...喵帕斯那个...节奏很慢...",
+            "想要更轻松一点的，题材稍微偏小众",
+        )
+        == "...悠哉日常大王吧...喵帕斯那个...节奏很慢..."
+    )
+
+
+def test_reply_handler_keeps_unrelated_particle_openers(monkeypatch):
+    handler = _load_module(monkeypatch, "reply_handler.py", "reply_handler")
+    reply = "...摇曳露营吧...还有孤独摇滚..."
+
+    assert handler.ReplyHandler.remove_echo_prefix(reply, "都有点老了") == reply
+
+
 def test_generate_reply_system_prompt_is_exactly_persona(monkeypatch):
     handler = _load_module(monkeypatch, "reply_handler.py", "reply_handler")
     persona = "你是温柔的猫娘，说话带喵。"

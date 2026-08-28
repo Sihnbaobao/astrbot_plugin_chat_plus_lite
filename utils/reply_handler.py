@@ -15,6 +15,8 @@
   供向量检索类插件（livingmemory）召回；本插件钩子再换回完整上下文
 """
 
+import re
+
 from astrbot.api.all import *
 from astrbot.api.event import AstrMessageEvent
 from .ai_error_formatter import format_ai_error
@@ -49,14 +51,49 @@ class ReplyHandler:
     3. 检测是否已被其他插件处理
     """
 
-    # 上下文与回复之间的最小分隔（仅输出格式与防机械复读引导，非人格/风格指令）
-    # 防复读说明：不约束说话风格，仅避免「把对方原词复述并加上啊字」这类机械回声
-    PROMPT_ENDING = (
-        "\n\n---\n以上是消息上下文，请直接输出你的回复。"
-        "\n直接自然地回应即可：不要复述对方消息的措辞（例如把对方刚说的词原样重复再带上'啊'字），"
-        "不要用固定句式给每条回复开头，不要提及上下文中的标注或格式。"
-        "普通聊天默认输出一条连续消息，不要主动分段或换行；只有列表、代码或用户明确要求时才换行。"
-    )
+    # Keep the reply-generation prompt limited to context framing.
+    PROMPT_ENDING = "\n\n---\n以上是消息上下文，请直接输出你的回复。"
+
+    @staticmethod
+    def remove_echo_prefix(reply_text: str, current_message: str) -> str:
+        """Remove a current-message phrase echoed as a sentence opener.
+
+        Args:
+            reply_text: The generated plain-text reply.
+            current_message: The current user's raw message.
+
+        Returns:
+            The reply with a mechanical phrase-plus-particle opener removed when
+            the remaining reply still contains meaningful content.
+        """
+        if not reply_text or not current_message:
+            return reply_text
+
+        leading_match = re.match(r"^[\s.。…]+", reply_text)
+        leading = leading_match.group(0) if leading_match else ""
+        body = reply_text[len(leading) :]
+        particles = "啊吧呢哦噢哇呀诶欸呐啦嘛咯喽耶哎"
+        separator_pattern = r"^[\s.。…!?！？,，、:：;；~～—-]*"
+        max_candidate_length = min(24, len(body) - 1)
+
+        for candidate_length in range(max_candidate_length, 1, -1):
+            candidate = body[:candidate_length]
+            if not re.fullmatch(r"[A-Za-z0-9\u3400-\u9fff]+", candidate):
+                continue
+            if body[candidate_length] not in particles:
+                continue
+            if candidate not in current_message:
+                continue
+
+            remainder = body[candidate_length + 1 :]
+            separator_match = re.match(separator_pattern, remainder)
+            if separator_match:
+                remainder = remainder[separator_match.end() :]
+            if not remainder.strip():
+                continue
+            return f"{leading}{remainder}".strip()
+
+        return reply_text
 
     @staticmethod
     async def generate_reply(

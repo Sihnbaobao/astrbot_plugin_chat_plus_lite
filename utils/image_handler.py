@@ -28,6 +28,7 @@ except ImportError:
         Record = None
         File = None
 
+from .emoji_detector import EmojiDetector
 from .image_description_cache import ImageDescriptionCache
 from .ai_error_formatter import format_ai_error
 
@@ -361,9 +362,9 @@ class ImageHandler:
     ) -> str:
         """将引用组件格式化为包含发送者与引用正文的文本块。"""
         try:
-            sender_nickname = getattr(
-                component, "sender_nickname", None
-            ) or getattr(component, "sender_name", None)
+            sender_nickname = getattr(component, "sender_nickname", None) or getattr(
+                component, "sender_name", None
+            )
             if not sender_nickname and hasattr(component, "sender"):
                 sender_nickname = getattr(component.sender, "nickname", None)
             sender_id = getattr(component, "sender_id", None)
@@ -388,11 +389,7 @@ class ImageHandler:
                 message_content = str(message_content)
             message_content = (message_content or "").strip()
 
-            if (
-                sender_nickname
-                and sender_id
-                and str(sender_nickname) == str(sender_id)
-            ):
+            if sender_nickname and sender_id and str(sender_nickname) == str(sender_id):
                 sender_nickname = None
             is_self = self_id and sender_id and str(sender_id) == str(self_id)
             self_suffix = "(你)" if is_self else ""
@@ -469,9 +466,9 @@ class ImageHandler:
                         ).strip()
 
                 if not nested_content:
-                    nested_content = getattr(
-                        component, "message_str", None
-                    ) or getattr(component, "message", None)
+                    nested_content = getattr(component, "message_str", None) or getattr(
+                        component, "message", None
+                    )
 
                 formatted = ImageHandler._format_reply_component(
                     component,
@@ -546,9 +543,7 @@ class ImageHandler:
             include_images=False,
         ).strip()
         if not result:
-            logger.warning(
-                "[图片处理] _extract_text_only 提取到空文本！"
-            )
+            logger.warning("[图片处理] _extract_text_only 提取到空文本！")
         return result
 
     @staticmethod
@@ -564,6 +559,15 @@ class ImageHandler:
         """
         image_urls = []
         for idx, img_component in enumerate(image_components):
+            # QQ 商城表情预览图经常404且无需视觉识别，跳过以免阻断整个LLM请求。
+            if EmojiDetector.looks_like_market_face(
+                EmojiDetector.collect_component_texts(img_component)
+            ):
+                if DEBUG_MODE:
+                    logger.debug(
+                        f"[图片处理] 跳过QQ商城表情预览图 {idx}（避免404下载失败）"
+                    )
+                continue
             try:
                 # 尝试获取图片路径或URL
                 image_path = await img_component.convert_to_file_path()

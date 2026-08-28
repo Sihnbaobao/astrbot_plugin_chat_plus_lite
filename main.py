@@ -2050,7 +2050,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 "[图片内容:" in message_text if message_text else False
             )
             if has_image_info and message_text and EMOJI_MARKER not in message_text:
-                message_text = EmojiDetector.add_emoji_marker(message_text)
+                market_face_label = EmojiDetector.describe_market_faces(event)
+                market_face_suffix = (
+                    f"（QQ商城表情：{market_face_label}）" if market_face_label else ""
+                )
+                message_text = (
+                    EmojiDetector.add_emoji_marker(message_text) + market_face_suffix
+                )
                 current_message_for_ai = _build_current_message_for_ai(message_text)
                 bot_id = event.get_self_id()
                 formatted_context = await self._format_ai_context(
@@ -2520,10 +2526,19 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 表情包标记注入（正常处理路径）
         emoji_marker_applied = False
         if is_emoji_message and self.enable_emoji_filter and image_retained:
+            market_face_label = EmojiDetector.describe_market_faces(event)
+            market_face_suffix = (
+                f"（QQ商城表情：{market_face_label}）" if market_face_label else ""
+            )
             if processed_message:
-                processed_message = EmojiDetector.add_emoji_marker(processed_message)
+                processed_message = (
+                    EmojiDetector.add_emoji_marker(processed_message)
+                    + market_face_suffix
+                )
             else:
-                processed_message = EmojiDetector.add_emoji_marker("")
+                processed_message = (
+                    EmojiDetector.add_emoji_marker("") + market_face_suffix
+                )
             emoji_marker_applied = True
 
         current_message_id = self._get_processing_id(event)
@@ -3560,12 +3575,21 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             #    框架（TOOL_CALL_PROMPT 等）与第三方插件只会追加，不会覆盖
 
             # 4. 图片/音频 URL 合并（保留第三方注入）
-            _merged_image_urls = list(plugin_image_urls or [])
+            # QQ 商城表情预览图为死链，绝不能进入最终视觉请求；
+            # 否则核心在组装 payload 时下载404，会把异常文本直接当回复发出。
+            _merged_image_urls = [
+                _u
+                for _u in list(plugin_image_urls or [])
+                if not EmojiDetector.looks_like_market_face([_u])
+            ]
             _seen_urls = set(_merged_image_urls)
             for _u in req.image_urls or []:
-                if _u not in _seen_urls:
-                    _seen_urls.add(_u)
-                    _merged_image_urls.append(_u)
+                if _u in _seen_urls:
+                    continue
+                if EmojiDetector.looks_like_market_face([_u]):
+                    continue
+                _seen_urls.add(_u)
+                _merged_image_urls.append(_u)
             req.image_urls = _merged_image_urls
 
             _merged_audio_urls = list(plugin_audio_urls or [])
@@ -3750,36 +3774,43 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             comp.text = ""
                         reply_text = normalized_reply_text
 
-            self.raw_reply_cache[message_id] = reply_text
-
-            # 多轮工具调用支持：累积原始回复文本
-            if message_id not in self._pending_bot_replies:
-                self._pending_bot_replies[message_id] = []
-            self._pending_bot_replies[message_id].append(reply_text)
-
-            # 应用输出内容过滤（独立于保存过滤）
+            # Remove the mechanical "current phrase + particle" opener before
+            # caching or sending so the same echo cannot re-enter conversation history.
             filtered_reply_text = reply_text
+            if (
+                not is_private
+                and result.chain
+                and all(hasattr(comp, "text") for comp in result.chain)
+            ):
+                filtered_reply_text = ReplyHandler.remove_echo_prefix(
+                    reply_text, event.get_message_str() or ""
+                )
+
             if filtered_reply_text != reply_text:
                 logger.info(
-                    f"[输出过滤] 已过滤AI回复，原长度: {len(reply_text)}, 过滤后: {len(filtered_reply_text)}"
+                    f"[Output filter] Removed echo opener: {len(reply_text)} -> "
+                    f"{len(filtered_reply_text)} characters"
                 )
-                first_text_comp = True
-                for comp in result.chain:
-                    if hasattr(comp, "text"):
-                        if first_text_comp:
-                            comp.text = filtered_reply_text
-                            first_text_comp = False
-                        else:
-                            comp.text = ""
+                text_components = [
+                    comp for comp in result.chain if hasattr(comp, "text")
+                ]
+                text_components[0].text = filtered_reply_text
+                for comp in text_components[1:]:
+                    comp.text = ""
                 reply_text = filtered_reply_text
 
             if not reply_text:
                 if self.debug_mode:
                     logger.info("[输出过滤] 过滤后内容为空，跳过发送")
                 event.clear_result()
-                if message_id in self.raw_reply_cache:
-                    del self.raw_reply_cache[message_id]
                 return
+
+            self.raw_reply_cache[message_id] = reply_text
+
+            # 多轮工具调用支持：累积已过滤的回复文本
+            if message_id not in self._pending_bot_replies:
+                self._pending_bot_replies[message_id] = []
+            self._pending_bot_replies[message_id].append(reply_text)
 
             # 重复检测必须在任何装饰性修改之前，基于原始内容检测
             if self.enable_duplicate_filter:
