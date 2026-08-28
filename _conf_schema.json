@@ -266,6 +266,18 @@
                 "default": false,
                 "hint": "把图片转成文字描述喂给AI。"
             },
+            "image_to_text_scope": {
+                "description": "图片处理范围",
+                "type": "string",
+                "default": "all",
+                "options": [
+                    "all",
+                    "mention_only",
+                    "at_only",
+                    "keyword_only"
+                ],
+                "hint": "all=所有图片；mention_only=@或关键词才处理（其余纯图片整条丢弃）；at_only=仅@消息；keyword_only=仅关键词消息。"
+            },
             "private_image_mode": {
                 "description": "私聊纯图片策略",
                 "type": "string",

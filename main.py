@@ -195,7 +195,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # ========== 转发/入群解析配置 ==========
         # ========== 图片处理配置 ==========
         self.enable_image_processing = self._cfg("enable_image_processing", False)
-        self.image_to_text_scope = self._cfg("image_to_text_scope", "mention_only")
+        self.image_to_text_scope = self._cfg("image_to_text_scope", "all")
         self.image_to_text_provider_id = self._cfg("image_to_text_provider_id", "")
         self.image_to_text_prompt = "请详细描述这张图片的内容"
         self.image_to_text_timeout = 60
