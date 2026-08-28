@@ -1,5 +1,11 @@
 ## 📝 更新日志
 
+## 0.0.12
+
+- **Plain image handling**: `image_to_text_scope` now defaults to `all` and is exposed in the config schema, so plain group images reach the multimodal reply model instead of being dropped as undecidable messages.
+- **Market-face safety**: QQ market-face stickers are labeled in text context, and their dead CDN preview URLs are filtered out of vision requests instead of failing the payload download.
+- **Echo prefix**: Mechanical phrase-plus-particle openers that echo the user's message are now removed by reply post-processing rather than prompt wording.
+
 ## 0.0.11
 
 - **Repeated-message context**: Smart now identifies exact repeated private text and tells the reply model to follow the active persona's attitude toward repetition and verbosity.

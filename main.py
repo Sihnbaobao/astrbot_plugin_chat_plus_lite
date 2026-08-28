@@ -31,60 +31,55 @@
 版本: 0.0.11（私聊短连发合并与并发延迟修复）
 """
 
-import random
-import time
-from datetime import datetime, timedelta, timezone
-import copy
-import sys
-import hashlib
 import asyncio
+import copy
+import hashlib
 import json
+import math
 import os
 import re
-from pathlib import Path
-from typing import List, Optional, Any
+import time
 from collections import OrderedDict
-import aiohttp
-from astrbot.api import logger
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
+import aiohttp
+
+from astrbot.api import logger
 from astrbot.api.all import *
 from astrbot.api.event import filter
-
-from astrbot.core.message.components import Plain, At, AtAll
+from astrbot.core.message.components import Plain
 from astrbot.core.message.message_event_result import MessageChain
 
+# aiocqhttp 平台相关（戳一戳功能仅支持该平台）
+from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
+    AiocqhttpAdapter,
+)
 from astrbot.core.provider.entities import ProviderRequest
 
 # 导入保留的工具模块
 from .utils import (
-    ProbabilityManager,
-    MessageProcessor,
-    ImageHandler,
+    EMOJI_MARKER,
+    CommandMixin,
     ContextManager,
     DecisionAI,
-    ReplyHandler,
-    MemoryInjector,
-    KeywordChecker,
-    MessageCleaner,
-    PlatformLTMHelper,
     EmojiDetector,
-    EMOJI_MARKER,
-    SmartConcurrentManager,
-    SaveMixin,
-    CommandMixin,
-    PokeMixin,
+    ImageHandler,
+    KeywordChecker,
+    MemoryInjector,
     MentionMixin,
+    MessageCleaner,
+    MessageProcessor,
+    PlatformLTMHelper,
+    PokeMixin,
+    ProbabilityManager,
+    ReplyHandler,
+    SaveMixin,
+    SmartConcurrentManager,
 )
 from .utils.image_description_cache import ImageDescriptionCache
 from .utils.message_cache_manager import MessageCacheManager
-
-# aiocqhttp 平台相关（戳一戳功能仅支持该平台）
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-    AiocqhttpMessageEvent,
-)
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
-    AiocqhttpAdapter,
-)
 
 
 @register(
@@ -119,211 +114,273 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         super().__init__(context)
         self.context = context
         self.config = config
+        self.session: aiohttp.ClientSession | None = None
+        self._web_apis_registered = False
 
         # V2.2.0：旧版平铺配置 → 分组结构一次性迁移（必须先于所有配置读取）
         self._migrate_legacy_flat_config()
 
         # ========== 基础配置 ==========
-        self.enable_group_chat = self._cfg("enable_group_chat", True)
-        self.enable_private_chat = self._cfg("enable_private_chat", False)
-        self.debug_mode = self._cfg("enable_debug_log", False)
-        self.enabled_groups = self._cfg("enabled_groups", [])
-        self.enabled_private_users = self._cfg("enabled_private_users", [])
-        self.takeover_private_reply = self._cfg("takeover_private_reply", True)
-        self.private_reply_mode = self._cfg("private_reply_mode", "direct")
-        if self.private_reply_mode not in ("direct", "decide"):
-            self.private_reply_mode = "direct"
+        self.enable_group_chat = self._cfg_bool("enable_group_chat", True)
+        self.enable_private_chat = self._cfg_bool("enable_private_chat", False)
+        self.debug_mode = self._cfg_bool("enable_debug_log", False)
+        self.enabled_groups = self._cfg_list("enabled_groups", [])
+        self.enabled_private_users = self._cfg_list("enabled_private_users", [])
+        self.takeover_private_reply = self._cfg_bool("takeover_private_reply", True)
+        self.private_reply_mode = self._cfg_choice(
+            "private_reply_mode", "direct", {"direct", "decide"}
+        )
 
         # ========== Private chat media policy ==========
-        legacy_media_mode = self._cfg("private_media_mode", "decide")
-        self.private_image_mode = self._cfg("private_image_mode", legacy_media_mode)
-        self.private_emoji_mode = self._cfg("private_emoji_mode", "ignore")
-        if self.private_image_mode not in ("ignore", "decide", "always"):
-            self.private_image_mode = "decide"
-        if self.private_emoji_mode not in ("ignore", "decide", "always"):
-            self.private_emoji_mode = "ignore"
-        self.private_collapse_duplicate_emoji = self._cfg(
+        media_modes = {"ignore", "decide", "always"}
+        legacy_media_mode = self._cfg_choice(
+            "private_media_mode", "decide", media_modes
+        )
+        self.private_image_mode = self._cfg_choice(
+            "private_image_mode", legacy_media_mode, media_modes
+        )
+        self.private_emoji_mode = self._cfg_choice(
+            "private_emoji_mode", "ignore", media_modes
+        )
+        self.private_collapse_duplicate_emoji = self._cfg_bool(
             "private_collapse_duplicate_emoji", True
         )
-        self.private_duplicate_emoji_window_ms = self._cfg(
-            "private_duplicate_emoji_window_ms", 1500
+        self.private_duplicate_emoji_window_ms = self._cfg_int(
+            "private_duplicate_emoji_window_ms", 1500, minimum=0, maximum=600_000
         )
 
         # ========== 概率相关配置 ==========
 
         # ========== 决策AI（读空气）配置 ==========
-        self.decision_ai_provider_id = self._cfg("decision_ai_provider_id", "")
-        self.decision_ai_include_persona = self._cfg(
+        self.decision_ai_provider_id = self._cfg_str("decision_ai_provider_id", "")
+        self.decision_ai_include_persona = self._cfg_bool(
             "decision_ai_include_persona", True
         )
-        self.decision_ai_persona_name = self._cfg("decision_ai_persona_name", "")
-        self.decision_ai_extra_prompt = self._cfg("decision_ai_extra_prompt", "")
-        self.decision_ai_timeout = self._cfg("decision_ai_timeout", 30)
-        self.decision_ai_prompt_mode = self._cfg("decision_ai_prompt_mode", "append")
-        self.decision_ai_reply_tendency = self._cfg(
-            "decision_ai_reply_tendency", "persona"
+        self.decision_ai_persona_name = self._cfg_str("decision_ai_persona_name", "")
+        self.decision_ai_extra_prompt = self._cfg_str("decision_ai_extra_prompt", "")
+        self.decision_ai_timeout = self._cfg_int(
+            "decision_ai_timeout", 30, minimum=1, maximum=600
         )
-        self.enable_decision_ai_reasoning = self._cfg(
+        self.decision_ai_prompt_mode = self._cfg_choice(
+            "decision_ai_prompt_mode", "append", {"append", "override"}
+        )
+        self.decision_ai_reply_tendency = self._cfg_choice(
+            "decision_ai_reply_tendency",
+            "persona",
+            {"persona", "reserved", "active"},
+        )
+        self.enable_decision_ai_reasoning = self._cfg_bool(
             "enable_decision_ai_reasoning", False
         )
-        self.decision_ai_reasoning_log = self._cfg("decision_ai_reasoning_log", False)
-        self.decision_ai_reasoning_log_mode = self._cfg(
-            "decision_ai_reasoning_log_mode", "processed"
+        self.decision_ai_reasoning_log = self._cfg_bool(
+            "decision_ai_reasoning_log", False
         )
-        self.judgment_reasoning_start_marker = self._cfg(
+        self.decision_ai_reasoning_log_mode = self._cfg_choice(
+            "decision_ai_reasoning_log_mode",
+            "processed",
+            {"raw", "processed"},
+        )
+        self.judgment_reasoning_start_marker = self._cfg_str(
             "judgment_reasoning_start_marker", "[[GCP_REASONING_START]]"
         )
-        self.judgment_reasoning_end_marker = self._cfg(
+        self.judgment_reasoning_end_marker = self._cfg_str(
             "judgment_reasoning_end_marker", "[[GCP_REASONING_END]]"
         )
 
         # ========== 回复配置 ==========
-        self.reply_ai_extra_prompt = self._cfg("reply_ai_extra_prompt", "")
-        self.reply_ai_prompt_mode = self._cfg("reply_ai_prompt_mode", "append")
-        self.include_timestamp = self._cfg("include_timestamp", True)
-        self.include_sender_info = self._cfg("include_sender_info", True)
-        self.collapse_reply_newlines = self._cfg("collapse_reply_newlines", False)
+        self.reply_ai_extra_prompt = self._cfg_str("reply_ai_extra_prompt", "")
+        self.reply_ai_prompt_mode = self._cfg_choice(
+            "reply_ai_prompt_mode", "append", {"append", "override"}
+        )
+        self.include_timestamp = self._cfg_bool("include_timestamp", True)
+        self.include_sender_info = self._cfg_bool("include_sender_info", True)
+        self.collapse_reply_newlines = self._cfg_bool("collapse_reply_newlines", False)
 
         # ========== 上下文配置 ==========
-        self.max_context_messages = self._cfg("max_context_messages", -1)
+        self.max_context_messages = self._cfg_int(
+            "max_context_messages", -1, minimum=-1, maximum=10_000
+        )
         self.custom_storage_max_messages = (
             0  # 已禁用自定义存储：历史只存官方库（0=禁用并清理历史文件）
         )
-        self.pending_cache_max_count = self._cfg("pending_cache_max_count", 10)
-        self.pending_cache_ttl_seconds = self._cfg("pending_cache_ttl_seconds", 1800)
+        self.pending_cache_max_count = self._cfg_int(
+            "pending_cache_max_count", 10, minimum=1, maximum=10_000
+        )
+        self.pending_cache_ttl_seconds = self._cfg_int(
+            "pending_cache_ttl_seconds", 1800, minimum=60, maximum=86_400
+        )
 
         # ========== 转发/入群解析配置 ==========
         # ========== 图片处理配置 ==========
-        self.enable_image_processing = self._cfg("enable_image_processing", False)
-        self.image_to_text_scope = self._cfg("image_to_text_scope", "mention_only")
-        self.image_to_text_provider_id = self._cfg("image_to_text_provider_id", "")
+        self.enable_image_processing = self._cfg_bool("enable_image_processing", False)
+        self.image_to_text_scope = self._cfg_choice(
+            "image_to_text_scope",
+            "all",
+            {"all", "mention_only", "at_only", "keyword_only"},
+        )
+        self.image_to_text_provider_id = self._cfg_str("image_to_text_provider_id", "")
         self.image_to_text_prompt = "请详细描述这张图片的内容"
         self.image_to_text_timeout = 60
-        self.max_images_per_message = self._cfg("max_images_per_message", 10)
-        self.enable_image_description_cache = self._cfg(
+        self.max_images_per_message = self._cfg_int(
+            "max_images_per_message", 10, minimum=1, maximum=100
+        )
+        self.enable_image_description_cache = self._cfg_bool(
             "enable_image_description_cache", False
         )
-        self.image_description_cache_max_entries = self._cfg(
-            "image_description_cache_max_entries", 500
+        self.image_description_cache_max_entries = self._cfg_int(
+            "image_description_cache_max_entries", 500, minimum=10, maximum=10_000
         )
-        self.gcp_clear_image_cache_allowed_user_ids = self._cfg(
+        self.gcp_clear_image_cache_allowed_user_ids = self._cfg_list(
             "gcp_clear_image_cache_allowed_user_ids", []
         )
-        self.platform_image_caption_max_wait = self._cfg(
-            "platform_image_caption_max_wait", 2.0
+        self.platform_image_caption_max_wait = self._cfg_float(
+            "platform_image_caption_max_wait", 2.0, minimum=0.0, maximum=30.0
         )
-        self.platform_image_caption_retry_interval = self._cfg(
-            "platform_image_caption_retry_interval", 50
+        self.platform_image_caption_retry_interval = self._cfg_int(
+            "platform_image_caption_retry_interval", 50, minimum=1, maximum=10_000
         )
-        self.platform_image_caption_fast_check_count = self._cfg(
-            "platform_image_caption_fast_check_count", 5
+        self.platform_image_caption_fast_check_count = self._cfg_int(
+            "platform_image_caption_fast_check_count", 5, minimum=0, maximum=100
         )
 
         # ========== 表情包标记配置 ==========
-        self.enable_emoji_filter = self._cfg("enable_emoji_filter", False)
+        self.enable_emoji_filter = self._cfg_bool("enable_emoji_filter", False)
         self.emoji_probability_decay = 0.7
         self.emoji_decay_min_probability = 0.1
 
         # ========== 记忆注入配置（livingmemory） ==========
-        self.enable_memory_injection = self._cfg("enable_memory_injection", False)
-        self.memory_plugin_mode = self._cfg("memory_plugin_mode", "auto")
+        self.enable_memory_injection = self._cfg_bool("enable_memory_injection", False)
+        self.memory_plugin_mode = self._cfg_choice(
+            "memory_plugin_mode", "auto", {"auto", "legacy", "livingmemory"}
+        )
         self.memory_insertion_timing = "post_decision"
-        self.livingmemory_top_k = self._cfg("livingmemory_top_k", 5)
-        self.livingmemory_version = self._cfg("livingmemory_version", "auto")
-        self.livingmemory_persona_compat_mode = self._cfg(
-            "livingmemory_persona_compat_mode", "auto"
+        self.livingmemory_top_k = self._cfg_int(
+            "livingmemory_top_k", 5, minimum=1, maximum=100
+        )
+        self.livingmemory_version = self._cfg_choice(
+            "livingmemory_version", "auto", {"auto", "v1", "v2"}
+        )
+        self.livingmemory_persona_compat_mode = self._cfg_choice(
+            "livingmemory_persona_compat_mode",
+            "auto",
+            {"auto", "resolver_only", "legacy_only", "off"},
         )
 
         # ========== 关键词/黑名单配置 ==========
-        self.trigger_keywords = self._cfg("trigger_keywords", [])
-        self.blacklist_keywords = self._cfg("blacklist_keywords", [])
-        self.keyword_smart_mode = self._cfg(
+        self.trigger_keywords = self._cfg_list("trigger_keywords", [])
+        self.blacklist_keywords = self._cfg_list("blacklist_keywords", [])
+        self.keyword_smart_mode = self._cfg_bool(
             "keyword_smart_mode", True
         )  # 默认：关键词命中（含bot名字/被@）也交给读空气判断
-        self.takeover_group_reply = self._cfg(
+        self.takeover_group_reply = self._cfg_bool(
             "takeover_group_reply", True
         )  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
-        self.enable_user_blacklist = self._cfg("enable_user_blacklist", False)
-        self.blacklist_user_ids = self._cfg("blacklist_user_ids", [])
+        self.enable_user_blacklist = self._cfg_bool("enable_user_blacklist", False)
+        self.blacklist_user_ids = self._cfg_list("blacklist_user_ids", [])
 
         # ========== 指令过滤配置 ==========
-        self.enable_command_filter = self._cfg("enable_command_filter", True)
-        self.command_prefixes = self._cfg("command_prefixes", ["/", "!", "#"])
-        self.enable_full_command_detection = self._cfg(
+        self.enable_command_filter = self._cfg_bool("enable_command_filter", True)
+        self.command_prefixes = self._cfg_list("command_prefixes", ["/", "!", "#"])
+        self.enable_full_command_detection = self._cfg_bool(
             "enable_full_command_detection", False
         )
-        self.full_command_list = self._cfg(
+        self.full_command_list = self._cfg_list(
             "full_command_list", ["new", "help", "reset"]
         )
-        self.enable_command_prefix_match = self._cfg(
+        self.enable_command_prefix_match = self._cfg_bool(
             "enable_command_prefix_match", False
         )
-        self.command_prefix_match_list = self._cfg("command_prefix_match_list", [])
-        self.plugin_gcp_reset_allowed_user_ids = self._cfg(
+        self.command_prefix_match_list = self._cfg_list("command_prefix_match_list", [])
+        self.plugin_gcp_reset_allowed_user_ids = self._cfg_list(
             "plugin_gcp_reset_allowed_user_ids", []
         )
-        self.plugin_gcp_reset_here_allowed_user_ids = self._cfg(
+        self.plugin_gcp_reset_here_allowed_user_ids = self._cfg_list(
             "plugin_gcp_reset_here_allowed_user_ids", []
         )
 
         # ========== @消息过滤配置 ==========
-        self.enable_ignore_at_others = self._cfg("enable_ignore_at_others", False)
-        self.ignore_at_others_mode = self._cfg("ignore_at_others_mode", "strict")
-        self.enable_ignore_at_all = self._cfg("enable_ignore_at_all", False)
+        self.enable_ignore_at_others = self._cfg_bool("enable_ignore_at_others", False)
+        self.ignore_at_others_mode = self._cfg_choice(
+            "ignore_at_others_mode", "strict", {"strict", "allow_with_bot"}
+        )
+        self.enable_ignore_at_all = self._cfg_bool("enable_ignore_at_all", False)
         self.ignore_at_all_enabled = self.enable_ignore_at_all
-        self.at_all_message_mode = self._cfg("at_all_message_mode", "skip_probability")
+        self.at_all_message_mode = self._cfg_choice(
+            "at_all_message_mode", "skip_probability", {"skip_probability", "skip_all"}
+        )
 
         # ========== 戳一戳配置 ==========
-        self.poke_message_mode = self._cfg("poke_message_mode", "bot_only")
-        self.poke_bot_skip_probability = True
-        self.poke_after_reply_enabled = self._cfg("enable_poke_after_reply", False)
-        self.poke_after_reply_probability = self._cfg(
-            "poke_after_reply_probability", 0.15
+        self.poke_message_mode = self._cfg_choice(
+            "poke_message_mode", "bot_only", {"ignore", "bot_only", "all"}
         )
-        self.poke_after_reply_delay = self._cfg("poke_after_reply_delay", 0.5)
-        self.poke_trace_enabled = self._cfg("enable_poke_trace_prompt", False)
-        self.poke_trace_max_tracked_users = self._cfg("poke_trace_max_tracked_users", 5)
-        self.poke_trace_ttl_seconds = self._cfg("poke_trace_ttl_seconds", 300)
+        self.poke_bot_skip_probability = True
+        self.poke_after_reply_enabled = self._cfg_bool("enable_poke_after_reply", False)
+        self.poke_after_reply_probability = self._cfg_float(
+            "poke_after_reply_probability", 0.15, minimum=0.0, maximum=1.0
+        )
+        self.poke_after_reply_delay = self._cfg_float(
+            "poke_after_reply_delay", 0.5, minimum=0.0, maximum=60.0
+        )
+        self.poke_trace_enabled = self._cfg_bool("enable_poke_trace_prompt", False)
+        self.poke_trace_max_tracked_users = self._cfg_int(
+            "poke_trace_max_tracked_users", 5, minimum=1, maximum=1000
+        )
+        self.poke_trace_ttl_seconds = self._cfg_int(
+            "poke_trace_ttl_seconds", 300, minimum=1, maximum=86_400
+        )
         self.poke_enabled_groups = []  # 精简后固定默认：全部群可用戳一戳
 
         # 反戳概率（0=禁用，1=必定反戳并丢弃本插件处理）
-        raw_reverse_prob = self._cfg("poke_reverse_on_poke_probability", 0)
-        try:
-            reverse_prob = float(raw_reverse_prob)
-        except (TypeError, ValueError):
-            reverse_prob = 0.0
-        self.poke_reverse_on_poke_probability = max(0.0, min(1.0, reverse_prob))
+        self.poke_reverse_on_poke_probability = self._cfg_float(
+            "poke_reverse_on_poke_probability", 0.0, minimum=0.0, maximum=1.0
+        )
 
         # ========== 去重过滤配置 ==========
-        self.enable_duplicate_filter = self._cfg("enable_duplicate_filter", True)
+        self.enable_duplicate_filter = self._cfg_bool("enable_duplicate_filter", True)
         self.duplicate_filter_check_count = 5
         self.enable_duplicate_time_limit = True
         self.duplicate_filter_time_limit = 1800
 
         # ========== 并发/Smart配置 ==========
-        self.concurrent_mode = self._cfg("concurrent_mode", "legacy")
-        self.concurrent_wait_max_loops = self._cfg("concurrent_wait_max_loops", 10)
-        self.concurrent_wait_interval = self._cfg("concurrent_wait_interval", 1)
-        self.enable_smart_batch_reply_hint = self._cfg(
+        self.concurrent_mode = self._cfg_choice(
+            "concurrent_mode", "legacy", {"legacy", "smart"}
+        )
+        self.concurrent_wait_max_loops = self._cfg_int(
+            "concurrent_wait_max_loops", 10, minimum=1, maximum=1000
+        )
+        self.concurrent_wait_interval = self._cfg_float(
+            "concurrent_wait_interval", 1.0, minimum=0.1, maximum=60.0
+        )
+        self.enable_smart_batch_reply_hint = self._cfg_bool(
             "enable_smart_batch_reply_hint", True
         )
-        self.smart_concurrent_merge_wait = self._cfg("smart_concurrent_merge_wait", 30)
-        self.smart_concurrent_max_batch_size = self._cfg(
-            "smart_concurrent_max_batch_size", 20
+        self.smart_concurrent_merge_wait = self._cfg_float(
+            "smart_concurrent_merge_wait", 30.0, minimum=0.1, maximum=600.0
         )
-        self.smart_concurrent_claim_delay = self._cfg(
-            "smart_concurrent_claim_delay", 0.3
+        self.smart_concurrent_max_batch_size = self._cfg_int(
+            "smart_concurrent_max_batch_size", 20, minimum=1, maximum=1000
         )
-        self.private_concurrent_mode = self._cfg("private_concurrent_mode", "smart")
-        self.private_batch_wait_ms = self._cfg("private_batch_wait_ms", 4500)
-        self.private_batch_max_size = self._cfg("private_batch_max_size", 10)
+        self.smart_concurrent_claim_delay = self._cfg_float(
+            "smart_concurrent_claim_delay", 0.3, minimum=0.0, maximum=60.0
+        )
+        self.private_concurrent_mode = self._cfg_choice(
+            "private_concurrent_mode", "smart", {"legacy", "smart"}
+        )
+        self.private_batch_wait_ms = self._cfg_int(
+            "private_batch_wait_ms", 4500, minimum=0, maximum=600_000
+        )
+        self.private_batch_max_size = self._cfg_int(
+            "private_batch_max_size", 10, minimum=1, maximum=1000
+        )
 
         # ========== 性能警告阈值 ==========
         self.reply_timeout_warning_threshold = 120
         self.reply_generation_timeout_warning = 60
 
         # ========== 桌面端模式（AstrBot Desktop 兼容） ==========
-        self.desktop_mode_setting = self._cfg("desktop_mode", "auto")
+        self.desktop_mode_setting = self._cfg_choice(
+            "desktop_mode", "auto", {"auto", "force_desktop", "force_standard"}
+        )
 
         # ========== 数据目录 ==========
         try:
@@ -362,40 +419,40 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # ========== 状态容器 ==========
         # 标记本插件正在处理的消息（用于 after_message_sent 筛选）
-        self.processing_sessions: dict = {}
+        self.processing_sessions: dict[str, str] = {}
         # 并发控制锁
         self.concurrent_lock = asyncio.Lock()
         # 群聊消息到达顺序计数器（Smart 排序）
-        self._arrival_seq_counter = 0
+        self._arrival_seq_counter: int = 0
         # Smart 批次快照 {processing_id: [cached_message_dict, ...]}
-        self._smart_batch_snapshots: dict = {}
+        self._smart_batch_snapshots: dict[str, list[dict[str, Any]]] = {}
         # 会话级流程 owner {chat_id: {"owner": str, "processing_id": str, "started_at": float}}
-        self._chat_flow_owners: dict = {}
+        self._chat_flow_owners: dict[str, dict[str, Any]] = {}
         # 消息缓存快照（供 after_message_sent 使用）{message_id: cached_message_dict}
-        self._message_cache_snapshots: dict = {}
+        self._message_cache_snapshots: dict[str, dict[str, Any]] = {}
         # 指令消息标记 {message_id: timestamp}
-        self.command_messages: dict = {}
+        self.command_messages: dict[str, float] = {}
         # 最近回复缓存（去重）{chat_id: [{"content": str, "timestamp": float}]}
-        self.recent_replies_cache: dict = {}
-        self.raw_reply_cache: dict = {}
+        self.recent_replies_cache: dict[str, list[dict[str, Any]]] = {}
+        self.raw_reply_cache: dict[str, str] = {}
         # Recent private emoji signatures {chat_id: {signature: monotonic_time}}.
-        self._private_recent_emoji: dict = {}
+        self._private_recent_emoji: dict[str, dict[str, float]] = {}
         # 多轮工具调用累积AI回复文本 {message_id: [text, ...]}
-        self._pending_bot_replies: dict = {}
+        self._pending_bot_replies: dict[str, list[str]] = {}
         # 群聊消息序号 {chat_key: int}
-        self._group_message_seq: dict = {}
+        self._group_message_seq: dict[str, int] = {}
         # agent完成标志 set[message_id]
-        self._agent_done_flags: set = set()
+        self._agent_done_flags: set[str] = set()
         # 重复消息拦截标记 {message_id: True}
-        self._duplicate_blocked_messages: dict = {}
+        self._duplicate_blocked_messages: dict[str, bool] = {}
         # 已保存消息标记 {message_id: timestamp}
-        self._saved_messages: dict = {}
+        self._saved_messages: dict[str, float] = {}
         # 平台重复推送去重 {source_event_id: timestamp}
-        self._seen_message_ids: dict = {}
+        self._seen_message_ids: dict[str, float] = {}
         # 戳一戳追踪记录 {chat_id: OrderedDict{user_id: expire_at}}
-        self.poke_trace_records: dict = {}
+        self.poke_trace_records: dict[str, Any] = {}
         # AI错误消息标记 set[message_id]
-        self._ai_error_message_ids: set = set()
+        self._ai_error_message_ids: set[str] = set()
 
         # Smart 并发参数同步
         try:
@@ -426,33 +483,78 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     # 生命周期
     # ============================================================
 
-    async def initialize(self):
-        """插件激活时调用：同步并发参数、注册插件页 Web API。"""
-        self.session = aiohttp.ClientSession()
-        # 同步 Smart并发参数
-        try:
-            SmartConcurrentManager._EXPIRE_SECONDS = float(
-                self.smart_concurrent_merge_wait
-            )
-        except (TypeError, ValueError):
-            pass
-        try:
-            SmartConcurrentManager._MAX_BATCH_SIZE = max(
-                1, int(self.smart_concurrent_max_batch_size)
-            )
-        except (TypeError, ValueError):
-            pass
+    async def initialize(self) -> None:
+        """Initialize runtime resources and register plugin APIs."""
+        session_created = False
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+            session_created = True
 
-        # 注册 AstrBot 插件页 Web API（Dashboard 内嵌管理页面）
-        self._register_web_apis()
+        try:
+            SmartConcurrentManager._EXPIRE_SECONDS = self.smart_concurrent_merge_wait
+            SmartConcurrentManager._MAX_BATCH_SIZE = (
+                self.smart_concurrent_max_batch_size
+            )
+            self._register_web_apis()
+        except Exception:
+            if session_created:
+                await self._close_http_session()
+            raise
 
-    async def terminate(self):
-        """插件禁用/重载时调用。"""
-        if hasattr(self, "session"):
-            try:
-                await self.session.close()
-            except Exception:
-                pass
+    async def terminate(self) -> None:
+        """Release runtime resources when the plugin is disabled or reloaded."""
+        await self._close_http_session()
+        self._web_apis_registered = False
+
+        try:
+            await SmartConcurrentManager.reset()
+        except Exception:
+            logger.warning(
+                "Failed to reset SmartConcurrentManager state", exc_info=True
+            )
+
+        try:
+            await ProbabilityManager.reset()
+        except Exception:
+            logger.warning("Failed to reset ProbabilityManager state", exc_info=True)
+
+        async with self.concurrent_lock:
+            self.processing_sessions.clear()
+            self._smart_batch_snapshots.clear()
+            self._chat_flow_owners.clear()
+            self._message_cache_snapshots.clear()
+            self.command_messages.clear()
+            self.recent_replies_cache.clear()
+            self.raw_reply_cache.clear()
+            self.pending_messages_cache.clear()
+            self._group_message_seq.clear()
+            self._arrival_seq_counter = 0
+            self._pending_bot_replies.clear()
+            self._agent_done_flags.clear()
+            self._duplicate_blocked_messages.clear()
+            self._saved_messages.clear()
+            self._seen_message_ids.clear()
+            self._private_recent_emoji.clear()
+            self.poke_trace_records.clear()
+            self._ai_error_message_ids.clear()
+
+    async def _close_http_session(self) -> None:
+        """Close the owned HTTP session and make repeated cleanup harmless."""
+        session = self.session
+        self.session = None
+        if session is None or session.closed:
+            return
+        try:
+            await session.close()
+        except Exception:
+            logger.warning("Failed to close plugin HTTP session", exc_info=True)
+
+    def _get_http_session(self) -> aiohttp.ClientSession:
+        """Return the active HTTP session or raise a clear lifecycle error."""
+        session = self.session
+        if session is None or session.closed:
+            raise RuntimeError("ChatPlus HTTP session is not initialized")
+        return session
 
     # ============================================================
     # 插件页 Web API（AstrBot Dashboard 插件页，见 pages/control/）
@@ -465,47 +567,53 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     # 旧版平铺配置会在首次加载时自动迁移到分组结构。
     # ============================================================
 
-    def _migrate_legacy_flat_config(self):
-        """V2.2.0：旧版平铺配置 → 分组结构一次性迁移（需在读取配置前调用）。"""
+    def _migrate_legacy_flat_config(self) -> None:
+        """Migrate legacy flat keys into grouped configuration storage.
+
+        Existing grouped values win over legacy flat values. Each schema key is
+        migrated independently so a partially edited grouped configuration does
+        not cause unrelated legacy values to be lost.
+        """
         try:
             schema = getattr(self.config, "schema", None) or {}
             groups = {
-                gname: meta.get("items", {})
-                for gname, meta in schema.items()
-                if isinstance(meta, dict)
-                and meta.get("type") == "object"
-                and isinstance(meta.get("items"), dict)
+                group_name: metadata.get("items", {})
+                for group_name, metadata in schema.items()
+                if isinstance(metadata, dict)
+                and metadata.get("type") == "object"
+                and isinstance(metadata.get("items"), dict)
             }
             if not groups:
                 return
-            # 已处于分组结构（分组内已有数据）则跳过
-            has_group_data = any(
-                isinstance(self.config.get(g), dict) and self.config.get(g)
-                for g in groups
-            )
-            if has_group_data:
-                return
+
             migrated = 0
-            for gname, items in groups.items():
-                sub = {}
+            legacy_keys = set()
+            for group_name, items in groups.items():
+                current_group = self.config.get(group_name)
+                grouped_values = (
+                    dict(current_group) if isinstance(current_group, dict) else {}
+                )
                 for key in items:
-                    if key in self.config:
-                        sub[key] = self.config[key]
-                        migrated += 1
-                if sub:
-                    self.config[gname] = sub
-            for items in groups.values():
-                for key in items:
-                    if key in self.config:
-                        del self.config[key]
+                    legacy_keys.add(key)
+                    if key in grouped_values or key not in self.config:
+                        continue
+                    grouped_values[key] = self.config[key]
+                    migrated += 1
+                if grouped_values and grouped_values != current_group:
+                    self.config[group_name] = grouped_values
+
+            for key in legacy_keys:
+                if key in self.config:
+                    del self.config[key]
+
             if migrated:
                 self.config.save_config()
                 logger.info(f"⚙️ 配置已迁移到分组结构（{migrated} 项）")
         except Exception as e:
             logger.warning(f"⚙️ 配置迁移失败（继续使用默认值）: {e}")
 
-    def _cfg(self, key, default=None):
-        """按分组结构读取配置；schema 外的键回退到平铺读取。"""
+    def _cfg(self, key: str, default: Any = None) -> Any:
+        """Read a configuration value from grouped or flat storage."""
         try:
             schema = getattr(self.config, "schema", None) or {}
             for gname, gmeta in schema.items():
@@ -521,6 +629,173 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         except Exception:
             pass
         return self.config.get(key, default)
+
+    @staticmethod
+    def _coerce_bool(value: Any, default: bool) -> bool:
+        """Convert a configuration value to a boolean safely.
+
+        Args:
+            value: Raw configuration value.
+            default: Value returned when the input is not recognized.
+
+        Returns:
+            A normalized boolean value.
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "y"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "n"}:
+                return False
+        return default
+
+    @staticmethod
+    def _coerce_int(
+        value: Any,
+        default: int,
+        *,
+        minimum: int | None = None,
+        maximum: int | None = None,
+    ) -> int:
+        """Convert and clamp an integer configuration value.
+
+        Args:
+            value: Raw configuration value.
+            default: Fallback integer.
+            minimum: Optional inclusive lower bound.
+            maximum: Optional inclusive upper bound.
+
+        Returns:
+            A validated integer within the requested bounds.
+        """
+        try:
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("non-finite number")
+            result = int(value)
+        except (TypeError, ValueError, OverflowError):
+            result = default
+        if minimum is not None:
+            result = max(minimum, result)
+        if maximum is not None:
+            result = min(maximum, result)
+        return result
+
+    @staticmethod
+    def _coerce_float(
+        value: Any,
+        default: float,
+        *,
+        minimum: float | None = None,
+        maximum: float | None = None,
+    ) -> float:
+        """Convert and clamp a finite floating-point configuration value.
+
+        Args:
+            value: Raw configuration value.
+            default: Fallback float.
+            minimum: Optional inclusive lower bound.
+            maximum: Optional inclusive upper bound.
+
+        Returns:
+            A validated finite float within the requested bounds.
+        """
+        try:
+            result = float(value)
+            if not math.isfinite(result):
+                raise ValueError("non-finite number")
+        except (TypeError, ValueError, OverflowError):
+            result = default
+        if minimum is not None:
+            result = max(minimum, result)
+        if maximum is not None:
+            result = min(maximum, result)
+        return result
+
+    @staticmethod
+    def _coerce_choice(value: Any, default: str, choices: set[str]) -> str:
+        """Return a configured string only when it is an allowed choice.
+
+        Args:
+            value: Raw configuration value.
+            default: Fallback choice.
+            choices: Allowed values.
+
+        Returns:
+            A valid choice from choices or default.
+        """
+        candidate = value.strip() if isinstance(value, str) else value
+        return candidate if candidate in choices else default
+
+    @staticmethod
+    def _coerce_list(value: Any, default: list[Any]) -> list[Any]:
+        """Copy a list-like configuration value without sharing defaults.
+
+        Args:
+            value: Raw configuration value.
+            default: Fallback list.
+
+        Returns:
+            A new list containing normalized string entries.
+        """
+        source = value if isinstance(value, (list, tuple, set)) else default
+        return [
+            item.strip() if isinstance(item, str) else str(item)
+            for item in source
+            if item is not None and str(item).strip()
+        ]
+
+    def _cfg_str(self, key: str, default: str) -> str:
+        """Read and normalize a string configuration value."""
+        value = self._cfg(key, default)
+        return value.strip() if isinstance(value, str) else default
+
+    def _cfg_bool(self, key: str, default: bool) -> bool:
+        """Read and normalize a boolean configuration value."""
+        return self._coerce_bool(self._cfg(key, default), default)
+
+    def _cfg_int(
+        self,
+        key: str,
+        default: int,
+        *,
+        minimum: int | None = None,
+        maximum: int | None = None,
+    ) -> int:
+        """Read and normalize an integer configuration value."""
+        return self._coerce_int(
+            self._cfg(key, default),
+            default,
+            minimum=minimum,
+            maximum=maximum,
+        )
+
+    def _cfg_float(
+        self,
+        key: str,
+        default: float,
+        *,
+        minimum: float | None = None,
+        maximum: float | None = None,
+    ) -> float:
+        """Read and normalize a floating-point configuration value."""
+        return self._coerce_float(
+            self._cfg(key, default),
+            default,
+            minimum=minimum,
+            maximum=maximum,
+        )
+
+    def _cfg_choice(self, key: str, default: str, choices: set[str]) -> str:
+        """Read and normalize an enumerated string configuration value."""
+        return self._coerce_choice(self._cfg(key, default), default, choices)
+
+    def _cfg_list(self, key: str, default: list[Any]) -> list[Any]:
+        """Read and normalize a list configuration value."""
+        return self._coerce_list(self._cfg(key, default), default)
 
     def _set_cfg(self, key, value):
         """按分组结构写入配置；schema 外的键回退到平铺写入。"""
@@ -586,8 +861,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 mapping[key] = self._ATTR_MAP.get(key, key)
         return mapping
 
-    def _register_web_apis(self):
-        """注册插件页 Web API（需要 AstrBot >= 4.25.3 的 Plugin Pages 支持）。"""
+    def _register_web_apis(self) -> None:
+        """Register plugin-page APIs once for this plugin instance."""
+        if self._web_apis_registered:
+            return
         try:
             self.context.register_web_api(
                 f"/{self._PLUGIN_NAME}/status",
@@ -607,6 +884,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 ["GET"],
                 "提示词预览（读空气判断/回复生成）",
             )
+            self._web_apis_registered = True
             logger.info("✅ 插件页 Web API 已注册（Dashboard 插件页可用）")
         except Exception as e:
             logger.warning(f"插件页 Web API 注册失败（需要 AstrBot v4.25.3+）: {e}")
@@ -665,7 +943,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             applied.append(key)
 
         try:
-            self.config.save_config()
+            await asyncio.to_thread(self.config.save_config)
         except Exception as e:
             logger.warning(f"插件页保存配置落盘失败: {e}")
 
@@ -792,7 +1070,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.error(f"发送重启失败提示时出错: {e}")
             self.config["restart_umo"] = ""
             self.config["restart_start_ts"] = 0
-            self.config.save_config()
+            await asyncio.to_thread(self.config.save_config)
             return
 
         client = platform.get_client()
@@ -809,7 +1087,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.error(f"发送重启失败提示时出错: {e}")
             self.config["restart_umo"] = ""
             self.config["restart_start_ts"] = 0
-            self.config.save_config()
+            await asyncio.to_thread(self.config.save_config)
             return
 
         ws_connected = asyncio.Event()
@@ -854,7 +1132,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             "username": self.dbc["username"],
             "password": self.dbc["password"],
         }
-        async with self.session.post(login_url, json=login_data) as response:
+        session = self._get_http_session()
+        async with session.post(login_url, json=login_data) as response:
             if response.status == 200:
                 data = await response.json()
                 if data and data.get("status") == "ok" and "data" in data:
@@ -937,7 +1216,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 )
             token = await self._get_auth_token()
             headers = {"Authorization": f"Bearer {token}"}
-            async with self.session.post(self.restart_url, headers=headers) as response:
+            session = self._get_http_session()
+            async with session.post(self.restart_url, headers=headers) as response:
                 if response.status == 200:
                     logger.info("系统重启请求已发送")
                 else:
@@ -2050,7 +2330,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 "[图片内容:" in message_text if message_text else False
             )
             if has_image_info and message_text and EMOJI_MARKER not in message_text:
-                message_text = EmojiDetector.add_emoji_marker(message_text)
+                market_face_label = EmojiDetector.describe_market_faces(event)
+                market_face_suffix = (
+                    f"（QQ商城表情：{market_face_label}）" if market_face_label else ""
+                )
+                message_text = (
+                    EmojiDetector.add_emoji_marker(message_text) + market_face_suffix
+                )
                 current_message_for_ai = _build_current_message_for_ai(message_text)
                 bot_id = event.get_self_id()
                 formatted_context = await self._format_ai_context(
@@ -2253,7 +2539,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         formatted_context: str,
         is_at_message: bool,
         has_trigger_keyword: bool,
-        image_urls: Optional[List[str]] = None,
+        image_urls: list[str] | None = None,
         matched_trigger_keyword: str = "",
         original_message_text: str = "",
         force_ai_decision: bool = False,
@@ -2520,10 +2806,19 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 表情包标记注入（正常处理路径）
         emoji_marker_applied = False
         if is_emoji_message and self.enable_emoji_filter and image_retained:
+            market_face_label = EmojiDetector.describe_market_faces(event)
+            market_face_suffix = (
+                f"（QQ商城表情：{market_face_label}）" if market_face_label else ""
+            )
             if processed_message:
-                processed_message = EmojiDetector.add_emoji_marker(processed_message)
+                processed_message = (
+                    EmojiDetector.add_emoji_marker(processed_message)
+                    + market_face_suffix
+                )
             else:
-                processed_message = EmojiDetector.add_emoji_marker("")
+                processed_message = (
+                    EmojiDetector.add_emoji_marker("") + market_face_suffix
+                )
             emoji_marker_applied = True
 
         current_message_id = self._get_processing_id(event)
@@ -3275,7 +3570,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         chat_id: str,
         current_history: list,
         max_context: int,
-    ) -> Optional[List]:
+    ) -> list | None:
         """
         并发等待后刷新历史消息
 
@@ -3509,13 +3804,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         6. 不再注入任何插件行为指令/情绪/工具提醒文本
         """
         from .utils.reply_handler import (
-            PLUGIN_REQUEST_MARKER,
-            PLUGIN_CUSTOM_CONTEXTS,
-            PLUGIN_CUSTOM_SYSTEM_PROMPT,
-            PLUGIN_CUSTOM_PROMPT,
-            PLUGIN_IMAGE_URLS,
-            PLUGIN_FUNC_TOOL,
             PLUGIN_CURRENT_MESSAGE,
+            PLUGIN_CUSTOM_CONTEXTS,
+            PLUGIN_CUSTOM_PROMPT,
+            PLUGIN_CUSTOM_SYSTEM_PROMPT,
+            PLUGIN_FUNC_TOOL,
+            PLUGIN_IMAGE_URLS,
+            PLUGIN_REQUEST_MARKER,
         )
 
         # 检查是否是来自本插件的请求
@@ -3560,12 +3855,21 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             #    框架（TOOL_CALL_PROMPT 等）与第三方插件只会追加，不会覆盖
 
             # 4. 图片/音频 URL 合并（保留第三方注入）
-            _merged_image_urls = list(plugin_image_urls or [])
+            # QQ 商城表情预览图为死链，绝不能进入最终视觉请求；
+            # 否则核心在组装 payload 时下载404，会把异常文本直接当回复发出。
+            _merged_image_urls = [
+                _u
+                for _u in list(plugin_image_urls or [])
+                if not EmojiDetector.looks_like_market_face([_u])
+            ]
             _seen_urls = set(_merged_image_urls)
             for _u in req.image_urls or []:
-                if _u not in _seen_urls:
-                    _seen_urls.add(_u)
-                    _merged_image_urls.append(_u)
+                if _u in _seen_urls:
+                    continue
+                if EmojiDetector.looks_like_market_face([_u]):
+                    continue
+                _seen_urls.add(_u)
+                _merged_image_urls.append(_u)
             req.image_urls = _merged_image_urls
 
             _merged_audio_urls = list(plugin_audio_urls or [])
@@ -3750,36 +4054,43 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             comp.text = ""
                         reply_text = normalized_reply_text
 
-            self.raw_reply_cache[message_id] = reply_text
-
-            # 多轮工具调用支持：累积原始回复文本
-            if message_id not in self._pending_bot_replies:
-                self._pending_bot_replies[message_id] = []
-            self._pending_bot_replies[message_id].append(reply_text)
-
-            # 应用输出内容过滤（独立于保存过滤）
+            # Remove the mechanical "current phrase + particle" opener before
+            # caching or sending so the same echo cannot re-enter conversation history.
             filtered_reply_text = reply_text
+            if (
+                not is_private
+                and result.chain
+                and all(hasattr(comp, "text") for comp in result.chain)
+            ):
+                filtered_reply_text = ReplyHandler.remove_echo_prefix(
+                    reply_text, event.get_message_str() or ""
+                )
+
             if filtered_reply_text != reply_text:
                 logger.info(
-                    f"[输出过滤] 已过滤AI回复，原长度: {len(reply_text)}, 过滤后: {len(filtered_reply_text)}"
+                    f"[Output filter] Removed echo opener: {len(reply_text)} -> "
+                    f"{len(filtered_reply_text)} characters"
                 )
-                first_text_comp = True
-                for comp in result.chain:
-                    if hasattr(comp, "text"):
-                        if first_text_comp:
-                            comp.text = filtered_reply_text
-                            first_text_comp = False
-                        else:
-                            comp.text = ""
+                text_components = [
+                    comp for comp in result.chain if hasattr(comp, "text")
+                ]
+                text_components[0].text = filtered_reply_text
+                for comp in text_components[1:]:
+                    comp.text = ""
                 reply_text = filtered_reply_text
 
             if not reply_text:
                 if self.debug_mode:
                     logger.info("[输出过滤] 过滤后内容为空，跳过发送")
                 event.clear_result()
-                if message_id in self.raw_reply_cache:
-                    del self.raw_reply_cache[message_id]
                 return
+
+            self.raw_reply_cache[message_id] = reply_text
+
+            # 多轮工具调用支持：累积已过滤的回复文本
+            if message_id not in self._pending_bot_replies:
+                self._pending_bot_replies[message_id] = []
+            self._pending_bot_replies[message_id].append(reply_text)
 
             # 重复检测必须在任何装饰性修改之前，基于原始内容检测
             if self.enable_duplicate_filter:
@@ -4082,9 +4393,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     description = descriptions[idx].strip()
                     if not description:
                         continue
-                    if self.image_description_cache.lookup(image_path):
+                    if await self.image_description_cache.lookup_async(image_path):
                         continue
-                    self.image_description_cache.save(image_path, description)
+                    await self.image_description_cache.save_async(
+                        image_path, description
+                    )
                     save_count += 1
                 except Exception as e:
                     logger.warning(f"[图片缓存-平台描述] 保存图片 {idx} 时失败: {e}")
@@ -4097,7 +4410,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         except Exception as e:
             logger.warning(f"[图片缓存-平台描述] 保存平台描述到缓存失败: {e}")
 
-    async def _try_cache_fallback_for_images(self, event) -> Optional[str]:
+    async def _try_cache_fallback_for_images(self, event) -> str | None:
         """
         省钱回退：平台描述获取失败后，从图片描述缓存中查找已缓存的图片描述。
 
@@ -4128,8 +4441,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     try:
                         image_path = await component.convert_to_file_path()
                         if image_path:
-                            cached_desc = self.image_description_cache.lookup(
-                                image_path
+                            cached_desc = (
+                                await self.image_description_cache.lookup_async(
+                                    image_path
+                                )
                             )
                             if cached_desc:
                                 result_parts.append(f"[图片内容: {cached_desc}]")

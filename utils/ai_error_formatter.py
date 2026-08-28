@@ -12,7 +12,6 @@ AI服务商错误格式化器 - 将原始异常转换为清晰可读的错误信
 """
 
 import re
-from typing import Optional
 
 # 错误信息最大显示长度（超过则截断）
 _MAX_ERROR_LENGTH = 300
@@ -104,7 +103,7 @@ def _is_upstream_empty_output(text: str) -> bool:
     return any(keyword in lower for keyword in _UPSTREAM_EMPTY_OUTPUT_KEYWORDS)
 
 
-def _extract_http_status(text: str) -> Optional[int]:
+def _extract_http_status(text: str) -> int | None:
     patterns = [
         r"(\d{3})\s*:\s*[A-Za-z\s]+$",  # "502: Bad gateway"
         r"[Ee]rror\s+[Cc]ode\s*:?\s*(\d{3})",  # "Error code: 502"
@@ -121,7 +120,7 @@ def _extract_http_status(text: str) -> Optional[int]:
     return None
 
 
-def _detect_network_error(text: str) -> Optional[str]:
+def _detect_network_error(text: str) -> str | None:
     lower = text.lower()
     hints = {
         "connection": "网络连接失败",
@@ -146,7 +145,7 @@ def _truncate(msg: str, max_len: int = _MAX_ERROR_LENGTH) -> str:
     return msg[:max_len] + f"... (已截断，原始长度 {len(msg)} 字符)"
 
 
-def _build_html_error_message(label: str, status: Optional[int]) -> str:
+def _build_html_error_message(label: str, status: int | None) -> str:
     code_str = f" HTTP {status}" if status else ""
     detail = (
         _HTTP_STATUS_MAP.get(status, "")

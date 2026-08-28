@@ -6,27 +6,27 @@
 版本: 0.0.3
 """
 
-from .probability_manager import ProbabilityManager
-from .message_processor import MessageProcessor
-from .image_handler import ImageHandler
-from .context_manager import ContextManager
-from .decision_ai import DecisionAI
-from .reply_handler import ReplyHandler
-from .save_processor import SaveMixin
-from .command_processor import CommandMixin
-from .mention_processor import MentionMixin
-from .poke_processor import PokeMixin
-from .memory_injector import MemoryInjector
-from .keyword_checker import KeywordChecker
-from .message_cleaner import MessageCleaner
+from .ai_error_formatter import format_ai_error
 
 # 保留功能模块
 from .ai_response_filter import AIResponseFilter
-from .platform_ltm_helper import PlatformLTMHelper
+from .command_processor import CommandMixin
+from .context_manager import ContextManager
+from .decision_ai import DecisionAI
+from .emoji_detector import EMOJI_MARKER, EmojiDetector
 from .image_description_cache import ImageDescriptionCache
-from .emoji_detector import EmojiDetector, EMOJI_MARKER
+from .image_handler import ImageHandler
+from .keyword_checker import KeywordChecker
+from .memory_injector import MemoryInjector
+from .mention_processor import MentionMixin
+from .message_cleaner import MessageCleaner
+from .message_processor import MessageProcessor
+from .platform_ltm_helper import PlatformLTMHelper
+from .poke_processor import PokeMixin
+from .probability_manager import ProbabilityManager
+from .reply_handler import ReplyHandler
+from .save_processor import SaveMixin
 from .smart_concurrent_manager import SmartConcurrentManager
-from .ai_error_formatter import format_ai_error
 
 # 全局调试日志开关（供各模块统一读取）
 DEBUG_MODE: bool = False

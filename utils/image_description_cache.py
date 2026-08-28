@@ -1,277 +1,328 @@
-"""
-图片描述缓存模块
-将图片URL与其AI生成的文字描述进行本地缓存，避免重复调用AI转换同一张图片。
+"""Persistent image-description cache with asynchronous access helpers."""
 
-核心设计原则：
-1. 查找时逐行读取文件，不一次性加载到内存
-2. 写入时使用追加模式，直接往文件末尾写
-3. 超过限制时移除最旧的条目
-4. 所有会话共享同一份缓存（不需要会话隔离）
+from __future__ import annotations
 
-文件格式：JSONL（每行一个JSON对象）
-{"u":"图片URL","d":"文字描述","t":时间戳}
-
-作者: Sihnbaobao（重构）
-版本: V1.2.3.hotfix.2
-"""
-
+import asyncio
 import json
 import os
-import time
 import tempfile
+import threading
+import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Optional
+
 from astrbot.api import logger
 
-# 详细日志开关
-DEBUG_MODE: bool = False
+DEBUG_MODE = False
 
 
 class ImageDescriptionCache:
-    """
-    图片描述缓存器
+    """Store image descriptions in memory and persist them as JSONL.
 
-    主要功能：
-    1. 根据图片URL查找已缓存的文字描述（逐行扫描，不全量加载）
-    2. 将新的URL-描述对追加到缓存文件
-    3. 超过最大条目限制时自动清理最旧的记录
-    4. 提供清空缓存的方法
+    The synchronous methods remain available for command handlers and backwards
+    compatibility. Message-processing code should use the asynchronous methods,
+    which move file work to a worker thread. A per-URL single-flight operation
+    prevents concurrent messages from requesting the same image description more
+    than once.
     """
 
-    def __init__(self, data_dir: str, max_entries: int = 500, enabled: bool = False):
-        """
-        初始化图片描述缓存
+    _MIN_ENTRIES = 10
+    _MAX_ENTRIES = 10_000
+    _RETENTION_RATIO = 0.8
+
+    def __init__(
+        self,
+        data_dir: str,
+        max_entries: int = 500,
+        enabled: bool = False,
+    ) -> None:
+        """Initialize an image-description cache.
 
         Args:
-            data_dir: 数据存储目录
-            max_entries: 最大缓存条目数（正数）
-            enabled: 是否启用缓存
+            data_dir: Directory used for plugin data.
+            max_entries: Maximum number of persisted JSONL entries.
+            enabled: Whether the cache should be active.
         """
-        self._enabled = enabled
-        self._max_entries = max(10, min(max_entries, 10000))  # 硬限制10-10000
+        try:
+            configured_max_entries = int(max_entries)
+        except (TypeError, ValueError):
+            configured_max_entries = 500
+
+        self._enabled = bool(enabled)
+        self._max_entries = max(
+            self._MIN_ENTRIES,
+            min(configured_max_entries, self._MAX_ENTRIES),
+        )
         self._cache_dir = Path(data_dir) / "image_cache"
         self._cache_file = self._cache_dir / "descriptions.jsonl"
-        self._entry_count: int = 0  # 当前缓存条目计数（内存中维护）
+        self._entry_count = 0
+        self._cache_index: dict[str, str] = {}
+        self._file_lock = threading.RLock()
         self._initialized = False
+        self._inflight: dict[str, asyncio.Future[str | None]] = {}
+        self._inflight_lock: asyncio.Lock | None = None
+        self._inflight_loop: asyncio.AbstractEventLoop | None = None
 
         if self._enabled:
             self._init_storage()
 
-    def _init_storage(self):
-        """初始化存储目录和计数"""
+    def _init_storage(self) -> None:
+        """Create storage and load the in-memory lookup index."""
         try:
-            self._cache_dir.mkdir(parents=True, exist_ok=True)
-            # 通过统计文件行数初始化计数器（不加载内容）
-            self._entry_count = self._count_lines()
-            self._initialized = True
+            with self._file_lock:
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
+                self._entry_count = self._load_index()
+                if self._entry_count > self._max_entries:
+                    self._cleanup_oldest()
+                self._initialized = True
             logger.debug(
-                f"[图片缓存] 已初始化，当前缓存 {self._entry_count} 条，"
-                f"上限 {self._max_entries} 条，"
-                f"文件: {self._cache_file}"
+                "[ImageCache] initialized: entries=%s max=%s file=%s",
+                self._entry_count,
+                self._max_entries,
+                self._cache_file,
             )
-        except Exception as e:
-            logger.error(f"[图片缓存] 初始化失败: {e}")
+        except OSError as error:
+            logger.error(f"[ImageCache] initialization failed: {error}")
             self._initialized = False
 
-    def _count_lines(self) -> int:
-        """
-        统计缓存文件的行数（不加载内容到内存）
+    def _load_index(self) -> int:
+        """Load the JSONL file into the in-memory URL index.
 
         Returns:
-            文件行数
+            Number of non-empty physical entries in the cache file.
         """
+        self._cache_index.clear()
         if not self._cache_file.exists():
             return 0
-        count = 0
+
+        entry_count = 0
         try:
-            with open(self._cache_file, "r", encoding="utf-8") as f:
-                for _ in f:
-                    count += 1
-        except Exception:
-            count = 0
-        return count
+            with open(self._cache_file, encoding="utf-8-sig") as file:
+                for line in file:
+                    if not line.strip():
+                        continue
+                    entry_count += 1
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(entry, dict):
+                        continue
+                    url = entry.get("u")
+                    description = entry.get("d")
+                    if isinstance(url, str) and url and isinstance(description, str):
+                        if description:
+                            self._cache_index[url] = description
+        except OSError as error:
+            logger.warning(f"[ImageCache] failed to load index: {error}")
+            return 0
+        return entry_count
 
     @property
     def enabled(self) -> bool:
+        """Return whether the cache is ready for use."""
         return self._enabled and self._initialized
 
     @property
     def entry_count(self) -> int:
-        return self._entry_count
+        """Return the number of persisted cache entries."""
+        with self._file_lock:
+            return self._entry_count
 
-    def lookup(self, url: str) -> Optional[str]:
-        """
-        查找URL对应的缓存描述（逐行扫描，找到即停，不全量加载）
+    def lookup(self, url: str) -> str | None:
+        """Look up an image description without scanning the cache file.
 
         Args:
-            url: 图片URL
+            url: Image URL or local path.
 
         Returns:
-            缓存的文字描述，未找到返回None
+            Cached description, or None when no entry exists.
         """
         if not self.enabled or not url:
             return None
+        with self._file_lock:
+            description = self._cache_index.get(url)
+        if description and DEBUG_MODE:
+            logger.debug(f"[ImageCache] hit: {url[:80]}...")
+        return description
 
-        if not self._cache_file.exists():
-            return None
+    async def lookup_async(self, url: str) -> str | None:
+        """Look up a description without blocking the event loop."""
+        return await asyncio.to_thread(self.lookup, url)
 
-        try:
-            with open(self._cache_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                        if entry.get("u") == url:
-                            desc = entry.get("d", "")
-                            if desc:
-                                if DEBUG_MODE:
-                                    logger.debug(
-                                        f"[图片缓存] 命中缓存: {url[:80]}... -> {desc[:50]}..."
-                                    )
-                                return desc
-                    except (json.JSONDecodeError, KeyError):
-                        continue
-        except Exception as e:
-            logger.warning(f"[图片缓存] 查找时发生错误: {e}")
-
-        return None
-
-    def save(self, url: str, description: str):
-        """
-        保存URL-描述对到缓存（追加写入，不读取现有内容）
-
-        如果超过最大条目限制，会自动触发清理。
+    def save(self, url: str, description: str) -> None:
+        """Persist a description if the URL is not already cached.
 
         Args:
-            url: 图片URL
-            description: AI生成的文字描述
+            url: Image URL or local path.
+            description: Generated image description.
         """
         if not self.enabled or not url or not description:
             return
 
-        try:
-            entry = {
-                "u": url,
-                "d": description,
-                "t": int(time.time()),
-            }
-            # 追加模式写入
-            with open(self._cache_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            self._entry_count += 1
-
-            if DEBUG_MODE:
-                logger.debug(
-                    f"[图片缓存] 已保存: {url[:80]}... ({self._entry_count}/{self._max_entries})"
-                )
-
-            # 超过限制时清理
-            if self._entry_count > self._max_entries:
-                self._cleanup_oldest()
-
-        except Exception as e:
-            logger.warning(f"[图片缓存] 保存时发生错误: {e}")
-
-    def _cleanup_oldest(self):
-        """
-        清理最旧的条目，保留最新的 max_entries * 0.8 条
-
-        采用逐行读写方式：读取原文件 -> 跳过最旧的N行 -> 写入临时文件 -> 替换原文件
-        """
-        try:
-            if not self._cache_file.exists():
+        with self._file_lock:
+            if url in self._cache_index:
                 return
-
-            # 计算需要保留的条目数（保留80%，给新条目留空间）
-            keep_count = int(self._max_entries * 0.8)
-            skip_count = self._entry_count - keep_count
-
-            if skip_count <= 0:
-                return
-
-            logger.debug(
-                f"[图片缓存] 缓存条目 ({self._entry_count}) 超过上限 ({self._max_entries})，"
-                f"清理最旧的 {skip_count} 条，保留 {keep_count} 条"
-            )
-
-            # 使用临时文件避免数据丢失
-            temp_fd, temp_path = tempfile.mkstemp(
-                dir=str(self._cache_dir), suffix=".tmp"
-            )
-
             try:
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
+                entry = {"u": url, "d": description, "t": int(time.time())}
+                with open(self._cache_file, "a", encoding="utf-8") as file:
+                    file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                self._cache_index[url] = description
+                self._entry_count += 1
+                if self._entry_count > self._max_entries:
+                    self._cleanup_oldest()
+            except OSError as error:
+                logger.warning(f"[ImageCache] save failed: {error}")
+
+    async def save_async(self, url: str, description: str) -> None:
+        """Persist a description without blocking the event loop."""
+        await asyncio.to_thread(self.save, url, description)
+
+    async def get_or_create(
+        self,
+        url: str,
+        factory: Callable[[], Awaitable[str | None]],
+    ) -> str | None:
+        """Return a cached value or create one with per-URL single-flight.
+
+        Args:
+            url: Image URL or local path.
+            factory: Async callback that generates a description when needed.
+
+        Returns:
+            Cached or newly generated description.
+
+        Raises:
+            Exception: Propagates an exception raised by the owner callback.
+        """
+        if not self.enabled or not url:
+            return await factory()
+
+        cached = await self.lookup_async(url)
+        if cached:
+            return cached
+
+        lock = self._get_inflight_lock()
+        owner = False
+        async with lock:
+            cached = await self.lookup_async(url)
+            if cached:
+                return cached
+            future = self._inflight.get(url)
+            if future is None:
+                future = asyncio.get_running_loop().create_future()
+                self._inflight[url] = future
+                owner = True
+
+        if not owner:
+            return await asyncio.shield(future)
+
+        try:
+            description = await factory()
+            if description:
+                await self.save_async(url, description)
+                description = description.strip() or None
+            if not future.done():
+                future.set_result(description)
+            return description
+        except asyncio.CancelledError:
+            if not future.done():
+                future.set_result(None)
+            raise
+        except Exception:
+            if not future.done():
+                future.set_result(None)
+            raise
+        finally:
+            async with lock:
+                if self._inflight.get(url) is future:
+                    self._inflight.pop(url, None)
+
+    def _get_inflight_lock(self) -> asyncio.Lock:
+        """Return the single-flight lock for the current event loop."""
+        loop = asyncio.get_running_loop()
+        if self._inflight_lock is None or self._inflight_loop is not loop:
+            if self._inflight_loop is not None and self._inflight_loop is not loop:
+                self._inflight.clear()
+            self._inflight_lock = asyncio.Lock()
+            self._inflight_loop = loop
+        return self._inflight_lock
+
+    def _cleanup_oldest(self) -> None:
+        """Keep the newest 80 percent of entries using atomic replacement."""
+        with self._file_lock:
+            if not self._cache_file.exists() or self._entry_count <= self._max_entries:
+                return
+
+            keep_count = max(1, int(self._max_entries * self._RETENTION_RATIO))
+            skip_count = self._entry_count - keep_count
+            temporary_path: str | None = None
+            descriptor: int | None = None
+            try:
+                descriptor, temporary_path = tempfile.mkstemp(
+                    dir=self._cache_dir,
+                    prefix=f".{self._cache_file.name}.",
+                    suffix=".tmp",
+                )
                 skipped = 0
-                written = 0
-                with open(self._cache_file, "r", encoding="utf-8") as src:
-                    with os.fdopen(temp_fd, "w", encoding="utf-8") as dst:
-                        for line in src:
+                with open(self._cache_file, encoding="utf-8-sig") as source:
+                    with os.fdopen(descriptor, "w", encoding="utf-8") as target:
+                        descriptor = None
+                        for line in source:
+                            if not line.strip():
+                                continue
                             if skipped < skip_count:
                                 skipped += 1
                                 continue
-                            dst.write(line)
-                            written += 1
-
-                # 原子替换原文件（os.replace 跨平台，Windows/Linux/macOS 均可用）
-                os.replace(temp_path, str(self._cache_file))
-
-                self._entry_count = written
-                logger.debug(f"[图片缓存] 清理完成，当前缓存 {self._entry_count} 条")
-
-            except Exception as e:
-                # 清理临时文件
-                try:
-                    os.unlink(temp_path)
-                except Exception:
-                    pass
-                raise e
-
-        except Exception as e:
-            logger.error(f"[图片缓存] 清理旧条目时发生错误: {e}")
+                            target.write(line)
+                        target.flush()
+                        os.fsync(target.fileno())
+                os.replace(temporary_path, self._cache_file)
+                temporary_path = None
+                self._entry_count = self._load_index()
+            except OSError as error:
+                logger.error(f"[ImageCache] cleanup failed: {error}")
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+                if temporary_path is not None:
+                    try:
+                        os.unlink(temporary_path)
+                    except OSError:
+                        pass
 
     def clear(self) -> bool:
-        """
-        清空所有缓存
+        """Remove current and legacy cache files."""
+        with self._file_lock:
+            try:
+                if self._cache_file.exists():
+                    self._cache_file.unlink()
+                legacy_path = self._cache_dir.parent / "image_description_cache.json"
+                if legacy_path.exists():
+                    legacy_path.unlink()
+                self._cache_index.clear()
+                self._entry_count = 0
+                return True
+            except OSError as error:
+                logger.error(f"[ImageCache] clear failed: {error}")
+                return False
 
-        Returns:
-            True=成功，False=失败
-        """
-        try:
-            if self._cache_file.exists():
-                self._cache_file.unlink()
-            # 兼容清理旧版残留路径 image_description_cache.json
-            legacy_path = self._cache_dir.parent / "image_description_cache.json"
-            if legacy_path.exists():
-                legacy_path.unlink()
-                logger.debug(
-                    "[图片缓存] 已清理旧版缓存文件 image_description_cache.json"
-                )
-            self._entry_count = 0
-            logger.debug("[图片缓存] 缓存已清空")
-            return True
-        except Exception as e:
-            logger.error(f"[图片缓存] 清空缓存失败: {e}")
-            return False
+    async def clear_async(self) -> bool:
+        """Clear cache files without blocking the event loop."""
+        return await asyncio.to_thread(self.clear)
 
-    def get_stats(self) -> dict:
-        """
-        获取缓存统计信息
-
-        Returns:
-            包含统计信息的字典
-        """
+    def get_stats(self) -> dict[str, object]:
+        """Return cache status for the plugin control page."""
         file_size = 0
         try:
-            if self._cache_file.exists():
-                file_size = self._cache_file.stat().st_size
-        except Exception:
+            file_size = self._cache_file.stat().st_size
+        except OSError:
             pass
-
         return {
             "enabled": self._enabled,
             "initialized": self._initialized,
-            "entry_count": self._entry_count,
+            "entry_count": self.entry_count,
             "max_entries": self._max_entries,
             "file_size_bytes": file_size,
             "file_path": str(self._cache_file),

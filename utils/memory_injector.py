@@ -26,8 +26,8 @@
 版本: V1.2.3.hotfix.2
 """
 
-from typing import Optional
 from datetime import datetime
+
 from astrbot.api.all import *
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
@@ -151,9 +151,9 @@ class MemoryInjector:
     async def _resolve_livingmemory_persona_id(
         context: Context,
         session_id: str,
-        event: Optional[AstrMessageEvent] = None,
+        event: AstrMessageEvent | None = None,
         compat_mode: str = "auto",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         兼容不同 AstrBot / LivingMemory 版本的人格ID获取方式。
 
@@ -189,7 +189,7 @@ class MemoryInjector:
         if not platform_name and isinstance(session_id, str) and ":" in session_id:
             platform_name = session_id.split(":", 1)[0]
 
-        async def _try_resolver() -> Optional[str]:
+        async def _try_resolver() -> str | None:
             if not hasattr(persona_mgr, "resolve_selected_persona"):
                 return None
 
@@ -229,7 +229,7 @@ class MemoryInjector:
                     )
                 return None
 
-        async def _try_default_persona_v3() -> Optional[str]:
+        async def _try_default_persona_v3() -> str | None:
             if not hasattr(persona_mgr, "get_default_persona_v3"):
                 return None
             try:
@@ -245,7 +245,7 @@ class MemoryInjector:
                     logger.debug(f"[LivingMemory] get_default_persona_v3 解析失败: {e}")
                 return None
 
-        async def _try_legacy_key_lookup() -> Optional[str]:
+        async def _try_legacy_key_lookup() -> str | None:
             if not hasattr(persona_mgr, "get_personas_by_key"):
                 return None
             try:
@@ -414,7 +414,7 @@ class MemoryInjector:
         top_k: int = 5,
         version: str = "v1",
         persona_compat_mode: str = "auto",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         调用记忆插件获取记忆内容（支持双模式）
 
@@ -475,7 +475,9 @@ class MemoryInjector:
                     return None
 
                 if memory_result and isinstance(memory_result, str):
-                    logger.debug(f"[Legacy模式] 成功获取记忆: {len(memory_result)} 字符")
+                    logger.debug(
+                        f"[Legacy模式] 成功获取记忆: {len(memory_result)} 字符"
+                    )
                     if DEBUG_MODE:
                         logger.debug(f"[Legacy模式] 记忆内容:\n{memory_result}")
                     return memory_result
@@ -641,7 +643,7 @@ class MemoryInjector:
         top_k: int = 5,
         version: str = "v1",
         persona_compat_mode: str = "auto",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         通过 unified_msg_origin 获取记忆内容（用于主动对话场景）
 

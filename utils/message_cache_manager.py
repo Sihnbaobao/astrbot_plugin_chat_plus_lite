@@ -8,14 +8,14 @@
 
 import re
 import time
-from typing import List, Dict, Optional, Set, Tuple
+
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.platform import AstrBotMessage, MessageMember, MessageType
-from astrbot.api import logger
 
-from .message_processor import MessageProcessor
-from .message_cleaner import MessageCleaner
 from .context_manager import ContextManager
+from .message_cleaner import MessageCleaner
+from .message_processor import MessageProcessor
 
 
 def _filter_expired_cached_messages(
@@ -116,7 +116,7 @@ class MessageCacheManager:
             include_timestamp: 转正时是否包含时间戳
             include_sender_info: 转正时是否包含发送者信息
         """
-        self.pending_messages_cache: Dict[str, List[dict]] = {}
+        self.pending_messages_cache: dict[str, list[dict]] = {}
         self.cache_ttl_seconds = cache_ttl_seconds
         self.max_cache_count = max_cache_count
         self.debug_mode = debug_mode
@@ -276,8 +276,8 @@ class MessageCacheManager:
     def get_cached_messages(
         self,
         chat_id: str,
-        current_message_id: Optional[str] = None,
-    ) -> List[dict]:
+        current_message_id: str | None = None,
+    ) -> list[dict]:
         """
         获取缓存消息（用于拼接上下文）
 
@@ -323,10 +323,10 @@ class MessageCacheManager:
     def merge_cache_to_history(
         self,
         chat_id: str,
-        history_messages: Optional[List[AstrBotMessage]],
+        history_messages: list[AstrBotMessage] | None,
         event: AstrMessageEvent,
-        current_message_id: Optional[str] = None,
-    ) -> Tuple[List[AstrBotMessage], int, int]:
+        current_message_id: str | None = None,
+    ) -> tuple[list[AstrBotMessage], int, int]:
         """
         将缓存消息合并到历史消息
 
@@ -396,7 +396,7 @@ class MessageCacheManager:
             # 🔧 v1.2.3.hotfix.2: Step A 已将缓存消息合并进 history_messages，
             # 但 message_id 被重写为 cached_{timestamp} 格式，与原始 proc_xxx ID 不同。
             # 仅靠 message_id 去重会漏掉这些消息。这里额外构建 content 指纹集合做二次去重。
-            history_content_fps: Set[str] = set()
+            history_content_fps: set[str] = set()
             for msg in history_messages:
                 if isinstance(msg, AstrBotMessage):
                     _h_content = getattr(msg, "message_str", "") or ""
@@ -438,7 +438,9 @@ class MessageCacheManager:
                         dedup_skipped += 1
                         if self.debug_mode:
                             content = cached_msg.get("content", "")
-                            logger.debug(f"  [缓存去重] 跳过重复消息: {content[:50]}...")
+                            logger.debug(
+                                f"  [缓存去重] 跳过重复消息: {content[:50]}..."
+                            )
                         continue
 
                     # 未重复，添加到合并列表
@@ -539,11 +541,11 @@ class MessageCacheManager:
     def prepare_cache_for_save(
         self,
         chat_id: str,
-        current_msg_id: Optional[str],
-        current_msg_timestamp: Optional[float],
-        processing_msg_ids: Set[str],
+        current_msg_id: str | None,
+        current_msg_timestamp: float | None,
+        processing_msg_ids: set[str],
         proactive_processing: bool = False,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         准备要转正保存的缓存消息
 
@@ -692,11 +694,11 @@ class MessageCacheManager:
     def clear_saved_cache(
         self,
         chat_id: str,
-        current_msg_id: Optional[str],
-        current_msg_timestamp: Optional[float],
-        processing_msg_ids: Set[str],
+        current_msg_id: str | None,
+        current_msg_timestamp: float | None,
+        processing_msg_ids: set[str],
         proactive_processing: bool = False,
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """
         清理已保存的缓存
 
@@ -772,8 +774,8 @@ class MessageCacheManager:
     def get_regular_cached_messages(
         self,
         chat_id: str,
-        current_message_id: Optional[str] = None,
-    ) -> List[dict]:
+        current_message_id: str | None = None,
+    ) -> list[dict]:
         """
         获取普通缓存消息（排除窗口缓冲消息，用于合并到历史上下文）
 
@@ -819,7 +821,7 @@ class MessageCacheManager:
     def get_window_buffered_messages(
         self,
         chat_id: str,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         获取窗口缓冲消息（用于拼接到当前消息下方的追加区域）
 
@@ -901,8 +903,8 @@ class MessageCacheManager:
     def prepare_window_buffered_for_save(
         self,
         chat_id: str,
-        processing_msg_ids: Optional[Set[str]] = None,
-    ) -> List[dict]:
+        processing_msg_ids: set[str] | None = None,
+    ) -> list[dict]:
         """
         准备窗口缓冲消息的转正数据（Phase-2 保存，在AI回复之后）
 
@@ -1008,8 +1010,8 @@ class MessageCacheManager:
     def clear_window_buffered_cache(
         self,
         chat_id: str,
-        saved_msg_ids: Optional[Set[str]] = None,
-    ) -> Tuple[int, int]:
+        saved_msg_ids: set[str] | None = None,
+    ) -> tuple[int, int]:
         """
         清理已保存的窗口缓冲消息（Phase-2 完成后调用）
 

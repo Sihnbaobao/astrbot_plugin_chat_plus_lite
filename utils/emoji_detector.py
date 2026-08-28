@@ -77,6 +77,88 @@ class EmojiDetector:
         s_lower = s.lower()
         return "表情" in s or "emoji" in s_lower or "sticker" in s_lower
 
+    # QQ 商城表情（marketFace）预览图由 NapCat 拼接为商城 CDN 链接，
+    # 该资源经常已下架（404），不能按普通图片参与视觉识别或下载。
+    MARKETFACE_URL_HOST = "gxh.vip.qq.com"
+    MARKETFACE_PATH_MARK = "/club/item/parcel/"
+
+    @staticmethod
+    def collect_component_texts(image_component) -> list:
+        """收集图片组件上的 url/file 字段文本。"""
+        texts: list = []
+        for attr in ("url", "file"):
+            value = getattr(image_component, attr, None)
+            if isinstance(value, str):
+                texts.append(value)
+        try:
+            raw_data = image_component.toDict()
+        except Exception:
+            raw_data = None
+        if isinstance(raw_data, dict):
+            data = (
+                raw_data.get("data")
+                if isinstance(raw_data.get("data"), dict)
+                else raw_data
+            )
+            for key in ("url", "file"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    texts.append(value)
+        return texts
+
+    @staticmethod
+    def looks_like_market_face(texts) -> bool:
+        """判断收集到的字段是否指向QQ商城表情CDN。"""
+        for text in texts:
+            if (
+                EmojiDetector.MARKETFACE_URL_HOST in text
+                and EmojiDetector.MARKETFACE_PATH_MARK in text
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def describe_market_faces(event) -> str:
+        """
+        从原始消息段中提取QQ商城表情的官方名称。
+
+        Args:
+            event: AstrMessageEvent 消息事件对象。
+
+        Returns:
+            「名称1」「名称2」形式的描述串；未识别到时返回空字符串。
+        """
+        try:
+            message_obj = getattr(event, "message_obj", None)
+            raw_message = getattr(message_obj, "raw_message", None)
+            segments = getattr(raw_message, "message", None)
+            if not isinstance(segments, list):
+                return ""
+            names: list = []
+            seen_names: set = set()
+            for segment in segments:
+                if not isinstance(segment, dict):
+                    continue
+                data = segment.get("data")
+                if not isinstance(data, dict):
+                    continue
+                candidate_texts = []
+                for key in ("url", "file"):
+                    value = data.get(key)
+                    if isinstance(value, str):
+                        candidate_texts.append(value)
+                if not EmojiDetector.looks_like_market_face(candidate_texts):
+                    continue
+                summary = EmojiDetector._normalize_str(data.get("summary"))
+                if summary and summary not in seen_names:
+                    seen_names.add(summary)
+                    names.append(summary)
+            if not names:
+                return ""
+            return "".join(f"「{name}」" for name in names[:3])
+        except Exception:
+            return ""
+
     @staticmethod
     def is_emoji_message(event) -> bool:
         """
@@ -109,6 +191,17 @@ class EmojiDetector:
             ]
             if not image_components:
                 return False
+
+            # QQ 商城表情预览图直接按贴纸处理，避免后续下载 404。
+            for img_component in image_components:
+                if EmojiDetector.looks_like_market_face(
+                    EmojiDetector.collect_component_texts(img_component)
+                ):
+                    if DEBUG_MODE:
+                        logger.debug(
+                            "[表情包检测] 检测到QQ商城表情（marketFace 预览图）"
+                        )
+                    return True
 
             # === 方式0：从原始事件消息中提取 image segments（最可靠） ===
             raw_image_segments = []

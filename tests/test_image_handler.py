@@ -107,6 +107,9 @@ def image_handler(monkeypatch):
     core_components.Record = _Record
     core_components.File = _File
 
+    # image_handler now imports emoji_detector, which needs astrbot.api.logger.
+    api.logger = _Logger()
+
     modules = {
         "astrbot": astrbot,
         "astrbot.api": api,

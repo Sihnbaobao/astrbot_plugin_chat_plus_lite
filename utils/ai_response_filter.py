@@ -7,7 +7,8 @@ AI响应过滤器 - 处理带思考链/额外推理块的AI返回
 """
 
 import re
-from typing import Optional, Dict, Any, Tuple
+from typing import Any
+
 from astrbot.api import logger
 
 # 详细日志开关
@@ -156,7 +157,7 @@ class AIResponseFilter:
     @staticmethod
     def _extract_custom_reasoning_block(
         response: str, start_marker: str = "", end_marker: str = ""
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """
         提取自定义额外推理块，并从文本中剥离
 
@@ -191,8 +192,8 @@ class AIResponseFilter:
         response: str,
         start_marker: str,
         end_marker: str,
-        normalized_answer: Optional[str],
-    ) -> Dict[str, Any]:
+        normalized_answer: str | None,
+    ) -> dict[str, Any]:
         """构造统一解析结果"""
         filtered = AIResponseFilter.filter_thinking_chain(response)
         final_text, reasoning_text = AIResponseFilter._extract_custom_reasoning_block(
@@ -225,7 +226,7 @@ class AIResponseFilter:
         return cleaned.strip()
 
     @staticmethod
-    def _decision_exact_map() -> Dict[str, str]:
+    def _decision_exact_map() -> dict[str, str]:
         return {
             "yes": "yes",
             "y": "y",
@@ -266,7 +267,7 @@ class AIResponseFilter:
         }
 
     @staticmethod
-    def _frequency_exact_map() -> Dict[str, str]:
+    def _frequency_exact_map() -> dict[str, str]:
         return {
             "正常": "正常",
             "过于频繁": "过于频繁",
@@ -286,7 +287,7 @@ class AIResponseFilter:
     @staticmethod
     def parse_decision_response(
         response: str, start_marker: str = "", end_marker: str = ""
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         解析决策型AI响应（读空气/主动对话判断）
         """
@@ -452,7 +453,7 @@ class AIResponseFilter:
     @staticmethod
     def extract_decision_answer(
         response: str, start_marker: str = "", end_marker: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         兼容旧调用：提取决策答案（yes/no/适合/不适合）
         """
@@ -463,7 +464,7 @@ class AIResponseFilter:
     @staticmethod
     def parse_frequency_response(
         response: str, start_marker: str = "", end_marker: str = ""
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         解析频率判断型AI响应（正常/过于频繁/过少）
         """
@@ -571,7 +572,7 @@ class AIResponseFilter:
     @staticmethod
     def extract_frequency_decision(
         response: str, start_marker: str = "", end_marker: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         兼容旧调用：提取频率判断（正常/过于频繁/过少）
         """

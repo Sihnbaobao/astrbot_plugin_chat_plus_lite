@@ -128,7 +128,7 @@ def test_private_media_modes_are_configured_separately():
     runtime = json.loads(
         (
             root.parent.parent / "config" / "astrbot_plugin_chat_plus_lite_config.json"
-        ).read_text(encoding="utf-8")
+        ).read_text(encoding="utf-8-sig")
     )
 
     enhance_items = schema["gcp_enhance"]["items"]

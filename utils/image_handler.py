@@ -13,23 +13,25 @@
 """
 
 import asyncio
-from typing import List, Optional, Tuple, Any
+from typing import Any
+
 from astrbot.api.all import *
-from astrbot.api.message_components import Face, At, AtAll, Reply
+from astrbot.api.message_components import At, AtAll, Face, Reply
 
 # 尝试导入非文本媒体组件（不同 AstrBot 版本路径可能不同）
 try:
-    from astrbot.core.message.components import Video, Record, File
+    from astrbot.core.message.components import File, Record, Video
 except ImportError:
     try:
-        from astrbot.api.message_components import Video, Record, File
+        from astrbot.api.message_components import File, Record, Video
     except ImportError:
         Video = None
         Record = None
         File = None
 
-from .image_description_cache import ImageDescriptionCache
 from .ai_error_formatter import format_ai_error
+from .emoji_detector import EmojiDetector
+from .image_description_cache import ImageDescriptionCache
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -67,10 +69,10 @@ class ImageHandler:
         is_at_message: bool,
         has_trigger_keyword: bool,
         timeout: int = 60,
-        image_description_cache: Optional[ImageDescriptionCache] = None,
+        image_description_cache: ImageDescriptionCache | None = None,
         max_images_per_message: int = 10,
         self_id: str = None,
-    ) -> Tuple[bool, str, List[str], bool]:
+    ) -> tuple[bool, str, list[str], bool]:
         """
         处理消息中的图片
 
@@ -288,9 +290,9 @@ class ImageHandler:
 
     @staticmethod
     def _analyze_message(
-        message_chain: List[BaseMessageComponent],
+        message_chain: list[BaseMessageComponent],
         max_images: int = 10,
-    ) -> Tuple[bool, bool, List[Image]]:
+    ) -> tuple[bool, bool, list[Image]]:
         """
         分析消息链，检查图片和文字
 
@@ -305,7 +307,7 @@ class ImageHandler:
         has_text = False
         image_components = []
 
-        def walk_chain(chain: List[BaseMessageComponent], depth: int = 0) -> None:
+        def walk_chain(chain: list[BaseMessageComponent], depth: int = 0) -> None:
             nonlocal has_image, has_text
 
             for component in chain:
@@ -346,7 +348,7 @@ class ImageHandler:
         return has_image, has_text, image_components
 
     @staticmethod
-    def _get_reply_chain(component: Reply) -> List[BaseMessageComponent]:
+    def _get_reply_chain(component: Reply) -> list[BaseMessageComponent]:
         """安全获取 Reply 组件内嵌的原始消息链。"""
         chain = getattr(component, "chain", None)
         if isinstance(chain, (list, tuple)):
@@ -356,14 +358,14 @@ class ImageHandler:
     @staticmethod
     def _format_reply_component(
         component: Reply,
-        message_content: Optional[str] = None,
+        message_content: str | None = None,
         self_id: str = None,
     ) -> str:
         """将引用组件格式化为包含发送者与引用正文的文本块。"""
         try:
-            sender_nickname = getattr(
-                component, "sender_nickname", None
-            ) or getattr(component, "sender_name", None)
+            sender_nickname = getattr(component, "sender_nickname", None) or getattr(
+                component, "sender_name", None
+            )
             if not sender_nickname and hasattr(component, "sender"):
                 sender_nickname = getattr(component.sender, "nickname", None)
             sender_id = getattr(component, "sender_id", None)
@@ -388,11 +390,7 @@ class ImageHandler:
                 message_content = str(message_content)
             message_content = (message_content or "").strip()
 
-            if (
-                sender_nickname
-                and sender_id
-                and str(sender_nickname) == str(sender_id)
-            ):
+            if sender_nickname and sender_id and str(sender_nickname) == str(sender_id):
                 sender_nickname = None
             is_self = self_id and sender_id and str(sender_id) == str(self_id)
             self_suffix = "(你)" if is_self else ""
@@ -425,11 +423,11 @@ class ImageHandler:
 
     @staticmethod
     def _render_message_chain(
-        message_chain: List[BaseMessageComponent],
+        message_chain: list[BaseMessageComponent],
         self_id: str = None,
         include_images: bool = True,
-        image_descriptions: Optional[dict] = None,
-        _image_index: Optional[List[int]] = None,
+        image_descriptions: dict | None = None,
+        _image_index: list[int] | None = None,
         _depth: int = 0,
     ) -> str:
         """
@@ -469,9 +467,9 @@ class ImageHandler:
                         ).strip()
 
                 if not nested_content:
-                    nested_content = getattr(
-                        component, "message_str", None
-                    ) or getattr(component, "message", None)
+                    nested_content = getattr(component, "message_str", None) or getattr(
+                        component, "message", None
+                    )
 
                 formatted = ImageHandler._format_reply_component(
                     component,
@@ -528,7 +526,7 @@ class ImageHandler:
 
     @staticmethod
     def _extract_text_only(
-        message_chain: List[BaseMessageComponent], self_id: str = None
+        message_chain: list[BaseMessageComponent], self_id: str = None
     ) -> str:
         """
         从消息链提取纯文字，过滤图片
@@ -546,13 +544,11 @@ class ImageHandler:
             include_images=False,
         ).strip()
         if not result:
-            logger.warning(
-                "[图片处理] _extract_text_only 提取到空文本！"
-            )
+            logger.warning("[图片处理] _extract_text_only 提取到空文本！")
         return result
 
     @staticmethod
-    async def _extract_image_urls(image_components: List[Image]) -> List[str]:
+    async def _extract_image_urls(image_components: list[Image]) -> list[str]:
         """
         从图片组件列表中提取图片URL
 
@@ -564,6 +560,15 @@ class ImageHandler:
         """
         image_urls = []
         for idx, img_component in enumerate(image_components):
+            # QQ 商城表情预览图经常404且无需视觉识别，跳过以免阻断整个LLM请求。
+            if EmojiDetector.looks_like_market_face(
+                EmojiDetector.collect_component_texts(img_component)
+            ):
+                if DEBUG_MODE:
+                    logger.debug(
+                        f"[图片处理] 跳过QQ商城表情预览图 {idx}（避免404下载失败）"
+                    )
+                continue
             try:
                 # 尝试获取图片路径或URL
                 image_path = await img_component.convert_to_file_path()
@@ -582,7 +587,7 @@ class ImageHandler:
     @staticmethod
     async def extract_media_urls(
         event: AstrMessageEvent,
-    ) -> Tuple[List[str], List[str], List[dict]]:
+    ) -> tuple[list[str], list[str], list[dict]]:
         """
         从消息事件中提取非图片媒体文件的路径/URL（结构化返回）
 
@@ -595,9 +600,9 @@ class ImageHandler:
             - video_paths: 视频文件路径列表（按消息链顺序）
             - file_infos: 文件信息列表 [{"name": str, "path": str}, ...]（按消息链顺序）
         """
-        audio_urls: List[str] = []
-        video_paths: List[str] = []
-        file_infos: List[dict] = []
+        audio_urls: list[str] = []
+        video_paths: list[str] = []
+        file_infos: list[dict] = []
 
         try:
             if not hasattr(event, "message_obj") or not hasattr(
@@ -657,9 +662,9 @@ class ImageHandler:
     @staticmethod
     def enrich_media_markers(
         message_text: str,
-        audio_urls: List[str],
-        video_paths: List[str],
-        file_infos: List[dict],
+        audio_urls: list[str],
+        video_paths: list[str],
+        file_infos: list[dict],
     ) -> str:
         """
         将媒体文件路径内联注入到消息文本的占位标记中
@@ -705,16 +710,16 @@ class ImageHandler:
 
     @staticmethod
     async def _convert_images_to_text(
-        message_chain: List[BaseMessageComponent],
+        message_chain: list[BaseMessageComponent],
         context: Context,
         provider_id: str,
         prompt: str,
-        image_components: List[Image],
+        image_components: list[Image],
         timeout: int = 60,
-        image_description_cache: Optional[ImageDescriptionCache] = None,
+        image_description_cache: ImageDescriptionCache | None = None,
         session_id: str = "",
         self_id: str = None,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         将图片转换为文字描述
 
@@ -752,18 +757,8 @@ class ImageHandler:
                     if DEBUG_MODE:
                         logger.debug(f"正在转换图片 {idx}: {image_path}")
 
-                    # 🆕 v1.2.0: 先检查本地缓存，命中则跳过AI调用
-                    if image_description_cache and image_description_cache.enabled:
-                        cached_desc = image_description_cache.lookup(image_path)
-                        if cached_desc:
-                            image_descriptions[idx] = cached_desc
-                            logger.debug(
-                                f"[图片缓存] 图片 {idx} 命中缓存，跳过AI调用 (省钱!)"
-                            )
-                            continue
-
-                    # 调用AI进行图片转文字,添加超时控制
-                    async def call_vision_ai():
+                    # Generate the description once for concurrent requests of the same image.
+                    async def call_vision_ai() -> str | None:
                         response = await provider.text_chat(
                             prompt=prompt,
                             contexts=[],
@@ -774,22 +769,21 @@ class ImageHandler:
                         )
                         return response.completion_text
 
-                    # 使用用户配置的超时时间
-                    description = await asyncio.wait_for(
-                        call_vision_ai(), timeout=timeout
-                    )
+                    async def generate_description() -> str | None:
+                        return await asyncio.wait_for(call_vision_ai(), timeout=timeout)
+
+                    if image_description_cache and image_description_cache.enabled:
+                        description = await image_description_cache.get_or_create(
+                            image_path,
+                            generate_description,
+                        )
+                    else:
+                        description = await generate_description()
 
                     if description:
                         image_descriptions[idx] = description
                         if DEBUG_MODE:
                             logger.debug(f"图片 {idx} 转换成功: {description[:50]}...")
-
-                        # 🆕 v1.2.0: AI转换成功后，保存到本地缓存
-                        # 🔧 防御性编程：保存前再次检查缓存中是否已存在
-                        # 场景：并发处理两条含相同图片的消息，或平台描述已提前写入缓存
-                        if image_description_cache and image_description_cache.enabled:
-                            if not image_description_cache.lookup(image_path):
-                                image_description_cache.save(image_path, description)
 
                 except asyncio.TimeoutError:
                     logger.warning(

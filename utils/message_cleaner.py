@@ -36,16 +36,17 @@ v1.2.1 更新：
 import logging
 import re
 from typing import Any
+
 from astrbot.api.all import *
-from astrbot.api.message_components import Plain, At, AtAll, Image, Reply
+from astrbot.api.message_components import At, AtAll, Image, Plain, Reply
 from astrbot.core.message.components import Forward
 
 # 尝试导入非文本媒体组件（不同 AstrBot 版本路径可能不同）
 try:
-    from astrbot.core.message.components import Video, Record, File
+    from astrbot.core.message.components import File, Record, Video
 except ImportError:
     try:
-        from astrbot.api.message_components import Video, Record, File
+        from astrbot.api.message_components import File, Record, Video
     except ImportError:
         Video = None
         Record = None

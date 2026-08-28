@@ -13,23 +13,27 @@
 版本: V1.2.3.hotfix.2
 """
 
-from typing import List, Dict, Any, Optional
-from pathlib import Path
-from astrbot.api.all import *
-from astrbot.api.message_components import Plain
 import asyncio
 import json
+import os
 import re
+import tempfile
+import threading
 import time
 from datetime import datetime
-from .message_processor import MessageProcessor
+from pathlib import Path
 
 # 导入 MessageCleaner（延迟导入以避免循环依赖）
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from astrbot.api.all import *
+from astrbot.api.message_components import Plain
+
+from .message_processor import MessageProcessor
 
 if TYPE_CHECKING:
-    from astrbot.core.star.context import Context
     from astrbot.core.db.po import PlatformMessageHistory
+    from astrbot.core.star.context import Context
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -61,11 +65,14 @@ class ContextManager:
 
     # 历史截止时间戳：chat_id -> Unix timestamp
     # 插件重置会话时记录，读取平台历史时过滤掉该时间戳之前的消息
-    _history_cutoff_timestamps: Dict[str, float] = {}
-    _cutoff_file_path: Optional[Path] = None
+    _history_cutoff_timestamps: dict[str, float] = {}
+    _cutoff_file_path: Path | None = None
+    _cutoff_lock = threading.RLock()
+    _storage_lock = threading.RLock()
+    _MAX_CUTOFF_ENTRIES = 10_000
 
     @staticmethod
-    def init(data_dir: Optional[str] = None, custom_storage_max_messages: int = 500):
+    def init(data_dir: str | None = None, custom_storage_max_messages: int = 500):
         """
         初始化上下文管理器，创建存储目录
 
@@ -91,7 +98,9 @@ class ContextManager:
         if not ContextManager.base_storage_path.exists():
             ContextManager.base_storage_path.mkdir(parents=True, exist_ok=True)
             if DEBUG_MODE:
-                logger.debug(f"上下文存储路径初始化: {ContextManager.base_storage_path}")
+                logger.debug(
+                    f"上下文存储路径初始化: {ContextManager.base_storage_path}"
+                )
 
         # 设置自定义存储限制
         ContextManager.custom_storage_max_messages = custom_storage_max_messages
@@ -114,56 +123,126 @@ class ContextManager:
         ContextManager._load_cutoff_timestamps(data_dir)
 
     @staticmethod
-    def _load_cutoff_timestamps(data_dir: Optional[str] = None) -> None:
-        """从磁盘加载历史截止时间戳"""
+    def _load_cutoff_timestamps(data_dir: str | None = None) -> None:
+        """Load persisted history cutoffs and discard malformed entries."""
         if not data_dir:
+            ContextManager._cutoff_file_path = None
+            with ContextManager._cutoff_lock:
+                ContextManager._history_cutoff_timestamps = {}
             return
+
         ContextManager._cutoff_file_path = Path(data_dir) / "history_cutoff.json"
+        loaded: dict[str, float] = {}
         try:
             if ContextManager._cutoff_file_path.exists():
-                with open(ContextManager._cutoff_file_path, "r", encoding="utf-8") as f:
-                    ContextManager._history_cutoff_timestamps = json.load(f)
-                logger.debug(
-                    f"[上下文管理器] 已加载 {len(ContextManager._history_cutoff_timestamps)} 个会话的历史截止时间戳"
+                with open(
+                    ContextManager._cutoff_file_path,
+                    encoding="utf-8-sig",
+                ) as file:
+                    raw_values = json.load(file)
+                if not isinstance(raw_values, dict):
+                    raise ValueError("cutoff storage must contain an object")
+                for chat_id, timestamp in raw_values.items():
+                    try:
+                        loaded[str(chat_id)] = float(timestamp)
+                    except (TypeError, ValueError):
+                        continue
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
+            logger.warning(f"[上下文管理器] 加载历史截止时间戳失败: {error}")
+
+        with ContextManager._cutoff_lock:
+            if len(loaded) > ContextManager._MAX_CUTOFF_ENTRIES:
+                loaded = dict(
+                    sorted(loaded.items(), key=lambda item: item[1])[
+                        -ContextManager._MAX_CUTOFF_ENTRIES :
+                    ]
                 )
-        except Exception as e:
-            logger.warning(f"[上下文管理器] 加载历史截止时间戳失败: {e}")
-            ContextManager._history_cutoff_timestamps = {}
+            ContextManager._history_cutoff_timestamps = loaded
+
+        logger.debug(f"[上下文管理器] 已加载 {len(loaded)} 个会话的历史截止时间戳")
 
     @staticmethod
     def _save_cutoff_timestamps() -> None:
-        """将历史截止时间戳持久化到磁盘"""
-        if not ContextManager._cutoff_file_path:
+        """Persist history cutoffs with a lock and atomic file replacement."""
+        file_path = ContextManager._cutoff_file_path
+        if file_path is None:
             return
+
+        temporary_path: str | None = None
         try:
-            ContextManager._cutoff_file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(ContextManager._cutoff_file_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    ContextManager._history_cutoff_timestamps, f, ensure_ascii=False
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with ContextManager._cutoff_lock:
+                payload = json.dumps(
+                    ContextManager._history_cutoff_timestamps,
+                    ensure_ascii=False,
                 )
-        except Exception as e:
-            logger.warning(f"[上下文管理器] 保存历史截止时间戳失败: {e}")
+                descriptor, temporary_path = tempfile.mkstemp(
+                    prefix=f".{file_path.name}.",
+                    suffix=".tmp",
+                    dir=file_path.parent,
+                )
+                with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                    file.write(payload)
+                    file.flush()
+                    os.fsync(file.fileno())
+                os.replace(temporary_path, file_path)
+                temporary_path = None
+        except OSError as error:
+            logger.warning(f"[上下文管理器] 保存历史截止时间戳失败: {error}")
+        finally:
+            if temporary_path is not None:
+                try:
+                    os.unlink(temporary_path)
+                except OSError:
+                    pass
 
     @staticmethod
     def set_history_cutoff(chat_id: str) -> None:
+        """Set the current-time history cutoff for one chat.
+
+        Args:
+            chat_id: Conversation identifier whose older history is hidden.
         """
-        设置指定会话的历史截止时间戳为当前时间。
-        插件重置会话时调用，之后读取平台历史时会过滤掉此时间之前的消息。
-        """
-        ContextManager._history_cutoff_timestamps[chat_id] = time.time()
-        ContextManager._save_cutoff_timestamps()
+        normalized_chat_id = str(chat_id).strip()
+        if not normalized_chat_id:
+            return
+
+        with ContextManager._cutoff_lock:
+            ContextManager._history_cutoff_timestamps[normalized_chat_id] = time.time()
+            if (
+                len(ContextManager._history_cutoff_timestamps)
+                > ContextManager._MAX_CUTOFF_ENTRIES
+            ):
+                oldest_chat_id = min(
+                    ContextManager._history_cutoff_timestamps,
+                    key=ContextManager._history_cutoff_timestamps.get,
+                )
+                del ContextManager._history_cutoff_timestamps[oldest_chat_id]
+            cutoff = ContextManager._history_cutoff_timestamps[normalized_chat_id]
+            ContextManager._save_cutoff_timestamps()
+
         logger.debug(
-            f"[上下文管理器] 已设置历史截止时间戳 chat_id={chat_id}, "
-            f"cutoff={ContextManager._history_cutoff_timestamps[chat_id]}"
+            f"[上下文管理器] 已设置历史截止时间戳 chat_id={normalized_chat_id}, "
+            f"cutoff={cutoff}"
         )
 
     @staticmethod
-    def get_history_cutoff(chat_id: str) -> float:
-        """获取指定会话的历史截止时间戳，返回0表示无截止"""
-        return ContextManager._history_cutoff_timestamps.get(chat_id, 0)
+    async def set_history_cutoff_async(chat_id: str) -> None:
+        """Set a history cutoff without blocking the event loop.
+
+        Args:
+            chat_id: Conversation identifier whose older history is hidden.
+        """
+        await asyncio.to_thread(ContextManager.set_history_cutoff, chat_id)
 
     @staticmethod
-    def _message_to_dict(msg: AstrBotMessage) -> Dict[str, Any]:
+    def get_history_cutoff(chat_id: str) -> float:
+        """Return a chat cutoff timestamp, or zero when no cutoff exists."""
+        with ContextManager._cutoff_lock:
+            return ContextManager._history_cutoff_timestamps.get(str(chat_id), 0.0)
+
+    @staticmethod
+    def _message_to_dict(msg: AstrBotMessage) -> dict[str, Any]:
         """
         将 AstrBotMessage 对象转换为可JSON序列化的字典
 
@@ -319,7 +398,7 @@ class ContextManager:
         return content
 
     @staticmethod
-    def _dict_to_message(msg_dict: Dict[str, Any]) -> AstrBotMessage:
+    def _dict_to_message(msg_dict: dict[str, Any]) -> AstrBotMessage:
         """
         将字典转换回 AstrBotMessage 对象
 
@@ -455,6 +534,19 @@ class ContextManager:
 
     @staticmethod
     def _count_messages_in_file(file_path: Path) -> int:
+        """Count messages while holding the custom-storage lock.
+
+        Args:
+            file_path: JSON file to inspect.
+
+        Returns:
+            Number of messages in the file.
+        """
+        with ContextManager._storage_lock:
+            return ContextManager._count_messages_in_file_unlocked(file_path)
+
+    @staticmethod
+    def _count_messages_in_file_unlocked(file_path: Path) -> int:
         """
         统计JSON数组文件中的消息条数（不加载整个文件到内存）
 
@@ -470,17 +562,31 @@ class ContextManager:
         """
         count = 0
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 for line in f:
                     # indent=2 格式下，顶层数组元素的开头行恰好是 "  {"
                     if line.startswith("  {"):
                         count += 1
-        except (FileNotFoundError, IOError, OSError):
+        except (FileNotFoundError, OSError):
             pass
         return count
 
     @staticmethod
     def _trim_messages_in_file(file_path: Path, keep_count: int) -> bool:
+        """Trim a history file while holding the custom-storage lock.
+
+        Args:
+            file_path: JSON file to trim.
+            keep_count: Number of newest messages to retain.
+
+        Returns:
+            Whether a trim or deletion was performed.
+        """
+        with ContextManager._storage_lock:
+            return ContextManager._trim_messages_in_file_unlocked(file_path, keep_count)
+
+    @staticmethod
+    def _trim_messages_in_file_unlocked(file_path: Path, keep_count: int) -> bool:
         """
         裁剪JSON数组文件，只保留最新的 keep_count 条消息（不加载整个文件到内存）
 
@@ -518,35 +624,41 @@ class ContextManager:
         skip_count = total - keep_count
 
         # 第二遍：逐行处理，跳过前 skip_count 条消息，保留剩余消息
-        temp_path = file_path.with_suffix(".tmp")
+        temp_path: Path | None = None
         try:
             message_index = 0  # 当前处于第几条消息（从1开始）
 
-            with (
-                open(file_path, "r", encoding="utf-8") as src,
-                open(temp_path, "w", encoding="utf-8") as dst,
-            ):
-                dst.write("[\n")
+            with open(file_path, encoding="utf-8-sig") as src:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=file_path.parent,
+                    prefix=f".{file_path.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as dst:
+                    temp_path = Path(dst.name)
+                    dst.write("[\n")
 
-                for line in src:
-                    # 检测消息开始（indent=2下顶层元素以 "  {" 开头）
-                    if line.startswith("  {"):
-                        message_index += 1
+                    for line in src:
+                        # 检测消息开始（indent=2下顶层元素以 "  {" 开头）
+                        if line.startswith("  {"):
+                            message_index += 1
 
-                    # 跳过数组的开闭括号（我们自己写）
-                    stripped = line.rstrip("\n\r")
-                    if stripped == "[" or stripped == "]":
-                        continue
+                        # 跳过数组的开闭括号（我们自己写）
+                        stripped = line.rstrip("\n\r")
+                        if stripped == "[" or stripped == "]":
+                            continue
 
-                    # 只写入保留的消息（第 skip_count+1 条及之后）
-                    if message_index > skip_count:
-                        dst.write(line)
+                        # 只写入保留的消息（第 skip_count+1 条及之后）
+                        if message_index > skip_count:
+                            dst.write(line)
 
-                dst.write("]\n")
+                    dst.write("]\n")
 
-            # 替换原文件（Windows下需先删除原文件才能重命名）
-            file_path.unlink()
-            temp_path.rename(file_path)
+            if temp_path is not None:
+                os.replace(temp_path, file_path)
+                temp_path = None
 
             logger.debug(
                 f"[自定义存储裁剪] 裁剪完成: {total} → {keep_count} 条（丢弃最旧的 {skip_count} 条）"
@@ -556,7 +668,7 @@ class ContextManager:
         except Exception as e:
             # 清理临时文件
             try:
-                if temp_path.exists():
+                if temp_path is not None and temp_path.exists():
                     temp_path.unlink()
             except Exception:
                 pass
@@ -565,6 +677,22 @@ class ContextManager:
 
     @staticmethod
     def _append_message_to_file(file_path: Path, message_dict: dict) -> bool:
+        """Append a message while holding the custom-storage lock.
+
+        Args:
+            file_path: JSON file to update.
+            message_dict: Serialized message to append.
+
+        Returns:
+            Whether the append succeeded.
+        """
+        with ContextManager._storage_lock:
+            return ContextManager._append_message_to_file_unlocked(
+                file_path, message_dict
+            )
+
+    @staticmethod
+    def _append_message_to_file_unlocked(file_path: Path, message_dict: dict) -> bool:
         """
         向JSON数组文件追加一条消息（不加载整个文件到内存）
 
@@ -641,7 +769,13 @@ class ContextManager:
             return False
 
     @staticmethod
-    def _clear_all_custom_storage():
+    def _clear_all_custom_storage() -> None:
+        """Delete all custom history files under the storage lock."""
+        with ContextManager._storage_lock:
+            ContextManager._clear_all_custom_storage_unlocked()
+
+    @staticmethod
+    def _clear_all_custom_storage_unlocked() -> None:
         """
         清理所有自定义存储文件（当配置为0即禁用自定义存储时调用）
         """
@@ -675,7 +809,7 @@ class ContextManager:
     @staticmethod
     def get_history_messages(
         event: AstrMessageEvent, max_messages: int
-    ) -> List[AstrBotMessage]:
+    ) -> list[AstrBotMessage]:
         """
         获取历史消息记录
 
@@ -727,8 +861,9 @@ class ContextManager:
                 return []
 
             # 使用安全的JSON反序列化
-            with open(file_path, "r", encoding="utf-8") as f:
-                history_dicts = json.load(f)
+            with ContextManager._storage_lock:
+                with open(file_path, encoding="utf-8-sig") as f:
+                    history_dicts = json.load(f)
 
             if not history_dicts:
                 return []
@@ -780,7 +915,7 @@ class ContextManager:
         is_private: bool,
         chat_id: str,
         max_messages: int,
-    ) -> List[AstrBotMessage]:
+    ) -> list[AstrBotMessage]:
         """
         根据参数获取历史消息记录（用于主动对话等场景，无需event对象）
 
@@ -829,8 +964,9 @@ class ContextManager:
                 return []
 
             # 使用安全的JSON反序列化
-            with open(file_path, "r", encoding="utf-8") as f:
-                history_dicts = json.load(f)
+            with ContextManager._storage_lock:
+                with open(file_path, encoding="utf-8-sig") as f:
+                    history_dicts = json.load(f)
 
             if not history_dicts:
                 return []
@@ -883,7 +1019,7 @@ class ContextManager:
         is_private: bool,
         chat_id: str,
         bot_id: str,
-    ) -> Optional[AstrBotMessage]:
+    ) -> AstrBotMessage | None:
         """
         将官方 PlatformMessageHistory 对象转换为 AstrBotMessage
 
@@ -944,8 +1080,8 @@ class ContextManager:
         event: AstrMessageEvent,
         max_messages: int,
         context: "Context" = None,
-        cached_messages: List[AstrBotMessage] = None,
-    ) -> List[AstrBotMessage]:
+        cached_messages: list[AstrBotMessage] = None,
+    ) -> list[AstrBotMessage]:
         """
         获取历史消息记录（优先官方存储，回退自定义存储）
 
@@ -1004,7 +1140,7 @@ class ContextManager:
             else:
                 effective_limit = min(max_messages, HARD_LIMIT)
 
-            history: List[AstrBotMessage] = []
+            history: list[AstrBotMessage] = []
             official_success = False
 
             # ========== 1. 优先尝试从官方存储读取 ==========
@@ -1068,7 +1204,9 @@ class ContextManager:
                     logger.debug("[上下文管理器] 回退到自定义存储读取历史消息...")
 
                 # 使用现有的自定义存储读取方法
-                history = ContextManager.get_history_messages(event, max_messages)
+                history = await asyncio.to_thread(
+                    ContextManager.get_history_messages, event, max_messages
+                )
 
                 if history:
                     logger.debug(
@@ -1187,8 +1325,8 @@ class ContextManager:
         bot_id: str,
         max_messages: int,
         context: "Context" = None,
-        cached_messages: List[AstrBotMessage] = None,
-    ) -> List[AstrBotMessage]:
+        cached_messages: list[AstrBotMessage] = None,
+    ) -> list[AstrBotMessage]:
         """
         根据参数获取历史消息记录（优先官方存储，回退自定义存储）
         用于主动对话等场景，无需 event 对象
@@ -1232,7 +1370,7 @@ class ContextManager:
             else:
                 effective_limit = min(max_messages, HARD_LIMIT)
 
-            history: List[AstrBotMessage] = []
+            history: list[AstrBotMessage] = []
             official_success = False
 
             # ========== 1. 优先尝试从官方存储读取 ==========
@@ -1287,8 +1425,12 @@ class ContextManager:
 
             # ========== 2. 回退到自定义存储 ==========
             if not official_success:
-                history = ContextManager.get_history_messages_by_params(
-                    platform_name, is_private, chat_id, max_messages
+                history = await asyncio.to_thread(
+                    ContextManager.get_history_messages_by_params,
+                    platform_name,
+                    is_private,
+                    chat_id,
+                    max_messages,
                 )
                 if history:
                     logger.debug(
@@ -1393,7 +1535,7 @@ class ContextManager:
 
     @staticmethod
     async def format_context_for_ai(
-        history_messages: List[AstrBotMessage],
+        history_messages: list[AstrBotMessage],
         current_message: str,
         bot_id: str,
         include_timestamp: bool = True,
@@ -1653,7 +1795,7 @@ class ContextManager:
 
     @staticmethod
     def calculate_context_size(
-        history_messages: List[AstrBotMessage], current_message: str
+        history_messages: list[AstrBotMessage], current_message: str
     ) -> int:
         """
         计算上下文总消息数（含当前消息）
@@ -1890,9 +2032,7 @@ class ContextManager:
 
                     # 追加消息到文件（不加载全部历史到内存）
                     # 🔧 修复：使用线程池执行同步文件I/O，避免阻塞事件循环
-                    loop = asyncio.get_event_loop()
-                    append_ok = await loop.run_in_executor(
-                        None,
+                    append_ok = await asyncio.to_thread(
                         ContextManager._append_message_to_file,
                         file_path,
                         user_msg_dict,
@@ -1902,8 +2042,7 @@ class ContextManager:
                     else:
                         # 检查并裁剪（逐行统计+逐行裁剪，不加载全部到内存）
                         effective_limit = ContextManager._get_effective_storage_limit()
-                        await loop.run_in_executor(
-                            None,
+                        await asyncio.to_thread(
                             ContextManager._trim_messages_in_file,
                             file_path,
                             effective_limit,
@@ -2230,9 +2369,7 @@ class ContextManager:
 
                     # 追加消息到文件（不加载全部历史到内存）
                     # 🔧 修复：使用线程池执行同步文件I/O，避免阻塞事件循环导致消息延迟发出
-                    loop = asyncio.get_event_loop()
-                    append_ok = await loop.run_in_executor(
-                        None,
+                    append_ok = await asyncio.to_thread(
                         ContextManager._append_message_to_file,
                         file_path,
                         bot_msg_dict,
@@ -2242,8 +2379,7 @@ class ContextManager:
                     else:
                         # 检查并裁剪（逐行统计+逐行裁剪，不加载全部到内存）
                         effective_limit = ContextManager._get_effective_storage_limit()
-                        await loop.run_in_executor(
-                            None,
+                        await asyncio.to_thread(
                             ContextManager._trim_messages_in_file,
                             file_path,
                             effective_limit,
@@ -2485,9 +2621,7 @@ class ContextManager:
 
                     # 追加消息到文件（不加载全部历史到内存）
                     # 🔧 修复：使用线程池执行同步文件I/O，避免阻塞事件循环
-                    loop = asyncio.get_event_loop()
-                    append_ok = await loop.run_in_executor(
-                        None,
+                    append_ok = await asyncio.to_thread(
                         ContextManager._append_message_to_file,
                         file_path,
                         bot_msg_dict,
@@ -2497,8 +2631,7 @@ class ContextManager:
                     else:
                         # 检查并裁剪（逐行统计+逐行裁剪，不加载全部到内存）
                         effective_limit = ContextManager._get_effective_storage_limit()
-                        await loop.run_in_executor(
-                            None,
+                        await asyncio.to_thread(
                             ContextManager._trim_messages_in_file,
                             file_path,
                             effective_limit,
@@ -2833,7 +2966,6 @@ class ContextManager:
                     platform_name, is_private, chat_id
                 )
                 if file_path is not None:
-                    loop = asyncio.get_event_loop()
                     for cached_msg in normalized_cached_messages:
                         msg_content = cached_msg.get("content", "")
                         if not msg_content:
@@ -2866,8 +2998,7 @@ class ContextManager:
                                 "nickname": real_sender_name,
                             },
                         }
-                        append_ok = await loop.run_in_executor(
-                            None,
+                        append_ok = await asyncio.to_thread(
                             ContextManager._append_message_to_file,
                             file_path,
                             user_msg_dict,
@@ -2878,8 +3009,7 @@ class ContextManager:
                             )
 
                     effective_limit = ContextManager._get_effective_storage_limit()
-                    await loop.run_in_executor(
-                        None,
+                    await asyncio.to_thread(
                         ContextManager._trim_messages_in_file,
                         file_path,
                         effective_limit,
@@ -3031,9 +3161,7 @@ class ContextManager:
         try:
             platform_id = event.get_platform_id()
             is_private = event.is_private_chat()
-            chat_id = (
-                event.get_group_id() if not is_private else event.get_sender_id()
-            )
+            chat_id = event.get_group_id() if not is_private else event.get_sender_id()
             did = False
             if hasattr(context, "message_history_manager"):
                 try:
@@ -3402,7 +3530,6 @@ class ContextManager:
                     platform_name, is_private, chat_id
                 )
                 if file_path is not None:
-                    loop = asyncio.get_event_loop()
                     custom_messages_to_save = []
 
                     # 1. 缓存消息（较早时间戳，先写入）
@@ -3501,8 +3628,7 @@ class ContextManager:
                     custom_saved = 0
                     for msg_dict in custom_messages_to_save:
                         try:
-                            append_ok = await loop.run_in_executor(
-                                None,
+                            append_ok = await asyncio.to_thread(
                                 ContextManager._append_message_to_file,
                                 file_path,
                                 msg_dict,
@@ -3520,8 +3646,7 @@ class ContextManager:
 
                     if custom_saved > 0:
                         effective_limit = ContextManager._get_effective_storage_limit()
-                        await loop.run_in_executor(
-                            None,
+                        await asyncio.to_thread(
                             ContextManager._trim_messages_in_file,
                             file_path,
                             effective_limit,

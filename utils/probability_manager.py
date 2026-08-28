@@ -14,11 +14,11 @@ v1.1.0 更新：
 版本: V1.2.3.hotfix.2
 """
 
-import time
 import asyncio
 import copy
-from datetime import datetime
-from typing import Dict, Any, Optional, TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, Any
+
 from astrbot.api.all import *
 
 if TYPE_CHECKING:
@@ -60,11 +60,12 @@ class ProbabilityManager:
     #       "reply_boost_source": str,
     #   }
     # }
-    _probability_status: Dict[str, Dict[str, Any]] = {}
-    _lock = asyncio.Lock()  # 异步锁
+    _probability_status: dict[str, dict[str, Any]] = {}
+    _lock: asyncio.Lock | None = None
+    _lock_loop: asyncio.AbstractEventLoop | None = None
 
     # 🆕 v1.1.0: 插件配置引用（用于动态时间调整）
-    _plugin_config: Optional[dict] = None
+    _plugin_config: dict | None = None
 
     # ========== 🔧 配置参数集中提取（避免运行时多次读取） ==========
     # 动态时间段调整配置
@@ -74,6 +75,19 @@ class ProbabilityManager:
     _reply_time_min_factor: float = 0.1
     _reply_time_max_factor: float = 2.0
     _reply_time_use_smooth_curve: bool = True
+
+    @staticmethod
+    def _get_lock() -> asyncio.Lock:
+        """Return the lock owned by the currently running event loop."""
+        loop = asyncio.get_running_loop()
+        if (
+            ProbabilityManager._lock is None
+            or ProbabilityManager._lock_loop is not loop
+        ):
+            ProbabilityManager._lock = asyncio.Lock()
+            ProbabilityManager._lock_loop = loop
+        return ProbabilityManager._lock
+
     @staticmethod
     def initialize(config: dict):
         """
@@ -106,9 +120,14 @@ class ProbabilityManager:
             "reply_time_use_smooth_curve", False
         )
 
-
         if DEBUG_MODE:
             logger.debug("[概率管理器] 已初始化")
+
+    @staticmethod
+    async def reset() -> None:
+        """Clear shared probability state during plugin shutdown."""
+        async with ProbabilityManager._get_lock():
+            ProbabilityManager._probability_status.clear()
 
     @staticmethod
     def get_chat_key(platform_name: str, is_private: bool, chat_id: str) -> str:
@@ -164,7 +183,7 @@ class ProbabilityManager:
         return parsed
 
     @staticmethod
-    def _migrate_legacy_status(status: Dict[str, Any], chat_key: str) -> Dict[str, Any]:
+    def _migrate_legacy_status(status: dict[str, Any], chat_key: str) -> dict[str, Any]:
         migrated = copy.deepcopy(status)
         legacy_probability = migrated.get("probability")
         legacy_until = migrated.get("boosted_until")
@@ -184,7 +203,7 @@ class ProbabilityManager:
         return migrated
 
     @staticmethod
-    def _compact_status(status: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _compact_status(status: dict[str, Any]) -> dict[str, Any] | None:
         compacted = {
             key: value
             for key, value in status.items()
@@ -193,8 +212,8 @@ class ProbabilityManager:
         return compacted or None
 
     @staticmethod
-    async def get_probability_status_snapshot(chat_key: str) -> Dict[str, Any]:
-        async with ProbabilityManager._lock:
+    async def get_probability_status_snapshot(chat_key: str) -> dict[str, Any]:
+        async with ProbabilityManager._get_lock():
             status = ProbabilityManager._probability_status.get(chat_key)
             if not status:
                 return {}
@@ -239,7 +258,7 @@ class ProbabilityManager:
         )
         base_source = "initial_probability"
 
-        async with ProbabilityManager._lock:
+        async with ProbabilityManager._get_lock():
             status = ProbabilityManager._probability_status.get(chat_key)
             if status:
                 migrated = ProbabilityManager._migrate_legacy_status(status, chat_key)
@@ -377,7 +396,7 @@ class ProbabilityManager:
         )
         boosted_until = current_time + safe_duration
 
-        async with ProbabilityManager._lock:
+        async with ProbabilityManager._get_lock():
             status = ProbabilityManager._probability_status.get(chat_key, {})
             status = ProbabilityManager._migrate_legacy_status(status, chat_key)
             status["reply_boost_probability"] = safe_probability
@@ -406,7 +425,7 @@ class ProbabilityManager:
         """
         chat_key = ProbabilityManager.get_chat_key(platform_name, is_private, chat_id)
 
-        async with ProbabilityManager._lock:
+        async with ProbabilityManager._get_lock():
             if chat_key in ProbabilityManager._probability_status:
                 del ProbabilityManager._probability_status[chat_key]
                 logger.debug(f"会话 {chat_key} 概率状态已重置")
@@ -446,7 +465,7 @@ class ProbabilityManager:
         )
         boosted_until = current_time + safe_duration
 
-        async with ProbabilityManager._lock:
+        async with ProbabilityManager._get_lock():
             status = ProbabilityManager._probability_status.get(chat_key, {})
             status = ProbabilityManager._migrate_legacy_status(status, chat_key)
             status["base_probability"] = safe_probability

@@ -13,10 +13,12 @@
 """
 
 import asyncio
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any
+
 from astrbot.api.all import *
-from .ai_response_filter import AIResponseFilter
+
 from .ai_error_formatter import format_ai_error
+from .ai_response_filter import AIResponseFilter
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -117,7 +119,7 @@ class DecisionAI:
     def _build_reasoning_protocol(
         reasoning_start_marker: str,
         reasoning_end_marker: str,
-        allowed_answers: Optional[List[str]] = None,
+        allowed_answers: list[str] | None = None,
     ) -> str:
         """构建统一的额外推理协议说明。"""
         if not reasoning_start_marker or not reasoning_end_marker:
@@ -149,7 +151,7 @@ class DecisionAI:
     def log_reasoning_output(
         log_prefix: str,
         raw_response: str,
-        parse_result: Dict[str, Any],
+        parse_result: dict[str, Any],
         log_enabled: bool,
         log_mode: str = "processed",
     ) -> None:
@@ -187,12 +189,12 @@ class DecisionAI:
     @staticmethod
     async def resolve_judgment_persona(
         context: Context,
-        event: Optional[AstrMessageEvent] = None,
+        event: AstrMessageEvent | None = None,
         unified_msg_origin: str = "",
         include_persona: bool = True,
         configured_persona_name: str = "",
         log_prefix: str = "[判断型AI]",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """解析判断型AI应使用的人格提示词，支持关闭人格或指定人格名。"""
         result = {
             "system_prompt": "",
@@ -230,7 +232,7 @@ class DecisionAI:
         ):
             platform_name = effective_umo.split(":", 1)[0]
 
-        async def _resolve_current_session_persona() -> Tuple[Optional[dict], str]:
+        async def _resolve_current_session_persona() -> tuple[dict | None, str]:
             conv_mgr = getattr(context, "conversation_manager", None)
             conversation_persona_id = None
             if conv_mgr and effective_umo:
@@ -365,8 +367,8 @@ class DecisionAI:
         enable_reasoning: bool = False,
         reasoning_start_marker: str = "",
         reasoning_end_marker: str = "",
-        allowed_answers: Optional[List[str]] = None,
-    ) -> Tuple[str, bool]:
+        allowed_answers: list[str] | None = None,
+    ) -> tuple[str, bool]:
         """确保自定义提示词中包含额外推理协议（幂等）。"""
         if (
             not enable_reasoning
@@ -394,7 +396,7 @@ class DecisionAI:
         extra_prompt: str,
         timeout: int = 30,
         prompt_mode: str = "append",
-        image_urls: Optional[List[str]] = None,
+        image_urls: list[str] | None = None,
         include_sender_info: bool = True,
         is_keyword_triggered: bool = False,
         matched_keyword: str = "",

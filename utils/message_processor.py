@@ -12,6 +12,7 @@ v1.0.4 更新：
 
 import re
 from datetime import datetime
+
 from astrbot.api.all import *
 from astrbot.api.message_components import At
 
@@ -368,7 +369,9 @@ class MessageProcessor:
                 if system_notice:
                     system_parts.append(system_notice)
                     if DEBUG_MODE:
-                        logger.debug(f"已添加发送者识别提示（触发方式: {trigger_type}）")
+                        logger.debug(
+                            f"已添加发送者识别提示（触发方式: {trigger_type}）"
+                        )
 
             # 7. 持久化戳一戳事件文本
             if persistent_poke_event_text and persistent_poke_event_text.strip():

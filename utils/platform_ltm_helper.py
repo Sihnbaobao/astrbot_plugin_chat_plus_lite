@@ -6,9 +6,9 @@
 版本: V1.2.3.hotfix.2
 """
 
-import re
 import asyncio
-from typing import Optional, Tuple
+import re
+
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
@@ -43,7 +43,7 @@ class PlatformLTMHelper:
         max_wait: float = None,
         retry_interval: int = None,
         fast_check_count: int = None,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         从平台的 LTM 中提取当前消息的图片描述（异步版本，支持智能等待）
 
@@ -199,7 +199,7 @@ class PlatformLTMHelper:
         context,
         event: AstrMessageEvent,
         original_text: str,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         从平台的 LTM 中提取当前消息的图片描述（同步版本，无等待）
 
@@ -235,7 +235,7 @@ class PlatformLTMHelper:
             return False, None
 
     @staticmethod
-    def _get_message_timestamp(event: AstrMessageEvent) -> Optional[str]:
+    def _get_message_timestamp(event: AstrMessageEvent) -> str | None:
         """
         获取消息的时间戳（HH:MM:SS 格式）
 
@@ -288,8 +288,8 @@ class PlatformLTMHelper:
         umo: str,
         sender_name: str,
         original_text: str,
-        msg_timestamp: Optional[str] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        msg_timestamp: str | None = None,
+    ) -> tuple[bool, str | None]:
         """
         尝试从 LTM 提取图片描述（内部方法）
 
@@ -364,7 +364,7 @@ class PlatformLTMHelper:
         sender_name: str,
         msg_timestamp: str,
         original_text: str = "",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         根据时间戳从聊天记录中查找匹配的消息
 
@@ -536,7 +536,7 @@ class PlatformLTMHelper:
         umo: str,
         sender_name: str,
         original_text: str,
-        msg_timestamp: Optional[str] = None,
+        msg_timestamp: str | None = None,
     ) -> bool:
         """
         判断是否应该等待平台处理
@@ -622,7 +622,7 @@ class PlatformLTMHelper:
 
     @staticmethod
     def _check_platform_failed(
-        ltm, umo: str, sender_name: str, msg_timestamp: Optional[str] = None
+        ltm, umo: str, sender_name: str, msg_timestamp: str | None = None
     ) -> bool:
         """
         检查平台是否处理失败
@@ -772,7 +772,7 @@ class PlatformLTMHelper:
         chat_record: str,
         sender_name: str,
         original_text: str,
-        msg_timestamp: Optional[str] = None,
+        msg_timestamp: str | None = None,
     ) -> bool:
         """
         验证聊天记录是否匹配当前消息
@@ -844,7 +844,7 @@ class PlatformLTMHelper:
             return False
 
     @staticmethod
-    def _extract_message_content(chat_record: str) -> Optional[str]:
+    def _extract_message_content(chat_record: str) -> str | None:
         """
         从聊天记录中提取消息内容（去除前缀）
 

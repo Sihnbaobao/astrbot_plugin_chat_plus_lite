@@ -17,7 +17,7 @@
 
 import asyncio
 import time
-from typing import Dict, List, Optional
+
 from astrbot.api import logger
 
 
@@ -25,20 +25,29 @@ class SmartConcurrentManager:
     """Smart 模式下的群聊批次协调器。"""
 
     # {chat_id: {processing_id: entry}}
-    _pending: Dict[str, Dict[str, dict]] = {}
+    _pending: dict[str, dict[str, dict]] = {}
 
     # {processing_id: {consumed_at: float, anchor_processing_id: str}}
-    _consumed: Dict[str, dict] = {}
+    _consumed: dict[str, dict] = {}
 
-    _lock: asyncio.Lock = None
+    _lock: asyncio.Lock | None = None
+    _lock_loop: asyncio.AbstractEventLoop | None = None
 
     # 注册或消费状态的过期时间，避免异常路径残留内存
     _EXPIRE_SECONDS: float = 15.0
 
     @classmethod
     def _get_lock(cls) -> asyncio.Lock:
-        if cls._lock is None:
+        """Return the lock owned by the currently running event loop."""
+        loop = asyncio.get_running_loop()
+        if cls._lock is None or cls._lock_loop is not loop:
+            # Plugin reloads and isolated tests can create a fresh event loop.
+            # Do not carry coordination state into that new loop.
+            if cls._lock_loop is not None and cls._lock_loop is not loop:
+                cls._pending.clear()
+                cls._consumed.clear()
             cls._lock = asyncio.Lock()
+            cls._lock_loop = loop
         return cls._lock
 
     @classmethod
@@ -110,14 +119,31 @@ class SmartConcurrentManager:
 
     @classmethod
     async def is_consumed(cls, processing_id: str) -> bool:
-        return processing_id in cls._consumed
+        """Check consumed state under the manager lock."""
+        try:
+            async with cls._get_lock():
+                return processing_id in cls._consumed
+        except Exception as error:
+            logger.warning(f"[SmartConcurrent] is_consumed 失败: {error}")
+            return False
 
     @classmethod
-    async def get_consumer(cls, processing_id: str) -> Optional[str]:
-        info = cls._consumed.get(processing_id)
-        if not info:
+    async def get_consumer(cls, processing_id: str) -> str | None:
+        """Return the anchor that consumed a message, if any."""
+        try:
+            async with cls._get_lock():
+                info = cls._consumed.get(processing_id)
+                return info.get("anchor_processing_id") if info else None
+        except Exception as error:
+            logger.warning(f"[SmartConcurrent] get_consumer 失败: {error}")
             return None
-        return info.get("anchor_processing_id")
+
+    @classmethod
+    async def reset(cls) -> None:
+        """Clear all in-memory batch state during plugin shutdown."""
+        async with cls._get_lock():
+            cls._pending.clear()
+            cls._consumed.clear()
 
     @classmethod
     async def has_earlier_pending(cls, chat_id: str, processing_id: str) -> bool:
@@ -204,7 +230,7 @@ class SmartConcurrentManager:
                         "merged_entries": [],
                     }
 
-                merged_entries: List[dict] = []
+                merged_entries: list[dict] = []
                 current_is_forced = bool(current.get("is_forced", False))
                 batch_limit = cls._MAX_BATCH_SIZE
                 if max_batch_size is not None:
