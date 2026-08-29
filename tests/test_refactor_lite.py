@@ -332,7 +332,8 @@ def test_generate_reply_sets_marker_extras(monkeypatch):
             prompt_mode="append",
         )
     )
-    assert req.prompt in ("[空消息]", "")
+    assert req.prompt == "[空消息]"
+    assert empty_event.get_extra(handler.PLUGIN_CURRENT_MESSAGE) == "[空消息]"
 
 
 # ---------------------------------------------------------------------------

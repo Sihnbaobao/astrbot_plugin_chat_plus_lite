@@ -15,6 +15,7 @@
 import asyncio
 import json
 import re
+import time
 from typing import Any
 
 from astrbot.api.all import *
@@ -205,7 +206,9 @@ class ImageHandler:
                 logger.debug("图片处理已启用")
 
             if defer_image_processing:
-                image_urls = await ImageHandler._extract_image_urls(image_components)
+                image_urls = await ImageHandler._extract_image_urls(
+                    image_components, resolve_paths=False
+                )
                 text_content = ImageHandler._render_message_chain(
                     message_chain,
                     self_id=self_id,
@@ -565,38 +568,54 @@ class ImageHandler:
         return result
 
     @staticmethod
-    async def _extract_image_urls(image_components: list[Image]) -> list[str]:
-        """
-        从图片组件列表中提取图片URL
+    async def _extract_image_urls(
+        image_components: list[Image], *, resolve_paths: bool = True
+    ) -> list[str]:
+        """Extract image references from a list of image components.
 
         Args:
-            image_components: 图片组件列表
+            image_components: Image components to inspect.
+            resolve_paths: Download or resolve component references when true. Set
+                to false for lazy mode so remote images are not fetched before the
+                reply decision is accepted.
 
         Returns:
-            图片URL列表（可能包含本地路径或base64等格式）
+            Image URLs, local paths, or other provider-supported references.
         """
         image_urls = []
         for idx, img_component in enumerate(image_components):
-            # QQ 商城表情预览图经常404且无需视觉识别，跳过以免阻断整个LLM请求。
+            # QQ marketplace previews often return 404 and do not need vision.
             if EmojiDetector.looks_like_market_face(
                 EmojiDetector.collect_component_texts(img_component)
             ):
                 if DEBUG_MODE:
                     logger.debug(
-                        f"[图片处理] 跳过QQ商城表情预览图 {idx}（避免404下载失败）"
+                        f"[Image] Skipping QQ marketplace preview {idx} to avoid a 404"
                     )
                 continue
             try:
-                # 尝试获取图片路径或URL
-                image_path = await img_component.convert_to_file_path()
+                if resolve_paths:
+                    image_path = await img_component.convert_to_file_path()
+                else:
+                    # AstrBot image components expose the original reference on
+                    # these fields; reading it avoids MediaResolver/download work.
+                    image_path = next(
+                        (
+                            getattr(img_component, attribute, None)
+                            for attribute in ("url", "file", "path")
+                            if getattr(img_component, attribute, None)
+                        ),
+                        None,
+                    )
                 if image_path:
+                    image_path = str(image_path)
                     image_urls.append(image_path)
                     if DEBUG_MODE:
-                        logger.debug(f"提取到图片 {idx}: {image_path}")
+                        logger.debug(f"Extracted image reference {idx}: {image_path}")
                 else:
-                    logger.warning(f"无法提取图片 {idx} 的路径")
-            except Exception as e:
-                logger.error(f"提取图片 {idx} 的URL时发生错误: {e}")
+                    logger.warning(f"Unable to extract image reference {idx}")
+            except Exception as error:
+                logger.error(f"Failed to extract image reference {idx}: {error}")
                 continue
 
         return image_urls
@@ -609,7 +628,7 @@ class ImageHandler:
         provider_id: str = "",
         timeout: int = 30,
         session_id: str = "",
-    ) -> list[str]:
+    ) -> list[str] | None:
         """Select images that are relevant to an already accepted reply.
 
         Args:
@@ -621,7 +640,8 @@ class ImageHandler:
             session_id: Provider session identifier.
 
         Returns:
-            Candidate URLs judged relevant. An empty list is returned on failure.
+            Candidate URLs judged relevant. An empty list means no image is related;
+            None means the relevance check could not produce a trustworthy result.
         """
         candidates = list(
             dict.fromkeys(url for url in image_urls if isinstance(url, str) and url)
@@ -637,7 +657,7 @@ class ImageHandler:
             )
             if not provider:
                 logger.warning("Lazy image relevance check skipped: no vision provider")
-                return []
+                return None
 
             numbered_images = "\n".join(
                 f"{index}. image" for index in range(1, len(candidates) + 1)
@@ -663,19 +683,44 @@ class ImageHandler:
                 timeout=timeout,
             )
             answer = str(getattr(response, "completion_text", "") or "").strip()
-            match = re.search(r"\[[^\]]*\]", answer)
+            code_fence = chr(96) * 3
+            if answer.startswith(code_fence) and answer.endswith(code_fence):
+                answer = re.sub(
+                    r"^" + re.escape(code_fence) + r"(?:json)?\s*",
+                    "",
+                    answer,
+                    flags=re.IGNORECASE,
+                )
+                answer = re.sub(
+                    r"\s*" + re.escape(code_fence) + r"$", "", answer
+                ).strip()
+
             selected_indexes: set[int] = set()
-            if match:
-                decoded = json.loads(match.group(0))
-                if isinstance(decoded, list):
-                    for value in decoded:
-                        if isinstance(value, int) and 1 <= value <= len(candidates):
-                            selected_indexes.add(value)
-            elif len(candidates) == 1 and answer.lower().rstrip(".!?。！？") in {
+            if len(candidates) == 1 and answer.lower().rstrip(".!?。！？") in {
                 "yes",
                 "y",
             }:
                 selected_indexes.add(1)
+            else:
+                try:
+                    decoded = json.loads(answer)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    logger.warning("Lazy image relevance check returned invalid JSON")
+                    return None
+                if not isinstance(decoded, list):
+                    logger.warning("Lazy image relevance check returned a non-array")
+                    return None
+                if any(
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or not 1 <= value <= len(candidates)
+                    for value in decoded
+                ):
+                    logger.warning(
+                        "Lazy image relevance check returned invalid indexes"
+                    )
+                    return None
+                selected_indexes.update(decoded)
 
             selected = [
                 url
@@ -683,18 +728,14 @@ class ImageHandler:
                 if index in selected_indexes
             ]
             logger.info(
-                "Lazy image relevance gate selected %d/%d candidate image(s)",
-                len(selected),
-                len(candidates),
+                f"Lazy image relevance gate selected {len(selected)}/{len(candidates)} candidate image(s)"
             )
             return selected
         except asyncio.TimeoutError:
             logger.warning("Lazy image relevance check timed out")
-        except (json.JSONDecodeError, TypeError, ValueError):
-            logger.warning("Lazy image relevance check returned invalid indexes")
         except Exception:
             logger.warning("Lazy image relevance check failed", exc_info=True)
-        return []
+        return None
 
     @staticmethod
     async def describe_image_urls(
@@ -742,40 +783,53 @@ class ImageHandler:
             return {}
 
         descriptions: dict[str, str] = {}
-        for image_url in candidates:
+        deadline = time.monotonic() + max(float(timeout), 1.0)
+        semaphore = asyncio.Semaphore(3)
 
-            async def generate_description() -> str | None:
-                response = await provider.text_chat(
-                    prompt=prompt,
-                    contexts=[],
-                    image_urls=[image_url],
-                    func_tool=None,
-                    system_prompt="",
-                    session_id=session_id,
-                )
-                description = getattr(response, "completion_text", "") or ""
-                return str(description).strip() or None
+        async def describe_one(image_url: str) -> tuple[str, str | None]:
+            async with semaphore:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return image_url, None
 
-            try:
-                if image_description_cache and image_description_cache.enabled:
-                    description = await image_description_cache.get_or_create(
-                        image_url,
-                        lambda: asyncio.wait_for(
-                            generate_description(), timeout=timeout
-                        ),
+                async def generate_description() -> str | None:
+                    response = await provider.text_chat(
+                        prompt=prompt,
+                        contexts=[],
+                        image_urls=[image_url],
+                        func_tool=None,
+                        system_prompt="",
+                        session_id=session_id,
                     )
-                else:
-                    description = await asyncio.wait_for(
-                        generate_description(), timeout=timeout
+                    description = getattr(response, "completion_text", "") or ""
+                    return str(description).strip() or None
+
+                try:
+                    if image_description_cache and image_description_cache.enabled:
+                        description = await asyncio.wait_for(
+                            image_description_cache.get_or_create(
+                                image_url,
+                                generate_description,
+                            ),
+                            timeout=remaining,
+                        )
+                    else:
+                        description = await asyncio.wait_for(
+                            generate_description(), timeout=remaining
+                        )
+                    return image_url, description
+                except asyncio.TimeoutError:
+                    logger.warning("Lazy image description timed out for one image")
+                except Exception:
+                    logger.warning(
+                        "Lazy image description failed for one image", exc_info=True
                     )
-                if description:
-                    descriptions[image_url] = description
-            except asyncio.TimeoutError:
-                logger.warning("Lazy image description timed out for one image")
-            except Exception:
-                logger.warning(
-                    "Lazy image description failed for one image", exc_info=True
-                )
+                return image_url, None
+
+        results = await asyncio.gather(*(describe_one(url) for url in candidates))
+        for image_url, description in results:
+            if description:
+                descriptions[image_url] = description
 
         return descriptions
 

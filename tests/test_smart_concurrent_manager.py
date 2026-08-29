@@ -146,8 +146,14 @@ def test_private_media_modes_are_configured_separately():
     assert basic_items["private_reply_mode"]["options"] == ["direct", "decide"]
     assert runtime["gcp_basic"]["private_reply_mode"] == "direct"
     assert runtime["gcp_reply"]["collapse_reply_newlines"] is True
-    assert runtime["gcp_enhance"]["private_image_mode"] == "decide"
-    assert runtime["gcp_enhance"]["private_emoji_mode"] == "ignore"
+    assert enhance_items["private_image_mode"]["default"] == "decide"
+    assert enhance_items["private_emoji_mode"]["default"] == "ignore"
+    assert runtime["gcp_enhance"]["private_image_mode"] in set(
+        enhance_items["private_image_mode"]["options"]
+    )
+    assert runtime["gcp_enhance"]["private_emoji_mode"] in set(
+        enhance_items["private_emoji_mode"]["options"]
+    )
     assert runtime["gcp_concurrent"]["private_batch_wait_ms"] == 4500
 
 

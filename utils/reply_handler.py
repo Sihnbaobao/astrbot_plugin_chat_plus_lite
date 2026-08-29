@@ -298,7 +298,7 @@ class ReplyHandler:
             current_message_for_retrieval = event.get_message_str() or ""
             # 单独无信息@消息时 get_message_str() 返回 ""，用占位符避免空 prompt
             prompt_for_request = current_message_for_retrieval or "[空消息]"
-            event.set_extra(PLUGIN_CURRENT_MESSAGE, current_message_for_retrieval)
+            event.set_extra(PLUGIN_CURRENT_MESSAGE, prompt_for_request)
 
             if DEBUG_MODE:
                 logger.debug("🔧 已设置插件标记，将通过 event.request_llm() 调用 AI")

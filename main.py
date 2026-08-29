@@ -1524,6 +1524,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             timeout=self.image_to_text_timeout,
             session_id=str(getattr(event, "session_id", "") or ""),
         )
+        if selected is None:
+            return (
+                formatted_context
+                + "\n\n[Image relevance] Image understanding was unavailable. "
+                "Ignore the images and do not infer their contents.",
+                [],
+            )
         if not selected:
             return (
                 formatted_context
@@ -1980,7 +1987,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         current_message_for_ai = _build_current_message_for_ai(message_text)
 
-        merged_image_urls = image_urls or []
+        merged_image_urls = list(image_urls or [])
         try:
             if (
                 self.enable_image_processing
@@ -2178,6 +2185,18 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         except Exception as e:
             logger.warning(f"[并发保护] 保存缓存副本失败: {e}")
 
+        smart_batch_messages = []
+        if use_smart_batch:
+            smart_batch_messages = self._smart_batch_snapshots.get(early_message_id, [])
+            if self.image_read_mode == "lazy":
+                for batch_message in smart_batch_messages:
+                    if not isinstance(batch_message, dict):
+                        continue
+                    for image_url in batch_message.get("image_urls") or []:
+                        if isinstance(image_url, str) and image_url:
+                            merged_image_urls.append(image_url)
+                merged_image_urls = list(dict.fromkeys(merged_image_urls))
+
         # 步骤7: AI决策判断（第二道核心过滤）
         _welcome_skip_all = (
             (
@@ -2201,23 +2220,28 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 )
         else:
             decision_context = formatted_context
-            if use_smart_batch:
-                smart_batch_messages = self._smart_batch_snapshots.get(
-                    early_message_id, []
-                )
-                if smart_batch_messages:
-                    try:
-                        decision_context = await self._format_ai_context(
-                            history_messages,
-                            current_message_for_ai,
-                            event.get_self_id(),
-                            window_msgs=smart_batch_messages,
-                            poke_notice=poke_notice_text,
-                        )
-                    except Exception as smart_ctx_err:
-                        logger.warning(
-                            f"[Smart并发] 决策阶段重建批次上下文失败，回退原上下文: {smart_ctx_err}"
-                        )
+            if use_smart_batch and smart_batch_messages:
+                try:
+                    decision_context = await self._format_ai_context(
+                        history_messages,
+                        current_message_for_ai,
+                        event.get_self_id(),
+                        window_msgs=smart_batch_messages,
+                        poke_notice=poke_notice_text,
+                    )
+                except Exception as smart_ctx_err:
+                    logger.warning(
+                        f"[Smart并发] 决策阶段重建批次上下文失败，回退原上下文: {smart_ctx_err}"
+                    )
+
+            image_question_text = original_message_text or ""
+            if smart_batch_messages:
+                for batch_message in smart_batch_messages:
+                    if not isinstance(batch_message, dict):
+                        continue
+                    batch_content = batch_message.get("content", "")
+                    if isinstance(batch_content, str) and batch_content.strip():
+                        image_question_text += "\n" + batch_content
 
             decision_context_for_ai = decision_context
             image_question_requested = bool(
@@ -2229,7 +2253,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     r"|(?:看(?:看)?(?:一下)?|打开|分析|识别)(?:这张?)?(?:图|图片|照片|截图)"
                     r"|(?:怎么样|如何|好看吗|什么内容|什么意思|能看出什么).{0,8}"
                     r"(?:这张?(?:图|图片|照片)|图片|照片|截图)",
-                    original_message_text or "",
+                    image_question_text,
                     flags=re.IGNORECASE,
                 )
             )
@@ -2471,7 +2495,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             smart_batch_reply_hint = ""
             reply_message_text = message_text
             if use_smart_batch:
-                smart_batch_messages = self._smart_batch_snapshots.get(message_id, [])
                 if smart_batch_messages:
                     try:
                         if is_private:
@@ -2496,13 +2519,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                                     window_msgs=[],
                                     poke_notice=poke_notice_text,
                                 )
-                                for batch_message in smart_batch_messages:
-                                    merged_image_urls.extend(
-                                        batch_message.get("image_urls") or []
-                                    )
-                                merged_image_urls = list(
-                                    dict.fromkeys(merged_image_urls)
-                                )
                             else:
                                 reply_message_text = message_text
                         else:
@@ -2517,14 +2533,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         logger.warning(
                             f"[Smart并发] 回复阶段重建批次上下文失败，回退原上下文: {smart_reply_ctx_err}"
                         )
-
-                if self.image_read_mode == "lazy":
-                    for batch_message in smart_batch_messages:
-                        if isinstance(batch_message, dict):
-                            merged_image_urls.extend(
-                                batch_message.get("image_urls") or []
-                            )
-                    merged_image_urls = list(dict.fromkeys(merged_image_urls))
 
                 if is_private and use_smart_batch:
                     logged_private_input = reply_message_text.replace("\n", " | ")

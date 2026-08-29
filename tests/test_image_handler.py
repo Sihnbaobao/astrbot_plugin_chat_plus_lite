@@ -40,8 +40,11 @@ class _Plain(_BaseMessageComponent):
 class _Image(_BaseMessageComponent):
     def __init__(self, name):
         self.name = name
+        self.file = name
+        self.convert_calls = 0
 
     async def convert_to_file_path(self):
+        self.convert_calls += 1
         return self.name
 
 
@@ -266,10 +269,10 @@ def test_deferred_processing_keeps_placeholders_without_vision(image_handler):
     """Deferred mode extracts image paths without calling a provider."""
     handler, Plain, Image, _ = image_handler
 
+    image = Image("image.png")
+
     class Event:
-        message_obj = types.SimpleNamespace(
-            message=[Plain("这张图怎么样"), Image("image.png")]
-        )
+        message_obj = types.SimpleNamespace(message=[Plain("这张图怎么样"), image])
 
         def get_message_outline(self):
             return "这张图怎么样[图片]"
@@ -289,6 +292,7 @@ def test_deferred_processing_keeps_placeholders_without_vision(image_handler):
     )
 
     assert processed == (True, "这张图怎么样[图片]", ["image.png"], True)
+    assert image.convert_calls == 0
 
 
 def test_select_relevant_image_urls_returns_provider_indexes(image_handler):
@@ -301,7 +305,9 @@ def test_select_relevant_image_urls_returns_provider_indexes(image_handler):
 
         async def text_chat(self, **kwargs):
             self.calls.append(kwargs)
-            return types.SimpleNamespace(completion_text="[2]")
+            return types.SimpleNamespace(
+                completion_text=f"{chr(96) * 3}json\n[2]\n{chr(96) * 3}"
+            )
 
     provider = Provider()
 
@@ -323,7 +329,9 @@ def test_select_relevant_image_urls_returns_provider_indexes(image_handler):
 
 
 @pytest.mark.parametrize("completion_text", ["not-json", "[99]"])
-def test_select_relevant_image_urls_rejects_invalid_selection(image_handler, completion_text):
+def test_select_relevant_image_urls_rejects_invalid_selection(
+    image_handler, completion_text
+):
     """Invalid or out-of-range provider output never selects an image."""
     handler, _, _, _ = image_handler
 
@@ -341,7 +349,71 @@ def test_select_relevant_image_urls_rejects_invalid_selection(image_handler, com
         )
     )
 
+    assert selected is None
+
+
+def test_select_relevant_image_urls_accepts_empty_selection(image_handler):
+    """A valid empty JSON array means that no candidate is related."""
+    handler, _, _, _ = image_handler
+
+    class Provider:
+        async def text_chat(self, **kwargs):
+            return types.SimpleNamespace(completion_text="[]")
+
+    class Context:
+        def get_using_provider(self):
+            return Provider()
+
+    selected = asyncio.run(
+        handler.ImageHandler.select_relevant_image_urls(
+            Context(), ["image.png"], "普通文字对话"
+        )
+    )
+
     assert selected == []
+
+
+def test_describe_image_urls_limits_concurrency(image_handler):
+    """Description requests are bounded and share one overall deadline."""
+    handler, _, _, _ = image_handler
+
+    class Provider:
+        def __init__(self):
+            self.active = 0
+            self.max_active = 0
+
+        async def text_chat(self, **kwargs):
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            try:
+                await asyncio.sleep(0.01)
+                return types.SimpleNamespace(
+                    completion_text=f"description for {kwargs['image_urls'][0]}"
+                )
+            finally:
+                self.active -= 1
+
+    provider = Provider()
+
+    class Context:
+        def get_provider_by_id(self, provider_id):
+            return provider
+
+        def get_using_provider(self):
+            return provider
+
+    descriptions = asyncio.run(
+        handler.ImageHandler.describe_image_urls(
+            Context(),
+            ["1.png", "2.png", "3.png", "4.png"],
+            provider_id="vision-provider",
+            prompt="describe",
+            timeout=1,
+        )
+    )
+
+    assert set(descriptions) == {"1.png", "2.png", "3.png", "4.png"}
+    assert provider.max_active <= 3
 
 
 def test_select_relevant_image_urls_fails_closed_on_timeout(image_handler):
@@ -362,4 +434,4 @@ def test_select_relevant_image_urls_fails_closed_on_timeout(image_handler):
         )
     )
 
-    assert selected == []
+    assert selected is None
