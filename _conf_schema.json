@@ -266,6 +266,16 @@
                 "default": false,
                 "hint": "把图片转成文字描述喂给AI。"
             },
+            "image_read_mode": {
+                "description": "图片读取时机",
+                "type": "string",
+                "default": "lazy",
+                "options": [
+                    "lazy",
+                    "eager"
+                ],
+                "hint": "lazy=先用文字读空气，确认值得回复后才检查相关图片；eager=在读空气阶段直接读取图片。"
+            },
             "image_to_text_scope": {
                 "description": "图片处理范围",
                 "type": "string",

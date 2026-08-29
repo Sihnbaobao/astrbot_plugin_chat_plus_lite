@@ -13,6 +13,8 @@
 """
 
 import asyncio
+import json
+import re
 from typing import Any
 
 from astrbot.api.all import *
@@ -72,6 +74,7 @@ class ImageHandler:
         image_description_cache: ImageDescriptionCache | None = None,
         max_images_per_message: int = 10,
         self_id: str = None,
+        defer_image_processing: bool = False,
     ) -> tuple[bool, str, list[str], bool]:
         """
         处理消息中的图片
@@ -89,6 +92,7 @@ class ImageHandler:
             image_description_cache: 图片描述缓存实例（可选，用于省钱）
             max_images_per_message: 单条消息最大处理图片数
             self_id: 机器人自身的用户ID，用于标记引用消息发送者是否为AI自己
+            defer_image_processing: Only extract placeholders and URLs without vision inference.
 
         Returns:
             (是否继续处理, 处理后的消息, 图片URL列表, 图片是否保留)
@@ -199,6 +203,19 @@ class ImageHandler:
             # === 第三步：启用了图片处理，根据是否配置图片转文字ID决定处理方式 ===
             if DEBUG_MODE:
                 logger.debug("图片处理已启用")
+
+            if defer_image_processing:
+                image_urls = await ImageHandler._extract_image_urls(image_components)
+                text_content = ImageHandler._render_message_chain(
+                    message_chain,
+                    self_id=self_id,
+                    include_images=True,
+                )
+                logger.debug(
+                    "Deferred vision processing for %d image(s); kept placeholders for text-only decisions",
+                    len(image_urls),
+                )
+                return True, text_content, image_urls, True
 
             # 如果没有填写图片转文字的提供商ID,说明使用多模态AI,提取图片URL传递
             if not image_to_text_provider_id:
@@ -583,6 +600,184 @@ class ImageHandler:
                 continue
 
         return image_urls
+
+    @staticmethod
+    async def select_relevant_image_urls(
+        context: Context,
+        image_urls: list[str],
+        conversation_context: str,
+        provider_id: str = "",
+        timeout: int = 30,
+        session_id: str = "",
+    ) -> list[str]:
+        """Select images that are relevant to an already accepted reply.
+
+        Args:
+            context: AstrBot context used to resolve the vision-capable provider.
+            image_urls: Candidate image URLs in message order.
+            conversation_context: Text-only conversation context.
+            provider_id: Optional provider ID; the active provider is used when empty.
+            timeout: Maximum seconds allowed for the relevance request.
+            session_id: Provider session identifier.
+
+        Returns:
+            Candidate URLs judged relevant. An empty list is returned on failure.
+        """
+        candidates = list(
+            dict.fromkeys(url for url in image_urls if isinstance(url, str) and url)
+        )
+        if not candidates:
+            return []
+
+        try:
+            provider = (
+                context.get_provider_by_id(provider_id)
+                if provider_id
+                else context.get_using_provider()
+            )
+            if not provider:
+                logger.warning("Lazy image relevance check skipped: no vision provider")
+                return []
+
+            numbered_images = "\n".join(
+                f"{index}. image" for index in range(1, len(candidates) + 1)
+            )
+            prompt = (
+                "You are an image relevance gate. The text-level reply decision has "
+                "already been accepted. Decide which numbered images are directly "
+                "related to the conversation and could improve the reply. Do not "
+                "select an image merely because it exists. Return only a JSON array "
+                "of 1-based image indexes, such as [1, 3], or [] when none are related.\n\n"
+                f"Conversation text:\n{(conversation_context or '')[-6000:]}\n\n"
+                f"Candidate images in order:\n{numbered_images}"
+            )
+            response = await asyncio.wait_for(
+                provider.text_chat(
+                    prompt=prompt,
+                    contexts=[],
+                    image_urls=candidates,
+                    func_tool=None,
+                    system_prompt="",
+                    session_id=session_id,
+                ),
+                timeout=timeout,
+            )
+            answer = str(getattr(response, "completion_text", "") or "").strip()
+            match = re.search(r"\[[^\]]*\]", answer)
+            selected_indexes: set[int] = set()
+            if match:
+                decoded = json.loads(match.group(0))
+                if isinstance(decoded, list):
+                    for value in decoded:
+                        if isinstance(value, int) and 1 <= value <= len(candidates):
+                            selected_indexes.add(value)
+            elif len(candidates) == 1 and answer.lower().rstrip(".!?。！？") in {
+                "yes",
+                "y",
+            }:
+                selected_indexes.add(1)
+
+            selected = [
+                url
+                for index, url in enumerate(candidates, start=1)
+                if index in selected_indexes
+            ]
+            logger.info(
+                "Lazy image relevance gate selected %d/%d candidate image(s)",
+                len(selected),
+                len(candidates),
+            )
+            return selected
+        except asyncio.TimeoutError:
+            logger.warning("Lazy image relevance check timed out")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            logger.warning("Lazy image relevance check returned invalid indexes")
+        except Exception:
+            logger.warning("Lazy image relevance check failed", exc_info=True)
+        return []
+
+    @staticmethod
+    async def describe_image_urls(
+        context: Context,
+        image_urls: list[str],
+        provider_id: str,
+        prompt: str,
+        timeout: int = 60,
+        image_description_cache: ImageDescriptionCache | None = None,
+        session_id: str = "",
+    ) -> dict[str, str]:
+        """Generate text descriptions for selected image URLs.
+
+        Args:
+            context: AstrBot context used to resolve the configured provider.
+            image_urls: Selected image URLs.
+            provider_id: Provider ID used for image-to-text conversion.
+            prompt: Image description prompt.
+            timeout: Maximum seconds allowed per image request.
+            image_description_cache: Optional cache for generated descriptions.
+            session_id: Provider session identifier.
+
+        Returns:
+            A mapping from image URL to its generated description.
+        """
+        candidates = list(
+            dict.fromkeys(url for url in image_urls if isinstance(url, str) and url)
+        )
+        if not candidates:
+            return {}
+
+        try:
+            provider = (
+                context.get_provider_by_id(provider_id)
+                if provider_id
+                else context.get_using_provider()
+            )
+            if not provider:
+                logger.warning("Lazy image description skipped: no vision provider")
+                return {}
+        except Exception:
+            logger.warning(
+                "Lazy image description provider lookup failed", exc_info=True
+            )
+            return {}
+
+        descriptions: dict[str, str] = {}
+        for image_url in candidates:
+
+            async def generate_description() -> str | None:
+                response = await provider.text_chat(
+                    prompt=prompt,
+                    contexts=[],
+                    image_urls=[image_url],
+                    func_tool=None,
+                    system_prompt="",
+                    session_id=session_id,
+                )
+                description = getattr(response, "completion_text", "") or ""
+                return str(description).strip() or None
+
+            try:
+                if image_description_cache and image_description_cache.enabled:
+                    description = await image_description_cache.get_or_create(
+                        image_url,
+                        lambda: asyncio.wait_for(
+                            generate_description(), timeout=timeout
+                        ),
+                    )
+                else:
+                    description = await asyncio.wait_for(
+                        generate_description(), timeout=timeout
+                    )
+                if description:
+                    descriptions[image_url] = description
+            except asyncio.TimeoutError:
+                logger.warning("Lazy image description timed out for one image")
+            except Exception:
+                logger.warning(
+                    "Lazy image description failed for one image", exc_info=True
+                )
+
+        return descriptions
 
     @staticmethod
     async def extract_media_urls(

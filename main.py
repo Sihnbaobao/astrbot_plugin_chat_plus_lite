@@ -99,6 +99,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     # 重复回复缓存大小硬上限
     _DUPLICATE_CACHE_SIZE_LIMIT = 50
 
+    # Keep lazy relevance checks bounded when a Smart burst contains many images.
+    _LAZY_IMAGE_CANDIDATE_LIMIT = 12
+
     # ============================================================
     # 初始化
     # ============================================================
@@ -213,6 +216,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # ========== 转发/入群解析配置 ==========
         # ========== 图片处理配置 ==========
         self.enable_image_processing = self._cfg_bool("enable_image_processing", False)
+        self.image_read_mode = self._cfg_choice(
+            "image_read_mode", "lazy", {"lazy", "eager"}
+        )
         self.image_to_text_scope = self._cfg_choice(
             "image_to_text_scope",
             "all",
@@ -477,6 +483,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         logger.info(f"启用的群组: {self.enabled_groups} (留空=全部)")
         logger.info(f"详细日志模式: {'开启' if self.debug_mode else '关闭'}")
+        logger.info(f"Image read mode: {self.image_read_mode}")
         logger.info("=" * 50)
 
     # ============================================================
@@ -1484,6 +1491,82 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             poke_notice=poke_notice,
         )
 
+    async def _resolve_lazy_image_context(
+        self,
+        event: AstrMessageEvent,
+        formatted_context: str,
+        image_urls: list[str],
+    ) -> tuple[str, list[str]]:
+        """Read only images related to an already accepted reply.
+
+        Args:
+            event: Anchor event for the current reply.
+            formatted_context: Text-only context used to judge image relevance.
+            image_urls: Candidate images from the current and nearby messages.
+
+        Returns:
+            The reply context and the image URLs or descriptions to send.
+        """
+        if self.image_read_mode != "lazy" or not image_urls:
+            return formatted_context, image_urls
+
+        candidates = list(
+            dict.fromkeys(url for url in image_urls if isinstance(url, str) and url)
+        )[: self._LAZY_IMAGE_CANDIDATE_LIMIT]
+        if not candidates:
+            return formatted_context, []
+
+        selected = await ImageHandler.select_relevant_image_urls(
+            self.context,
+            candidates,
+            formatted_context,
+            provider_id=self.image_to_text_provider_id,
+            timeout=self.image_to_text_timeout,
+            session_id=str(getattr(event, "session_id", "") or ""),
+        )
+        if not selected:
+            return (
+                formatted_context
+                + "\n\n[Image relevance] The available images are not related to this reply. "
+                "Ignore them and do not reply about image content.",
+                [],
+            )
+
+        if self.image_to_text_provider_id:
+            descriptions = await ImageHandler.describe_image_urls(
+                self.context,
+                selected,
+                self.image_to_text_provider_id,
+                self.image_to_text_prompt,
+                timeout=self.image_to_text_timeout,
+                image_description_cache=self.image_description_cache,
+                session_id=str(getattr(event, "session_id", "") or ""),
+            )
+            if not descriptions:
+                return (
+                    formatted_context
+                    + "\n\n[Image relevance] Image understanding failed. Ignore the images.",
+                    [],
+                )
+            description_lines = [
+                f"- Image {index}: {descriptions[url]}"
+                for index, url in enumerate(selected, start=1)
+                if url in descriptions
+            ]
+            return (
+                formatted_context
+                + "\n\n[Relevant image descriptions]\n"
+                + "\n".join(description_lines),
+                [],
+            )
+
+        return (
+            formatted_context
+            + f"\n\n[Image relevance] {len(selected)} image(s) are related to the current conversation. "
+            "Use them together with the text; ignore other images.",
+            selected,
+        )
+
     async def _process_message(self, event: AstrMessageEvent):
         """
         消息处理主流程''  # 占位
@@ -1901,7 +1984,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         try:
             if (
                 self.enable_image_processing
-                and not self.image_to_text_provider_id
+                and (
+                    self.image_read_mode == "lazy" or not self.image_to_text_provider_id
+                )
                 and chat_id in self.pending_messages_cache
             ):
                 for _cached in self.pending_messages_cache[chat_id]:
@@ -2133,16 +2218,48 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         logger.warning(
                             f"[Smart并发] 决策阶段重建批次上下文失败，回退原上下文: {smart_ctx_err}"
                         )
+
+            decision_context_for_ai = decision_context
+            image_question_requested = bool(
+                self.image_read_mode == "lazy"
+                and merged_image_urls
+                and re.search(
+                    r"(?:这张?(?:图|图片|照片)|这幅图|图里|图中|画面|图像|图片|照片|截图).{0,12}"
+                    r"(?:怎么样|如何|什么|啥|好看|内容|意思|说明|描述|评价|识别|看得出|看出来)"
+                    r"|(?:看(?:看)?(?:一下)?|打开|分析|识别)(?:这张?)?(?:图|图片|照片|截图)"
+                    r"|(?:怎么样|如何|好看吗|什么内容|什么意思|能看出什么).{0,8}"
+                    r"(?:这张?(?:图|图片|照片)|图片|照片|截图)",
+                    original_message_text or "",
+                    flags=re.IGNORECASE,
+                )
+            )
+            if self.image_read_mode == "lazy" and merged_image_urls:
+                decision_context_for_ai += (
+                    "\n\n[Image handling] Image content has not been read yet. "
+                    "Do not reply merely because an [图片] placeholder exists. "
+                    "Return yes only when the text explicitly asks about the image "
+                    "or the conversation itself is worth answering."
+                )
+                if image_question_requested:
+                    decision_context_for_ai += (
+                        " The sender explicitly asks about an image; treat this as a "
+                        "direct request and return yes unless the message is unsafe or invalid."
+                    )
             should_reply = await self._check_ai_decision(
                 event,
-                decision_context,
+                decision_context_for_ai,
                 is_at_message,
                 has_trigger_keyword,
-                merged_image_urls,
+                [] if self.image_read_mode == "lazy" else merged_image_urls,
                 matched_trigger_keyword=matched_trigger_keyword,
                 original_message_text=original_message_text,
                 force_ai_decision=is_private and bool(private_media_kind),
             )
+            if image_question_requested and not should_reply:
+                should_reply = True
+                logger.info(
+                    "Direct image question detected; continuing to image relevance check"
+                )
 
         if not should_reply:
             # Let the core pipeline answer when private decision AI failed.
@@ -2401,6 +2518,14 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             f"[Smart并发] 回复阶段重建批次上下文失败，回退原上下文: {smart_reply_ctx_err}"
                         )
 
+                if self.image_read_mode == "lazy":
+                    for batch_message in smart_batch_messages:
+                        if isinstance(batch_message, dict):
+                            merged_image_urls.extend(
+                                batch_message.get("image_urls") or []
+                            )
+                    merged_image_urls = list(dict.fromkeys(merged_image_urls))
+
                 if is_private and use_smart_batch:
                     logged_private_input = reply_message_text.replace("\n", " | ")
                     logger.info(
@@ -2427,6 +2552,16 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             f"[Smart并发] 生成批次回复提示失败，降级忽略: {smart_hint_err}"
                         )
                         smart_batch_reply_hint = ""
+
+            if self.image_read_mode == "lazy" and merged_image_urls:
+                (
+                    formatted_context,
+                    merged_image_urls,
+                ) = await self._resolve_lazy_image_context(
+                    event,
+                    formatted_context,
+                    merged_image_urls,
+                )
 
             async for result in self._generate_and_send_reply(
                 event,
@@ -2770,6 +2905,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             self.image_description_cache,
             self.max_images_per_message,
             self_id=str(event.get_self_id()),
+            defer_image_processing=self.image_read_mode == "lazy",
         )
 
         if not should_continue:

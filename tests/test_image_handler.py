@@ -5,6 +5,7 @@ message-component doubles so the pure message-chain logic can be tested
 without installing the whole AstrBot runtime.
 """
 
+import asyncio
 import importlib.util
 import sys
 import types
@@ -14,6 +15,9 @@ import pytest
 
 
 class _Logger:
+    def debug(self, *_args, **_kwargs):
+        pass
+
     def info(self, *_args, **_kwargs):
         pass
 
@@ -256,3 +260,106 @@ def test_format_reply_uses_message_fallback_and_marks_bot_sender(image_handler):
     )
 
     assert formatted == "[引用 >>> 水原千鹤(你)(ID:3683026476): 旧版引用文本]\n"
+
+
+def test_deferred_processing_keeps_placeholders_without_vision(image_handler):
+    """Deferred mode extracts image paths without calling a provider."""
+    handler, Plain, Image, _ = image_handler
+
+    class Event:
+        message_obj = types.SimpleNamespace(
+            message=[Plain("这张图怎么样"), Image("image.png")]
+        )
+
+        def get_message_outline(self):
+            return "这张图怎么样[图片]"
+
+    processed = asyncio.run(
+        handler.ImageHandler.process_message_images(
+            Event(),
+            context=object(),
+            enable_image_processing=True,
+            image_to_text_scope="all",
+            image_to_text_provider_id="vision-provider",
+            image_to_text_prompt="describe",
+            is_at_message=False,
+            has_trigger_keyword=False,
+            defer_image_processing=True,
+        )
+    )
+
+    assert processed == (True, "这张图怎么样[图片]", ["image.png"], True)
+
+
+def test_select_relevant_image_urls_returns_provider_indexes(image_handler):
+    """The relevance gate maps valid provider indexes back to URLs."""
+    handler, _, _, _ = image_handler
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+
+        async def text_chat(self, **kwargs):
+            self.calls.append(kwargs)
+            return types.SimpleNamespace(completion_text="[2]")
+
+    provider = Provider()
+
+    class Context:
+        def get_using_provider(self):
+            return provider
+
+    selected = asyncio.run(
+        handler.ImageHandler.select_relevant_image_urls(
+            Context(),
+            ["first.png", "second.png"],
+            "用户问这张图怎么样",
+        )
+    )
+
+    assert selected == ["second.png"]
+    assert provider.calls[0]["image_urls"] == ["first.png", "second.png"]
+    assert provider.calls[0]["contexts"] == []
+
+
+@pytest.mark.parametrize("completion_text", ["not-json", "[99]"])
+def test_select_relevant_image_urls_rejects_invalid_selection(image_handler, completion_text):
+    """Invalid or out-of-range provider output never selects an image."""
+    handler, _, _, _ = image_handler
+
+    class Provider:
+        async def text_chat(self, **kwargs):
+            return types.SimpleNamespace(completion_text=completion_text)
+
+    class Context:
+        def get_using_provider(self):
+            return Provider()
+
+    selected = asyncio.run(
+        handler.ImageHandler.select_relevant_image_urls(
+            Context(), ["image.png"], "普通文字对话"
+        )
+    )
+
+    assert selected == []
+
+
+def test_select_relevant_image_urls_fails_closed_on_timeout(image_handler):
+    """A relevance timeout must not forward candidate images."""
+    handler, _, _, _ = image_handler
+
+    class Provider:
+        async def text_chat(self, **kwargs):
+            raise asyncio.TimeoutError
+
+    class Context:
+        def get_using_provider(self):
+            return Provider()
+
+    selected = asyncio.run(
+        handler.ImageHandler.select_relevant_image_urls(
+            Context(), ["image.png"], "普通文字对话"
+        )
+    )
+
+    assert selected == []
