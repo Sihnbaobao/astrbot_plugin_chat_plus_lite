@@ -368,6 +368,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
         assert removed not in prompt
     assert "是否回复" in prompt
     assert "yes或no" in prompt
+    assert "不能把它当成新的邀请" in prompt
+    assert "不能仅靠历史缓存" in prompt
 
     assert "一对一私聊" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
     assert "安静、冷淡或话少" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT

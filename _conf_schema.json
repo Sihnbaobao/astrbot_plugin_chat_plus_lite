@@ -73,8 +73,8 @@
                     "addressed",
                     "ambient"
                 ],
-                "default": "addressed",
-                "hint": "addressed=仅处理@机器人、关键词、回复机器人消息或戳机器人；ambient=普通群消息也交给读空气判断。"
+                "default": "ambient",
+                "hint": "ambient=保留群聊读空气，由模型判断是否自然插话；addressed=仅处理@机器人、关键词、回复机器人消息或戳机器人。ambient 会先过滤明确回复他人、纯媒体和模糊短句。"
             }
         }
     },

@@ -11,7 +11,8 @@
 
 ## 功能概览
 
-- 群聊响应边界：默认只对明确指向机器人的消息启动读空气和正式回复。
+- 群聊读空气：默认观察普通群聊，由模型判断是否有自然的参与机会。
+- 群聊安全边界：先过滤明确回复他人、纯媒体和模糊短句，再让模型判断具体话题是否值得插话。
 - 私聊独立策略：普通私聊默认可以直接回应，不继承群聊的安静人格规则。
 - Smart 连续消息：短时间连续发送的多条消息可以合并为一轮输入，只生成一条综合回复。
 - 图片处理：图片转文字、图片描述缓存、多模态直传，以及私聊纯图片独立策略。
@@ -35,9 +36,9 @@
 
 ## 群聊行为
 
-群聊默认开启，`group_reply_scope=addressed` 时只有当前消息明确指向机器人，才会进入读空气和正式回复流程。明确指向包括 @机器人、当前文本命中触发关键词、结构化回复引用机器人的消息，或戳机器人；普通群消息仍会整理进缓存作为后续上下文，但不会调用判断模型或读取图片。
+群聊默认开启，`group_reply_scope=ambient` 时保留普通群消息读空气。插件会先跳过明确回复其他用户、只@其他人/全体、纯图片/贴纸，以及没有问句的模糊短句；剩余的具体消息再交给判断模型，由人格判断是否自然插话。未被接受的消息仍可进入缓存，但缓存只是背景，不会自动制造对话目标。
 
-将 `group_reply_scope` 改为 `ambient` 后，恢复普通群消息也交给读空气判断的旧行为。这个模式允许机器人主动插话，但是否回复仍由判断模型决定。
+将 `group_reply_scope` 改为 `addressed` 后，只处理当前消息明确指向机器人的场景。明确指向包括 @机器人、当前文本命中触发关键词、结构化回复引用机器人的消息，或戳机器人。这个模式适合需要绝对安静的群聊，并不是默认的人格读空气模式。
 
 concurrent_mode 有两种模式：
 
@@ -101,7 +102,7 @@ Smart 的含义是“短时间连发合并”，不是“只要机器人还没�
 | enable_group_chat | true | 群聊总开关 |
 | enabled_groups | [] | 留空处理所有群，否则只处理指定群 |
 | takeover_group_reply | true | 是否由插件接管群聊是否回复 |
-| group_reply_scope | addressed | addressed 仅处理明确指向机器人的群消息；ambient 将普通群消息交给读空气 |
+| group_reply_scope | ambient | ambient 保留群聊读空气并先过滤明显噪声；addressed 仅处理明确指向机器人的群消息 |
 | enable_private_chat | false | 私聊总开关 |
 | enabled_private_users | [] | 留空处理所有私聊用户，否则只处理指定用户 |
 | private_reply_mode | direct | 普通私聊使用直接回复或私聊读空气 |
@@ -136,7 +137,7 @@ Smart 的含义是“短时间连发合并”，不是“只要机器人还没�
 - enable_group_chat = true
 - concurrent_mode = smart
 - keyword_smart_mode = true
-- group_reply_scope = addressed
+- group_reply_scope = ambient
 - 保持 takeover_group_reply = true
 
 希望机器人稳定回应私聊时：

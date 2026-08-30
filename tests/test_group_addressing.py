@@ -50,6 +50,12 @@ class _Event:
     def get_self_id(self):
         return "bot_self"
 
+    def get_sender_id(self):
+        return "user_1"
+
+    def get_sender_name(self):
+        return "测试用户"
+
     def get_message_str(self):
         return self._message_str
 
@@ -122,6 +128,7 @@ def test_quoted_reply_cannot_fake_at_or_keyword(addressing_modules):
 
     assert not processor.MessageProcessor.is_at_message(event)
     assert not checker.KeywordChecker.check_trigger_keywords(event, ["璃月"])
+    assert processor.MessageProcessor.get_reply_target_id(event) == "other"
     assert not processor.MessageProcessor.is_reply_to_bot(event)
 
 
@@ -141,5 +148,34 @@ def test_current_message_address_signals_are_preserved(addressing_modules):
 
     assert processor.MessageProcessor.is_at_message(at_event)
     assert checker.KeywordChecker.check_trigger_keywords(keyword_event, ["璃月"])
+    assert processor.MessageProcessor.get_reply_target_id(bot_reply_event) == "bot_self"
     assert processor.MessageProcessor.is_reply_to_bot(bot_reply_event)
+    assert processor.MessageProcessor.get_reply_target_id(other_reply_event) == "other"
     assert not processor.MessageProcessor.is_reply_to_bot(other_reply_event)
+
+
+def test_keyword_metadata_does_not_invite_a_reply(addressing_modules):
+    processor, _checker = addressing_modules
+    event = _Event([_Plain("璃月")], "璃月")
+
+    current = processor.MessageProcessor.add_metadata_to_message(
+        event,
+        "璃月",
+        False,
+        True,
+        trigger_type="keyword",
+    )
+    cached = processor.MessageProcessor.add_metadata_from_cache(
+        "璃月",
+        "user_1",
+        "测试用户",
+        None,
+        False,
+        True,
+        trigger_type="keyword",
+    )
+
+    for rendered in (current, cached):
+        assert "命中了配置关键词" in rendered
+        assert "不代表消息在对你说" in rendered
+        assert "自然回应" not in rendered

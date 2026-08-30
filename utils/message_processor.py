@@ -259,7 +259,7 @@ class MessageProcessor:
             include_timestamp: 是否包含时间戳
             include_sender_info: 是否包含发送者信息
             mention_info: 统一的@解析结果（可包含@AI/@他人/@全体、重复@等复合场景）
-            trigger_type: 触发方式，可选值: "at", "keyword", "ai_decision"
+            trigger_type: 触发方式，可选值: "at", "keyword", "direct", "ai_decision"
             poke_info: 戳一戳信息字典（v1.0.9新增）。
                 注意：本方法内未使用此参数，戳一戳提示已改为由上层流程
                 （build_persistent_poke_event_text + format_context_for_ai）注入。
@@ -356,11 +356,11 @@ class MessageProcessor:
                         )
                 elif trigger_type == "keyword":
                     system_notice = (
-                        f"[系统提示]注意，这条消息中出现了和你有关的信息，"
-                        f"发送者是{sender_info_text}。"
-                        f"请先结合最近上下文理解对方现在在聊什么、这句话主要是对谁说的，"
-                        f"然后像正常聊天一样自然回应。"
+                        f"[系统提示]这条消息命中了配置关键词，发送者是{sender_info_text}。"
+                        "关键词只表示它进入了判断流程，不代表消息在对你说，也不代表需要回应。"
                     )
+                elif trigger_type == "direct":
+                    system_notice = f"[系统提示]当前消息明确指向机器人，发送者是{sender_info_text}。"
                 elif trigger_type == "ai_decision":
                     system_notice = f"[系统提示]注意，你看到了这条消息，发送这条消息的人是{sender_info_text}"
                 else:
@@ -443,7 +443,7 @@ class MessageProcessor:
             include_timestamp: 是否包含时间戳
             include_sender_info: 是否包含发送者信息
             mention_info: 统一的@解析结果（可包含@AI/@他人/@全体、重复@等复合场景）
-            trigger_type: 触发方式，可选值: "at", "keyword", "ai_decision"
+            trigger_type: 触发方式，可选值: "at", "keyword", "direct", "ai_decision"
             poke_info: 戳一戳信息字典（v1.0.9新增）。
                 注意：本方法内未使用此参数，替补路径同 add_metadata_to_message。
                 保留此参数仅为兼容旧调用签名。
@@ -554,7 +554,12 @@ class MessageProcessor:
                             f"@你的那个人是{sender_info_text}"
                         )
                 elif trigger_type == "keyword":
-                    system_notice = f"[系统提示]注意，你刚刚发现这条消息里面包含和你有关的信息，这条消息的发送者是{sender_info_text}"
+                    system_notice = (
+                        f"[系统提示]这条缓存消息命中了配置关键词，发送者是{sender_info_text}。"
+                        "关键词只表示它进入了判断流程，不代表消息在对你说，也不代表需要回应。"
+                    )
+                elif trigger_type == "direct":
+                    system_notice = f"[系统提示]当前消息明确指向机器人，发送者是{sender_info_text}。"
                 elif trigger_type == "ai_decision":
                     system_notice = f"[系统提示]注意，你看到了这条消息，发送这条消息的人是{sender_info_text}"
                 else:
@@ -752,6 +757,34 @@ class MessageProcessor:
             return True
 
     @staticmethod
+    def get_reply_target_id(event: AstrMessageEvent) -> str | None:
+        """Return the sender ID referenced by the first structured reply.
+
+        Args:
+            event: Incoming message event.
+
+        Returns:
+            The referenced sender ID, or None when the message is not a reply.
+        """
+        try:
+            message_chain = getattr(
+                getattr(event, "message_obj", None), "message", None
+            )
+            if message_chain is None:
+                return None
+
+            for component in message_chain:
+                if not isinstance(component, Reply):
+                    continue
+                sender_id = getattr(component, "sender_id", None)
+                if sender_id is not None and str(sender_id).strip():
+                    return str(sender_id)
+            return None
+        except Exception as e:
+            logger.warning(f"Reply target detection failed: {e}")
+            return None
+
+    @staticmethod
     def is_reply_to_bot(event: AstrMessageEvent) -> bool:
         """Return whether a structured reply targets this bot.
 
@@ -763,19 +796,10 @@ class MessageProcessor:
         """
         try:
             bot_id = str(event.get_self_id() or "")
-            message_chain = getattr(
-                getattr(event, "message_obj", None), "message", None
-            )
-            if not bot_id or message_chain is None:
-                return False
-
-            return any(
-                isinstance(component, Reply)
-                and str(getattr(component, "sender_id", "") or "") == bot_id
-                for component in message_chain
-            )
+            target_id = MessageProcessor.get_reply_target_id(event)
+            return bool(bot_id and target_id and target_id == bot_id)
         except Exception as e:
-            logger.warning(f"Reply target detection failed: {e}")
+            logger.warning(f"Reply target comparison failed: {e}")
             return False
 
     @staticmethod

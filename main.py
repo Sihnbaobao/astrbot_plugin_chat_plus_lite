@@ -282,7 +282,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             "takeover_group_reply", True
         )  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
         self.group_reply_scope = self._cfg_choice(
-            "group_reply_scope", "addressed", {"addressed", "ambient"}
+            "group_reply_scope", "ambient", {"addressed", "ambient"}
         )
         self.enable_user_blacklist = self._cfg_bool("enable_user_blacklist", False)
         self.blacklist_user_ids = self._cfg_list("blacklist_user_ids", [])
@@ -1682,15 +1682,95 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         is_poke_to_bot = bool(
             isinstance(_poke_payload, dict) and _poke_payload.get("is_poke_bot")
         )
-        is_reply_to_bot = MessageProcessor.is_reply_to_bot(event)
-        is_direct_address = bool(
-            is_at_message or has_trigger_keyword or is_poke_to_bot or is_reply_to_bot
+        bot_id = str(event.get_self_id() or "")
+        reply_target_id = MessageProcessor.get_reply_target_id(event)
+        is_reply_to_bot = bool(bot_id and reply_target_id and reply_target_id == bot_id)
+        is_reply_to_other = bool(reply_target_id and reply_target_id != bot_id)
+        is_explicitly_addressed = bool(
+            is_at_message or is_poke_to_bot or is_reply_to_bot
         )
+        # Keyword matches enter the ambient decision flow but are not proof that
+        # the sender is talking to the bot.
+        is_direct_address = bool(is_explicitly_addressed or has_trigger_keyword)
+        unaddressed_group_message = not is_private and not is_direct_address
         group_reply_blocked = (
-            not is_private
-            and self.group_reply_scope == "addressed"
-            and not is_direct_address
+            unaddressed_group_message and self.group_reply_scope == "addressed"
         )
+
+        message_obj = getattr(event, "message_obj", None)
+        message_chain = getattr(message_obj, "message", None)
+        if message_chain is None:
+            current_plain_text = str(event.get_message_str() or "")
+            has_media_component = False
+        else:
+            current_plain_text = "".join(
+                str(getattr(component, "text", "") or "")
+                for component in message_chain
+                if isinstance(component, Plain)
+            )
+            media_component_types = {
+                "animation",
+                "audio",
+                "face",
+                "file",
+                "flashimage",
+                "image",
+                "marketface",
+                "record",
+                "video",
+            }
+            has_media_component = False
+            for component in message_chain:
+                if isinstance(component, dict):
+                    component_type = component.get("type", "")
+                else:
+                    component_type = (
+                        getattr(component, "type", "") or type(component).__name__
+                    )
+                if (
+                    str(component_type).replace("_", "").lower()
+                    in media_component_types
+                ):
+                    has_media_component = True
+                    break
+        compact_current_text = re.sub(r"\s+", "", current_plain_text)
+        current_has_question_intent = bool(
+            re.search(
+                r"[?？]|(?:吗|么|呢|为什么|怎么|如何|什么|谁|哪里|哪儿|多少|几|能不能|有没有)",
+                current_plain_text,
+            )
+        )
+        message_outline = str(event.get_message_str() or "").strip().lower()
+        is_low_information_short_message = bool(
+            len(compact_current_text) <= 8
+            and not current_has_question_intent
+            and (
+                re.fullmatch(
+                    r"(?:嗯+|哦+|噢+|啊+|呃+|额+|哈哈+|呵呵+|确实|对|对的|是的|"
+                    r"好|好的|行|可以|不行|没事|算了|随便|继续|然后|来了|走了|"
+                    r"懂了|知道了|收到|晚安|再见)[。！!~～]*",
+                    compact_current_text,
+                )
+                or compact_current_text.endswith(("吧", "啦", "哦", "呀"))
+                and len(compact_current_text) <= 6
+                or re.search(
+                    r"^(?:我|在|先|要|准备).{0,5}(?:睡|睡觉|睡了|吃饭|走了|"
+                    r"听着|上班|下班|回家|出门)",
+                    compact_current_text,
+                )
+            )
+        )
+        is_media_only_message = bool(
+            not compact_current_text
+            and (
+                has_media_component
+                or re.fullmatch(
+                    r"\[(?:图片|表情|视频|语音|文件|动画|image|face|video|record|file)(?::[^\]]*)?\]",
+                    message_outline,
+                )
+            )
+        )
+
         if group_reply_blocked:
             # Unaddressed group messages remain cacheable but skip Smart and vision work.
             use_smart_batch = False
@@ -1772,6 +1852,26 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         default=str,
                     ).encode("utf-8")
                 ).hexdigest()
+
+        ambient_attention_blocked = bool(
+            self.group_reply_scope == "ambient"
+            and unaddressed_group_message
+            and (
+                is_reply_to_other
+                or (
+                    isinstance(mention_info, dict)
+                    and mention_info.get("has_at_others")
+                    and not mention_info.get("has_at_ai")
+                )
+                or is_at_all_message
+                or is_media_only_message
+                or is_low_information_short_message
+                or (is_emoji_message and not compact_current_text)
+            )
+        )
+        if ambient_attention_blocked:
+            # Let substantive ambient messages reach the model, but discard obvious noise first.
+            use_smart_batch = False
 
         if is_private and emoji_signature and self.private_collapse_duplicate_emoji:
             try:
@@ -1965,7 +2065,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             emoji_signature=emoji_signature,
             is_at_all_message=is_at_all_message,
             persistent_poke_event_text=persistent_poke_event_text,
-            force_defer_image_processing=group_reply_blocked,
+            force_defer_image_processing=False,
         )
         if not result[0]:
             if use_smart_batch:
@@ -2243,9 +2343,12 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.info(
                     f"Forced handling for private {private_media_kind or 'media'}-only message"
                 )
+        elif ambient_attention_blocked:
+            should_reply = False
+            logger.info("[Ambient attention] Skipping obvious noise before decision AI")
         elif group_reply_blocked:
             should_reply = False
-            logger.debug(
+            logger.info(
                 "[Group boundary] Skipping decision AI for an unaddressed group message"
             )
         else:
@@ -2799,9 +2902,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     f"[决策AI] 记忆插件({memory_mode}模式)不可用，判定前跳过记忆注入"
                 )
 
-        # 判断是否需要进行AI决策
-        # 所有消息一律交给读空气AI按人格判断：@、触发关键词（bot名/“璃月”等）都只是
-        # 判断上下文里的信息，不因命中而必回；keyword_smart_mode=关时关键词命中才按“必回”处理
+        # Decide whether the current message should reach the reply model.
+        # Ambient group messages still use AI attention after the deterministic noise gate;
+        # direct triggers and keyword_smart_mode keep their existing semantics.
         should_do_ai_decision = keyword_smart_mode or not has_trigger_keyword
 
         if should_do_ai_decision:
@@ -2834,6 +2937,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 configured_persona_name=self.decision_ai_persona_name,
                 reply_tendency=self.decision_ai_reply_tendency,
                 is_private=is_private,
+                is_directly_addressed=is_explicitly_addressed,
+                is_reply_to_other=is_reply_to_other,
             )
 
             if self.debug_mode:
@@ -2896,8 +3001,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         处理消息内容（图片处理、上下文格式化）
 
         Args:
-            force_defer_image_processing: Defer vision inference for messages
-                that are outside the configured group reply scope.
+            force_defer_image_processing: Defer vision inference for unaddressed
+                group messages until the reply decision accepts the conversation.
 
         Returns:
             (should_continue, original_message_text, processed_message, formatted_context,
@@ -3031,10 +3136,14 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 确定触发方式
         trigger_type = None
-        if has_trigger_keyword:
-            trigger_type = "keyword"
-        elif is_at_message:
+        if real_is_at_message:
             trigger_type = "at"
+        elif has_trigger_keyword:
+            trigger_type = "keyword"
+        elif MessageProcessor.is_reply_to_bot(event) or (
+            isinstance(poke_info, dict) and poke_info.get("is_poke_bot")
+        ):
+            trigger_type = "direct"
         else:
             trigger_type = "ai_decision"
 
