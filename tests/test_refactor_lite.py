@@ -366,10 +366,38 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
         "拟人",
     ):
         assert removed not in prompt
-    assert "是否回复" in prompt
-    assert "yes或no" in prompt
-    assert "不能把它当成新的邀请" in prompt
-    assert "不能仅靠历史缓存" in prompt
+    assert '<decision_contract version="2" task="should_reply">' in prompt
+    assert "ownership = bot | other | open | unclear" in prompt
+    assert "information = noise | reaction | substantive" in prompt
+    assert "continuation = yes | no" in prompt
+    assert "persona_willingness = yes | no" in prompt
+    assert "open 是正式参与入口" in prompt
+    assert "是否开口由人格决定，而不是由“是否@”决定" in prompt
+    assert "平台没有检测到机器人信号" in prompt
+    assert "不等于消息不能开放参与" in prompt
+    assert "关键词命中只是触发信号" in prompt
+    assert "那是什么歌" in prompt
+    assert "最近一条真实机器人回复" in prompt
+    assert "【📦近期未回复】" in prompt
+    assert "地震了 / Miku好可爱" in prompt
+    assert "还是来吧 / 我听着睡觉" in prompt
+    assert "图片占位符、关键词、记忆和人格兴趣都不是单独的回复理由" in prompt
+    assert "严格的小写枚举值：yes 或 no" in prompt
+
+    source = (UTILS_DIR / "decision_ai.py").read_text(encoding="utf-8")
+    assert "[系统信息-群聊目标信号]" in source
+    assert "不能直接断言消息没有指向机器人" in source
+    assert "紧邻的机器人真实回复只可用于确认连续话轮" in source
+    assert "[persona_willingness preset: persona]" in source
+    assert "当前消息是否明确指向机器人" not in source
+    assert "请只基于当前消息判断是否回复" not in source
+    assert "普通闲聊、寒暄、纯陈述一律不回复" not in source
+    assert "不确定时倾向于回复（yes）" not in source
+
+    main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
+    for preset in ("reserved", "active", "persona"):
+        assert f"[persona_willingness preset: {preset}]" in main_source
+    assert "仅回复直接@、明确提问、求助" not in main_source
 
     assert "一对一私聊" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
     assert "安静、冷淡或话少" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT

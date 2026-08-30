@@ -979,22 +979,19 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         tendency = self.decision_ai_reply_tendency
         if tendency == "reserved":
             return (
-                "\n\n【本次判断为保守模式】：\n"
-                "- 普通闲聊、寒暄、纯陈述一律不回复（返回no）\n"
-                "- 只回复明确需要你回应的消息：直接@你、直接提问、求助、触发关键词且与你有实质关系\n"
-                "- 不确定时一律返回no\n"
+                "\n\n[persona_willingness preset: reserved]\n"
+                "在人格意愿判断阶段提高开口门槛：更偏好安静、简短或不打扰；"
+                "不改变 ownership / information / continuation 的判定，也不能覆盖 other 或 unclear 的立即 no。\n"
             )
         if tendency == "active":
             return (
-                "\n\n【本次判断为积极模式】：\n"
-                "- 适度放宽判断标准，主动参与群聊互动\n"
-                "- 寒暄和普通闲聊也可以接话，不确定时倾向于回复（yes）\n"
+                "\n\n[persona_willingness preset: active]\n"
+                "在人格意愿判断阶段降低开口门槛：更愿意参与有内容的开放话题和有效续话；"
+                "不把 reaction、noise 或不明归属变成 substantive，也不能覆盖 other 或 unclear 的立即 no。\n"
             )
         return (
-            "\n\n【本次判断以人格社交倾向为最高优先级】：\n"
-            "- 若人格设定为沉默寡言/话少/冷淡型，普通闲聊默认不回复\n"
-            "- 仅回复直接@、明确提问、求助、触发关键词且与你有实质关系的消息\n"
-            "- 不确定时以人格社交倾向为最终依据\n"
+            "\n\n[persona_willingness preset: persona]\n"
+            "完全依据当前人格的性格、兴趣、心情、关系和聊天氛围判断是否愿意开口。\n"
         )
 
     async def _api_prompts(self):
