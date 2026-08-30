@@ -2411,6 +2411,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 matched_trigger_keyword=matched_trigger_keyword,
                 original_message_text=original_message_text,
                 force_ai_decision=is_private and bool(private_media_kind),
+                is_directly_addressed=is_explicitly_addressed,
+                is_reply_to_other=is_reply_to_other,
             )
             if image_question_requested and not should_reply:
                 should_reply = True
@@ -2819,12 +2821,16 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         matched_trigger_keyword: str = "",
         original_message_text: str = "",
         force_ai_decision: bool = False,
+        is_directly_addressed: bool = False,
+        is_reply_to_other: bool = False,
     ) -> bool:
         """
         执行AI决策判断（在处理完消息内容后）
 
         Args:
             force_ai_decision: Keep AI gating for private media in direct mode.
+            is_directly_addressed: Whether the current message explicitly targets the bot.
+            is_reply_to_other: Whether the current message replies to another user.
 
         Returns:
             True=应该回复, False=不回复
@@ -2937,7 +2943,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 configured_persona_name=self.decision_ai_persona_name,
                 reply_tendency=self.decision_ai_reply_tendency,
                 is_private=is_private,
-                is_directly_addressed=is_explicitly_addressed,
+                is_directly_addressed=is_directly_addressed,
                 is_reply_to_other=is_reply_to_other,
             )
 

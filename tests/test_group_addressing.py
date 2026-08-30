@@ -1,5 +1,6 @@
 """Regression tests for deterministic group addressing."""
 
+import ast
 import importlib.util
 import sys
 import types
@@ -117,6 +118,29 @@ def addressing_modules(monkeypatch):
         _load_module(monkeypatch, "message_processor"),
         _load_module(monkeypatch, "keyword_checker"),
     )
+
+
+def test_decision_address_metadata_is_passed_through():
+    tree = ast.parse((REPO_ROOT / "main.py").read_text(encoding="utf-8"))
+    decision_method = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_check_ai_decision"
+    )
+    parameter_names = {argument.arg for argument in decision_method.args.args}
+    assert {"is_directly_addressed", "is_reply_to_other"} <= parameter_names
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_check_ai_decision"
+    ]
+    assert len(calls) == 1
+    keyword_names = {keyword.arg for keyword in calls[0].keywords}
+    assert {"is_directly_addressed", "is_reply_to_other"} <= keyword_names
 
 
 def test_quoted_reply_cannot_fake_at_or_keyword(addressing_modules):
