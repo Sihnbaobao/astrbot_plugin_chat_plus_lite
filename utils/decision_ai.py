@@ -63,6 +63,7 @@ class DecisionAI:
     ownership = bot | other | open | unclear
     information = noise | reaction | substantive
     continuation = yes | no
+    participation = direct | side | open | none
     persona_willingness = yes | no
   </state_model>
 
@@ -86,6 +87,7 @@ class DecisionAI:
            ownership = unclear
 
        关键词命中只是触发信号，不自动等于 bot；文本中的人格名字也要按句子实际用法判断。
+       ownership == other 只表示“直接对象是别人”，不等于机器人永远不能旁观插话。
        open 是正式参与入口，不是 bot 的降级例外：机器人可以像普通群成员一样自然加入开放话题。
 
     3. information 按当前消息实际提供的内容赋值：
@@ -93,21 +95,30 @@ class DecisionAI:
        - reaction：对前一句的简单反应、附和或单独主题词，例如“是吗”“奇怪”“哈哈”“确实”“歌”。
        - substantive：具体事实、观点、问题、请求、经历、明确社交邀请或可展开的话题，例如“地震了”“Miku好可爱”“那是什么歌”。
 
+    4. participation 表示机器人可以采取的说话姿态：
+       - direct：当前消息在和机器人说，或是唯一明确的机器人续话。
+       - side：当前消息直接面向其他用户，但正文也对群里开放；机器人有独立、相关且不抢话头的补充可以说。
+       - open：当前消息没有特定对象，机器人可以作为群成员自然参与。
+       - none：没有可靠或自然的发言入口。
+
+       对 other 消息，只有在正文包含公共话题、机器人自己的经历/观点/知识能够自然补充，且不是简单替对方回答时，才可为 side。
+       “@小明你几点到”这类只等待小明回答的消息通常是 none；“@小明这个游戏我也玩过”才可能是 side。
+
     短消息不必然是 noise。有效短问题、明确社交邀请或唯一指代的续问仍可为 substantive。
   </classify>
 
   <decide>
-    1. ownership == other 且没有同时向机器人提问：立即返回 no。
-    2. ownership == unclear：立即返回 no。不要用人格兴趣、旧历史或记忆猜测对话对象。
-    3. information == noise：通常返回 no；纯图片只有文字明确询问图片时才进入后续判断。
-    4. information == reaction：通常返回 no；只有它是 continuation=yes 且人格自然想承接时，才可继续。
-    5. ownership == bot，或 ownership == open 且 information == substantive，或 continuation == yes：
-       读取人格并判断 persona_willingness。人格真正关心当前内容、愿意帮助、想表达观点或自然接话时为 yes；
+    1. ownership == unclear or participation == none：立即返回 no。不要用人格兴趣、旧历史或记忆猜测对话对象。
+    2. information == noise：通常返回 no；纯图片只有文字明确询问图片时才进入后续判断。
+    3. information == reaction：通常返回 no；只有它是 continuation=yes 且人格自然想承接时，才可继续。
+    4. participation in {direct, side, open} 且信息有实质内容或是有效 continuation 时，读取人格并判断 persona_willingness。
+       人格真正关心当前内容、愿意帮助、想表达观点或自然接话时为 yes；
        人格无兴趣、没心情、觉得重复、冒犯、打扰或已经说完时为 no。
+    5. participation == side 时，yes 只表示“补充一句自己的相关内容”。正式回复不能冒充被@或被回复的用户，不能替对方承诺，也不能强行把话题转给自己。
     6. ownership == open 时，不要因为内容可能有趣就自动插话；必须能指出人格具体能贡献的内容。
 
     最终结果：reply = persona_willingness，但前面的立即返回规则优先。
-    这意味着机器人仍然观察开放群聊，是否开口由人格决定，而不是由“是否@”决定。
+    这意味着机器人既能观察开放群聊，也能在别人对话中自然补充一句；是否开口由人格决定，而不是由“是否@”决定。
   </decide>
 
   <examples>
@@ -116,6 +127,9 @@ class DecisionAI:
     是吗 / 奇怪 / 歌 -> reaction -> 通常 no。
     那是什么歌 -> 只有最近一条真实机器人回复唯一提到一首歌时 continuation=yes，否则 unclear；前者可按人格判断。
     地震了 / Miku好可爱 -> open + substantive -> 按人格的兴趣和性格判断，可自然插话。
+    @小明你几点到 -> other + substantive，但只是等待小明回答 -> participation=none -> no。
+    @小明这个游戏我也玩过 -> other + substantive -> participation=side -> 人格有兴趣时可以补充一句。
+    回复小明：哈哈 -> other + reaction -> no；不能因为直接对象是别人就抢着接话。
     还是来吧 / 我听着睡觉 -> unclear 或 noise；不能用旧历史补写对话对象。
   </examples>
 
@@ -544,6 +558,8 @@ class DecisionAI:
                     f"平台是否检测到@机器人、戳机器人或结构化回复机器人："
                     f"{'是' if is_directly_addressed else '否'}\n"
                     f"当前消息是否结构化回复其他用户：{'是' if is_reply_to_other else '否'}\n"
+                    "回复或@其他用户只说明直接对象是别人，不等于机器人禁止旁观参与；有正文时，继续判断是否存在自然的独立补充。"
+                    "如果参与，不能冒充被回复者、替对方承诺或强行接管话题。\n"
                     "平台信号为否时，仍须检查当前文字是否点名机器人，以及它是否为紧邻机器人真实回复的明确续话；"
                     "不能直接断言消息没有指向机器人。普通历史、【📦近期未回复】缓存和长期记忆只能作为背景，"
                     "不能制造对话对象、补写当前消息的主语或单独成为回复理由。"
@@ -564,7 +580,7 @@ class DecisionAI:
                 tendency_prompt = (
                     "\n\n[persona_willingness preset: reserved]\n"
                     "在人格意愿判断阶段提高开口门槛：更偏好安静、简短或不打扰；"
-                    "不改变 ownership / information / continuation 的判定，也不能覆盖 other 或 unclear 的立即 no。\n"
+                    "不改变 ownership / information / continuation / participation 的判定，也不能覆盖 unclear 的立即 no；对 other 也不能强行制造 side 入口。\n"
                 )
             elif reply_tendency == "active":
                 tendency_prompt = (

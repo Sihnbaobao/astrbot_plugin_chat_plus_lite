@@ -370,8 +370,11 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "ownership = bot | other | open | unclear" in prompt
     assert "information = noise | reaction | substantive" in prompt
     assert "continuation = yes | no" in prompt
+    assert "participation = direct | side | open | none" in prompt
     assert "persona_willingness = yes | no" in prompt
     assert "open 是正式参与入口" in prompt
+    assert "ownership == other 只表示“直接对象是别人”" in prompt
+    assert "不能冒充被@或被回复的用户" in prompt
     assert "是否开口由人格决定，而不是由“是否@”决定" in prompt
     assert "平台没有检测到机器人信号" in prompt
     assert "不等于消息不能开放参与" in prompt
@@ -380,6 +383,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "最近一条真实机器人回复" in prompt
     assert "【📦近期未回复】" in prompt
     assert "地震了 / Miku好可爱" in prompt
+    assert "@小明这个游戏我也玩过" in prompt
+    assert "回复小明：哈哈" in prompt
     assert "还是来吧 / 我听着睡觉" in prompt
     assert "图片占位符、关键词、记忆和人格兴趣都不是单独的回复理由" in prompt
     assert "严格的小写枚举值：yes 或 no" in prompt
@@ -388,6 +393,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "[系统信息-群聊目标信号]" in source
     assert "不能直接断言消息没有指向机器人" in source
     assert "紧邻的机器人真实回复只可用于确认连续话轮" in source
+    assert "回复或@其他用户只说明直接对象是别人" in source
+    assert "不能冒充被回复者、替对方承诺或强行接管话题" in source
     assert "[persona_willingness preset: persona]" in source
     assert "当前消息是否明确指向机器人" not in source
     assert "请只基于当前消息判断是否回复" not in source
@@ -398,6 +405,10 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     for preset in ("reserved", "active", "persona"):
         assert f"[persona_willingness preset: {preset}]" in main_source
     assert "仅回复直接@、明确提问、求助" not in main_source
+    assert (
+        "is_at_all_message\n                    )\n                    and not compact_current_text"
+        in main_source
+    )
 
     assert "一对一私聊" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
     assert "安静、冷淡或话少" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT

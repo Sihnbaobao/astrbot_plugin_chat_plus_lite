@@ -981,7 +981,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             return (
                 "\n\n[persona_willingness preset: reserved]\n"
                 "在人格意愿判断阶段提高开口门槛：更偏好安静、简短或不打扰；"
-                "不改变 ownership / information / continuation 的判定，也不能覆盖 other 或 unclear 的立即 no。\n"
+                "不改变 ownership / information / continuation / participation 的判定，也不能覆盖 unclear 的立即 no；对 other 也不能强行制造 side 入口。\n"
             )
         if tendency == "active":
             return (
@@ -1854,13 +1854,18 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             self.group_reply_scope == "ambient"
             and unaddressed_group_message
             and (
-                is_reply_to_other
-                or (
-                    isinstance(mention_info, dict)
-                    and mention_info.get("has_at_others")
-                    and not mention_info.get("has_at_ai")
+                (
+                    (
+                        is_reply_to_other
+                        or (
+                            isinstance(mention_info, dict)
+                            and mention_info.get("has_at_others")
+                            and not mention_info.get("has_at_ai")
+                        )
+                        or is_at_all_message
+                    )
+                    and not compact_current_text
                 )
-                or is_at_all_message
                 or is_media_only_message
                 or is_low_information_short_message
                 or (is_emoji_message and not compact_current_text)
