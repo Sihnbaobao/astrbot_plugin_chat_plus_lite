@@ -65,6 +65,16 @@
                 "type": "bool",
                 "default": true,
                 "hint": "开启=由本插件的读空气全权决定是否回复，挡住 AstrBot 主对话（避免 @/点名被兜底必回）；关闭=交给 AstrBot 默认行为。"
+            },
+            "group_reply_scope": {
+                "description": "群聊响应范围",
+                "type": "string",
+                "options": [
+                    "addressed",
+                    "ambient"
+                ],
+                "default": "addressed",
+                "hint": "addressed=仅处理@机器人、关键词、回复机器人消息或戳机器人；ambient=普通群消息也交给读空气判断。"
             }
         }
     },

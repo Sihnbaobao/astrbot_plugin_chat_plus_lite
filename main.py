@@ -281,6 +281,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.takeover_group_reply = self._cfg_bool(
             "takeover_group_reply", True
         )  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
+        self.group_reply_scope = self._cfg_choice(
+            "group_reply_scope", "addressed", {"addressed", "ambient"}
+        )
         self.enable_user_blacklist = self._cfg_bool("enable_user_blacklist", False)
         self.blacklist_user_ids = self._cfg_list("blacklist_user_ids", [])
 
@@ -483,6 +486,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         logger.info(f"启用的群组: {self.enabled_groups} (留空=全部)")
         logger.info(f"详细日志模式: {'开启' if self.debug_mode else '关闭'}")
+        logger.info(f"Group reply scope: {self.group_reply_scope}")
         logger.info(f"Image read mode: {self.image_read_mode}")
         logger.info("=" * 50)
 
@@ -1670,8 +1674,28 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         # 步骤2.8: 提前检测@提及信息
         mention_info = await self._check_mention_others(event)
 
-        # 关键逻辑：触发关键词等同于@消息
-        should_treat_as_at = is_at_message or has_trigger_keyword
+        _poke_payload = (
+            poke_info_for_probability.get("poke_info")
+            if isinstance(poke_info_for_probability, dict)
+            else None
+        )
+        is_poke_to_bot = bool(
+            isinstance(_poke_payload, dict) and _poke_payload.get("is_poke_bot")
+        )
+        is_reply_to_bot = MessageProcessor.is_reply_to_bot(event)
+        is_direct_address = bool(
+            is_at_message or has_trigger_keyword or is_poke_to_bot or is_reply_to_bot
+        )
+        group_reply_blocked = (
+            not is_private
+            and self.group_reply_scope == "addressed"
+            and not is_direct_address
+        )
+        if group_reply_blocked:
+            # Unaddressed group messages remain cacheable but skip Smart and vision work.
+            use_smart_batch = False
+
+        should_treat_as_at = is_direct_address
 
         # Detect stickers independently from ordinary images.
         is_emoji_message = False
@@ -1907,9 +1931,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 return
 
         # @消息/关键词触发提前检查是否已被其他插件处理
-        if is_at_message or has_trigger_keyword:
+        if is_direct_address:
             if ReplyHandler.check_if_already_replied(event):
-                trigger_label = "@消息" if is_at_message else "关键词触发消息"
+                trigger_label = "@消息" if is_at_message else "直接触发消息"
                 logger.info(f"{trigger_label}已被其他插件处理,跳过后续流程")
                 return
 
@@ -1941,6 +1965,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             emoji_signature=emoji_signature,
             is_at_all_message=is_at_all_message,
             persistent_poke_event_text=persistent_poke_event_text,
+            force_defer_image_processing=group_reply_blocked,
         )
         if not result[0]:
             if use_smart_batch:
@@ -2218,6 +2243,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.info(
                     f"Forced handling for private {private_media_kind or 'media'}-only message"
                 )
+        elif group_reply_blocked:
+            should_reply = False
+            logger.debug(
+                "[Group boundary] Skipping decision AI for an unaddressed group message"
+            )
         else:
             decision_context = formatted_context
             if use_smart_batch and smart_batch_messages:
@@ -2860,9 +2890,14 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         emoji_signature: str = "",
         is_at_all_message: bool = False,
         persistent_poke_event_text: str = "",
+        force_defer_image_processing: bool = False,
     ) -> tuple:
         """
         处理消息内容（图片处理、上下文格式化）
+
+        Args:
+            force_defer_image_processing: Defer vision inference for messages
+                that are outside the configured group reply scope.
 
         Returns:
             (should_continue, original_message_text, processed_message, formatted_context,
@@ -2913,7 +2948,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             self.image_description_cache,
             self.max_images_per_message,
             self_id=str(event.get_self_id()),
-            defer_image_processing=self.image_read_mode == "lazy",
+            defer_image_processing=(
+                self.image_read_mode == "lazy" or force_defer_image_processing
+            ),
         )
 
         if not should_continue:

@@ -14,7 +14,7 @@ import re
 from datetime import datetime
 
 from astrbot.api.all import *
-from astrbot.api.message_components import At
+from astrbot.core.message.components import At, Plain, Reply
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -752,6 +752,33 @@ class MessageProcessor:
             return True
 
     @staticmethod
+    def is_reply_to_bot(event: AstrMessageEvent) -> bool:
+        """Return whether a structured reply targets this bot.
+
+        Args:
+            event: Incoming message event.
+
+        Returns:
+            True when a Reply component references a message sent by this bot.
+        """
+        try:
+            bot_id = str(event.get_self_id() or "")
+            message_chain = getattr(
+                getattr(event, "message_obj", None), "message", None
+            )
+            if not bot_id or message_chain is None:
+                return False
+
+            return any(
+                isinstance(component, Reply)
+                and str(getattr(component, "sender_id", "") or "") == bot_id
+                for component in message_chain
+            )
+        except Exception as e:
+            logger.warning(f"Reply target detection failed: {e}")
+            return False
+
+    @staticmethod
     def is_at_message(event: AstrMessageEvent) -> bool:
         """
         判断消息是否@了bot
@@ -797,8 +824,17 @@ class MessageProcessor:
                     if len(origin_parts) > 0:
                         bot_name = origin_parts[0]
 
-                # 获取消息文本
-                message_text = event.get_message_str()
+                # Only inspect top-level Plain components; quoted Reply content is context.
+                message_obj = getattr(event, "message_obj", None)
+                message_chain = getattr(message_obj, "message", None)
+                if message_chain is None:
+                    message_text = event.get_message_str()
+                else:
+                    message_text = "".join(
+                        str(getattr(component, "text", "") or "")
+                        for component in message_chain
+                        if isinstance(component, Plain)
+                    )
 
                 # 强制日志：显示文本@检测的详细信息（用于排查）
                 if DEBUG_MODE:

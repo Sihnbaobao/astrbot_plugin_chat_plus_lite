@@ -7,6 +7,7 @@
 """
 
 from astrbot.api.all import *
+from astrbot.core.message.components import Plain
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -14,6 +15,26 @@ DEBUG_MODE: bool = False
 
 class KeywordChecker:
     """关键词检查工具类"""
+
+    @staticmethod
+    def _get_current_message_text(event: AstrMessageEvent) -> str:
+        """Extract top-level text without including quoted Reply content.
+
+        Args:
+            event: Incoming message event.
+
+        Returns:
+            Text written in the current message, excluding quoted content.
+        """
+        message_obj = getattr(event, "message_obj", None)
+        message_chain = getattr(message_obj, "message", None)
+        if message_chain is None:
+            return event.get_message_outline() or ""
+        return "".join(
+            str(getattr(component, "text", "") or "")
+            for component in message_chain
+            if isinstance(component, Plain)
+        )
 
     @staticmethod
     def _check_keywords(
@@ -34,8 +55,8 @@ class KeywordChecker:
             return False
 
         try:
-            # 获取消息文本
-            message_text = event.get_message_outline()
+            # Quoted Reply content is context, not current user text.
+            message_text = KeywordChecker._get_current_message_text(event)
 
             # 检查是否包含关键词
             for keyword in keywords:
@@ -84,8 +105,8 @@ class KeywordChecker:
             return False, ""
 
         try:
-            # 获取消息文本
-            message_text = event.get_message_outline()
+            # Quoted Reply content is context, not current user text.
+            message_text = KeywordChecker._get_current_message_text(event)
 
             # 检查是否包含关键词
             for keyword in keywords:

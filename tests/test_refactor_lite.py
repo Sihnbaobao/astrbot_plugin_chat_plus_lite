@@ -161,6 +161,9 @@ def _install_astrbot_stubs(monkeypatch):
     api_event = types.ModuleType("astrbot.api.event")
     api_platform = types.ModuleType("astrbot.api.platform")
     core = types.ModuleType("astrbot.core")
+    core_message = types.ModuleType("astrbot.core.message")
+    core_components = types.ModuleType("astrbot.core.message.components")
+    core_components.Plain = object
     core_provider = types.ModuleType("astrbot.core.provider")
     entities = types.ModuleType("astrbot.core.provider.entities")
 
@@ -181,6 +184,8 @@ def _install_astrbot_stubs(monkeypatch):
         "astrbot.api.event": api_event,
         "astrbot.api.platform": api_platform,
         "astrbot.core": core,
+        "astrbot.core.message": core_message,
+        "astrbot.core.message.components": core_components,
         "astrbot.core.provider": core_provider,
         "astrbot.core.provider.entities": entities,
     }
