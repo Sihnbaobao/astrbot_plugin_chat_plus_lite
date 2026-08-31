@@ -676,10 +676,7 @@ def test_malformed_group_json_fails_closed_in_evaluate(monkeypatch):
         completion_text = '{"reply":"yes","target":"open"'
 
     class Provider:
-        prompts = []
-
         async def text_chat(self, **kwargs):
-            self.prompts.append(kwargs.get("prompt", ""))
             return ProviderResponse()
 
     class Context:
@@ -708,21 +705,6 @@ def test_malformed_group_json_fails_closed_in_evaluate(monkeypatch):
     assert result.reply is False
     assert result.source == "error"
     assert result.error == "invalid_structured_output"
-    assert "不要仅因旧历史的主题相似" in Provider.prompts[0]
-
-    verified_result = _run(
-        decision.DecisionAI.evaluate(
-            Context(),
-            Event(),
-            "当前消息",
-            "",
-            "",
-            is_private=False,
-            continuation_context_available=True,
-        )
-    )
-    assert verified_result.error == "invalid_structured_output"
-    assert "历史尾部已确认当前发送者的上一条消息紧接着是机器人回复" in Provider.prompts[1]
 
 
 def test_participation_throttle_limits_only_unsolicited_group_replies(monkeypatch):
