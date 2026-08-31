@@ -102,7 +102,7 @@ DecisionAI 使用当前 Persona、当前发送者、当前正文、目标 signal
 - confidence 和有界 topic_key；
 - reply：yes 或 no。
 
-判断顺序必须是先确认消息对象和信息量，再判断 Persona 是否有真实意愿。模型“能回答”不等于 strong interest。
+判断顺序必须是先确认消息对象和信息量，再判断 Persona 是否有真实意愿。模型“能回答”不等于可参与；weak 只有在存在具体第一人称补充时，才可能支持 open 的一句低打扰发言。
 
 ## Phase 7：本地硬边界
 
@@ -111,7 +111,7 @@ ParticipationDecision normalizer 在模型之后重新执行不可被 prompt 绕
 1. unclear 或 none participation 直接 no。
 2. noise 直接 no；reaction 除有效 continuation 外通常 no。
 3. other 只有独立公共补充才可成为 side。
-4. open 和 side 必须同时满足 strong interest 与具体个人理由。
+4. open 必须有 strong interest，或有具体个人补充的 weak；side 仍必须同时满足 strong interest 与具体个人理由。
 5. direct 也必须有有效 reason_code 和真实意愿；@ 不能覆盖 none。
 6. 未知枚举、空 JSON、JSON 解析失败或不可信输出静默。
 
@@ -168,7 +168,7 @@ ParticipationDecision normalizer 在模型之后重新执行不可被 prompt 绕
 
 ### 没有 @ 却回复了
 
-确认它是 open/side 且有 strong interest 和具体个人理由。这是允许的 Persona 自主参与，不是关键词误触发；如果回复过于频繁，降低预算上限或调整 Persona 边界。
+确认它是 open/side 且有 strong interest，或 open 有具体 weak 个人补充。这是允许的 Persona 自主参与，不是关键词误触发；如果回复过于频繁，降低预算上限或调整 Persona 边界。
 
 ### 所有消息都没有回复
 

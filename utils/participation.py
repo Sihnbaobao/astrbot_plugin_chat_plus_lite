@@ -210,7 +210,7 @@ def normalize_decision_payload(
         return decision.with_reply(False, reason_code="none")
 
     if target == "open":
-        if interest != "strong" or reason_code not in {
+        if interest not in {"strong", "weak"} or reason_code not in {
             "shared_interest",
             "personal_experience",
             "emotional_reaction",

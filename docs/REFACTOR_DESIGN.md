@@ -26,18 +26,18 @@ Persona Presence 的职责是帮助 AstrBot 在群聊中像一个真实群成员
 | --- | --- | --- |
 | direct | 消息在和机器人说，或是唯一明确的机器人续话 | 仍需人格愿意；被 @ 也可以拒绝 |
 | side | 消息直接面向其他用户，但正文是公共话题 | 必须有强烈且具体的个人连接，且只能补充自己的内容 |
-| open | 没有特定对象的公共发言入口 | 默认安静；只有强烈、具体、自然的个人连接才考虑参与 |
+| open | 没有特定对象的公共发言入口 | 默认克制；强烈、具体、自然的个人连接可以展开，较弱但明确的第一人称补充也可以只说一句 |
 | none | 没有可靠的自然发言入口 | 立即静默 |
 
 side 不能替被 @ 的用户作答、替对方承诺、抢走对方的对话，也不能把一句泛泛知识答案包装成个人参与。
 
 ### 2.2 兴趣强度
 
-- strong：当前内容明显击中 Persona，Persona 能马上说出自己的具体经历、观点或情绪。
-- weak：只是相关、可以回答、略有兴趣或知道一些背景。对 open/side 不足以发言。
+- strong：当前内容明显击中 Persona，Persona 现在就想展开说自己的具体经历、观点或情绪。
+- weak：没有强烈冲动，但有具体的第一人称补充，适合低打扰地只说一句；只是相关、可以回答、略有兴趣或知道一些背景，仍然不足以发言。open 可以使用带有效个人理由的 weak，side 不可以。
 - none：不感兴趣、讨厌、疲惫、重复、冒犯、打扰、话题已结束或没有自然切入点。
 
-open 和 side 只有 strong 才能通过硬策略。direct 也必须有真实意愿，直接地址不是强制命令。
+open 有 strong 或具体个人补充的 weak 才能通过硬策略，side 仍只有 strong 才能通过。direct 也必须有真实意愿，直接地址不是强制命令。
 
 ### 2.3 信息级别
 
@@ -62,7 +62,7 @@ open 和 side 只有 strong 才能通过硬策略。direct 也必须有真实意
 
 ### 3.1 group_reply_scope
 
-- ambient：普通群消息可以进入统一参与判断；明显纯媒体、低信息反应和只等待其他人的无正文消息可在模型前快速过滤。开放话题不是默认插话，但强烈、具体的 Persona 连接仍可通过。
+- ambient：普通群消息可以进入统一参与判断；明显纯媒体、低信息反应和只等待其他人的无正文消息可在模型前快速过滤。开放话题不是默认插话，但强烈的 Persona 连接或具体的低打扰个人补充仍可通过。
 - addressed：未明确指向机器人的群消息在决策前静默。明确指向包括平台 @/戳/回复信号、文本中可靠的机器人称呼和触发关键词；这些信号只让消息进入候选，仍不保证模型返回 yes。
 
 
@@ -89,7 +89,7 @@ normalize_decision_payload 是最终边界：
 - target、participation、information、interest、reason_code、confidence 必须属于已知枚举。
 - unclear、none、noise 和 reaction 按规则收敛为静默，只有有效 continuation 可以例外进入后续意愿判断。
 - other 消息没有独立公共补充时必须静默。
-- open/side 没有 strong interest 或没有有效个人理由时必须静默。
+- open 没有 strong interest，也没有具体 weak 个人补充，或 side 没有 strong interest 和有效个人理由时必须静默。
 - reply=no 不能被后续代码重新解释为“可以回答”。
 
 旧 provider 仍可能只返回 yes/no。纯旧格式继续被兼容为一个受限的 direct/open 决策；新代码不得把这个兼容层扩展成新的旁路。看起来像 JSON 但无法解析的响应按失败处理，不用宽松的 yes/no 前缀猜测。
@@ -175,7 +175,7 @@ ProbabilityManager 仍承担会话 key、生命周期和兼容 reset/status 接�
 - keyword_smart_mode 保留旧配置即可，关键词不会绕过判断；
 - 节流使用 45/600/4 默认值。
 
-如果仍然太吵，先提高 DecisionAI Persona 的边界或降低节流上限；不要通过增加关键词把所有消息送进必回路径。如果太安静，先确认 DecisionAI 是否拿到了当前 Persona、当前发送者和真实正文，再调整 active 倾向或缩短节流间隔；不要删除 open/side 的 strong-interest 硬门槛。
+如果仍然太吵，先提高 DecisionAI Persona 的边界或降低节流上限；不要通过增加关键词把所有消息送进必回路径。如果太安静，先确认 DecisionAI 是否拿到了当前 Persona、当前发送者和真实正文，再调整 active 倾向或缩短节流间隔；不要删除 open/side 的个人切入点硬门槛。
 
 ## 11. 验收清单
 

@@ -51,7 +51,7 @@ platform event
 
 ### 3.1 ambient 和 addressed
 
-ambient 是默认模式。普通群消息可以进入 DecisionAI，但纯媒体、低信息反应、只等待其他用户回答的无正文消息可以提前静默。开放话题不会自动触发回复，必须经过 strong interest 和个人切入点检查。
+ambient 是默认模式。普通群消息可以进入 DecisionAI，但纯媒体、低信息反应、只等待其他用户回答的无正文消息可以提前静默。开放话题不会自动触发回复，必须有具体个人切入点；强兴趣可以展开，较弱但明确的第一人称补充可以低打扰地只说一句。
 
 addressed 只让明确指向机器人或被配置为触发信号的消息进入候选。这里的明确指向包括平台 @/戳/回复信号、当前正文可靠点名和关键词。候选仍会经过 DecisionAI；@ 和关键词不是 bypass。
 
@@ -72,8 +72,8 @@ DecisionAI 将当前消息分成两个互补维度。
 
 ### 4.2 Persona 意愿
 
-- strong：Persona 对具体内容有明显兴趣、情绪、经历或观点，并且现在就能说出自己的相关内容。
-- weak：只是知道、能回答、略微相关或泛泛感兴趣。
+- strong：Persona 对具体内容有明显兴趣、情绪、经历或观点，并且现在就想展开说自己的相关内容。
+- weak：没有强烈冲动，但有具体的第一人称补充，适合低打扰地只说一句；仅仅知道、能回答、略微相关或泛泛感兴趣，不算可参与的 weak。
 - none：无聊、重复、冒犯、打扰、疲惫、已经说完或没有自然入口。
 
 硬策略如下：
@@ -84,10 +84,10 @@ DecisionAI 将当前消息分成两个互补维度。
 | noise | 通常 no |
 | reaction | 通常 no；有效 continuation 可再判断 |
 | other + 无独立公共补充 | no |
-| side/open + interest 不是 strong | no |
+| side + interest 不是 strong，或 open 没有 strong/具体 weak 个人补充 | no |
 | direct + 无真实意愿 | no |
 | side + strong 且能补充自己的内容 | 可 yes |
-| open + strong 且有具体个人切入点 | 可 yes |
+| open + strong，或有具体个人补充的 weak | 可 yes |
 
 “可 yes”表示允许进入正式回复，不表示模型必须回复。模型仍需结合人格心情、关系、氛围和重复程度作最后意愿判断。
 
@@ -172,7 +172,7 @@ ParticipationThrottle 是本地、按群的 in-memory 保护，只处理 Decisio
 | ambient_reply_window_seconds | 600 | 统计窗口 |
 | ambient_reply_max_per_window | 4 | 窗口内最多主动参与次数 |
 
-direct 和 private 不消耗预算。预算在正式生成前记录，用于防止多个并发请求同时通过；插件重载后清空。把单项设为 0 可以关闭该项限制，但不会关闭 strong-interest 硬策略。
+direct 和 private 不消耗预算。预算在正式生成前记录，用于防止多个并发请求同时通过；插件重载后清空。把单项设为 0 可以关闭该项限制，但不会关闭 open/side 的个人切入点硬策略。
 
 ## 10. 其他保留边界
 

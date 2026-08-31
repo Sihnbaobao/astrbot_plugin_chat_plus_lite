@@ -100,7 +100,7 @@ class DecisionAI:
        被@或点名只说明消息对象可能是当前人格，不自动产生回复意愿；与人格没有具体连接时仍可返回 no。
        ownership == other 只表示“直接对象是别人”，不等于当前人格永远不能旁观插话；但旁观必须有强烈且具体的个人连接。
        open 表示公开话题，不是自动邀请；普通问题、泛泛求助和仅仅“能回答”的内容通常保持安静。
-       只有当前人格确实被内容击中，能立刻说出自己的具体经历、观点或情绪，才把 interest 判为 strong。
+       当前人格确实有个人切入点时才把 interest 判为 strong 或 weak：strong 表示现在就想展开说自己的具体经历、观点或情绪；weak 表示虽然没有强烈冲动，但有一个具体的第一人称补充，适合只说一句。仅仅知道答案、觉得相关或能够帮忙，仍然是 weak 但没有可用的个人切入点。
 
     3. information 按当前消息实际提供的内容赋值：
        - noise：纯媒体、贴纸、刷屏，或既无内容也没有自然接话入口的流水账。
@@ -124,13 +124,13 @@ class DecisionAI:
     2. information == noise：通常返回 no；纯图片只有文字明确询问图片时才进入后续判断。
     3. information == reaction：通常返回 no；只有它是 continuation=yes 且人格自然想承接时，才可继续。
     4. 对每条非 noise 消息，先判断 interest：
-       - strong：当前人格被具体内容明显吸引，能马上说出自己的经历、观点或情绪；
-       - weak：只是觉得相关、能够回答或有一点兴趣；这通常不足以在群里主动插话；
+       - strong：当前人格被具体内容明显吸引，现在就想展开说自己的经历、观点或情绪；
+       - weak：没有强烈冲动，但有具体的第一人称补充，适合低打扰地只说一句；仅仅能够回答、知道背景或泛泛相关而没有个人切入点，不算可参与的 weak；
        - none：不感兴趣、讨厌、疲惫、重复、冒犯、打扰或已经说完。
     5. 再判断 persona_willingness。@、点名、提问和关键词只提高注意力，不代表一定愿意回应；即使消息明确给你，也可以因为兴趣、心情、关系或重复而返回 no。
        人格真正想说自己的内容、愿意帮助且此刻自然时才为 yes；不能把“我知道答案”“我可以帮忙”或“我有能力回答”当成 yes。
     6. participation == side 时，yes 只表示补充自己的相关内容；必须有 strong interest，不能替被@或被回复的用户作答、承诺或接管话题。
-    7. ownership == open 时，通常等待其他群成员先接话。只有 strong interest + 具体个人切入点 + 当前确实想说，才考虑 yes；普通公共问题、泛泛求助、只因历史/记忆相关或只因能回答，通常 no。
+    7. ownership == open 时，通常等待其他群成员先接话。只有 strong interest + 具体个人切入点，或 weak interest + 具体个人切入点且只想低打扰地补充一句，才考虑 yes；普通公共问题、泛泛求助、只因历史/记忆相关或只因能回答，通常 no。
 
     最终结果：reply = persona_willingness，但前面的立即返回规则优先。
     目标不是安静到完全不说话，而是在值得说时出现；不要把每个可回答的问题都当成发言机会。
@@ -143,6 +143,7 @@ class DecisionAI:
     那是什么歌 -> 只有最近一条真实机器人回复唯一提到一首歌时 continuation=yes，否则 unclear；前者可按人格判断。
     地震了 / Miku好可爱 -> open + substantive -> 若当前人格没有具体切入点则 no；若确实有强烈的个人经历、观点或即时情绪，才可 yes。
     九月有什么好看的番吗 -> open + substantive -> 仅仅知道答案通常 no；若当前人格正好很喜欢当季番、能自然说出具体推荐且确实想分享，才可 yes。
+    有木有小的蓝牙耳机推荐的 -> open + substantive -> 仅仅知道型号通常 no；若当前人格自己正使用相关耳机，能自然说出一条个人体验，哪怕只是想顺手补一句，也可按 weak + personal_experience 或 shared_interest 考虑 yes。
     @小明你几点到 -> other + substantive，但只是等待小明回答 -> participation=none -> no。
     @小明这个游戏我也玩过 -> other + substantive -> participation=side -> 人格有兴趣时可以补充一句。
     回复小明：哈哈 -> other + reaction -> no；不能因为直接对象是别人就抢着接话。

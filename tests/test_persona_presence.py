@@ -487,8 +487,15 @@ def test_participation_policy_balances_direct_and_ambient_messages(monkeypatch):
     assert open_interest.target == "open"
     assert open_interest.participation == "open"
 
-    open_answerable_only = normalize(_decision_payload(interest="weak"))
+    open_answerable_only = normalize(
+        _decision_payload(interest="weak", reason_code="direct_request")
+    )
     assert open_answerable_only.reply is False
+
+    open_modest_personal_hook = normalize(
+        _decision_payload(interest="weak", reason_code="shared_interest")
+    )
+    assert open_modest_personal_hook.reply is True
 
     direct_boring = normalize(
         _decision_payload(
@@ -541,6 +548,17 @@ def test_participation_policy_requires_independent_side_comment(monkeypatch):
     )
     assert independent_comment.reply is True
     assert "不要替其他用户" in independent_comment.handoff_hint
+
+    weak_side_comment = normalize(
+        _decision_payload(
+            target="other",
+            participation="side",
+            interest="weak",
+            reason_code="shared_interest",
+        ),
+        has_at_others=True,
+    )
+    assert weak_side_comment.reply is False
 
 
 def test_participation_parser_accepts_json_and_rejects_unknown_enums(monkeypatch):
