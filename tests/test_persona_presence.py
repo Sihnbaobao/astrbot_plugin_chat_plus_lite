@@ -413,6 +413,7 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "关键词命中只是触发信号" in prompt
     assert "那是什么歌" in prompt
     assert "最近一条真实机器人回复" in prompt
+    assert "短暂的无关插话不自动结束续话" in prompt
     assert "【📦近期未回复】" in prompt
     assert "地震了 / Miku好可爱" in prompt
     assert "@小明这个游戏我也玩过" in prompt
@@ -437,7 +438,7 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "被@或点名只说明消息对象可能是当前人格" in source
     assert "ownership == open 时默认 no" not in source
     assert "普通问题、泛泛求助" in source
-    assert "continuation_context_available" in source
+    assert "continuation_context_available" not in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     for preset in ("reserved", "active", "persona"):
@@ -572,44 +573,21 @@ def test_participation_policy_requires_independent_side_comment(monkeypatch):
     assert weak_side_comment.reply is True
 
 
-def test_recent_continuation_requires_current_sender_and_adjacent_bot_turn(monkeypatch):
-    participation = _load_participation(monkeypatch)
-    def message(sender_id):
-        return types.SimpleNamespace(sender=types.SimpleNamespace(user_id=sender_id))
-
-    assert participation.has_verified_recent_bot_continuation(
-        [message("user"), message("bot")], "user", "bot"
-    ) is True
-    assert participation.has_verified_recent_bot_continuation(
-        [message("user"), message("bot"), message("other")], "user", "bot"
-    ) is False
-    assert participation.has_verified_recent_bot_continuation(
-        [message("other"), message("bot")], "user", "bot"
-    ) is False
-
-
-def test_stale_continuation_is_rejected_without_current_address(monkeypatch):
+def test_continuation_is_model_owned_without_local_context_gate(monkeypatch):
     participation = _load_participation(monkeypatch)
     normalize = participation.normalize_decision_payload
-    payload = _decision_payload(
-        target="bot",
-        continuation="yes",
-        participation="direct",
-        reason_code="continuation",
+    decision = normalize(
+        _decision_payload(
+            target="bot",
+            continuation="yes",
+            participation="direct",
+            reason_code="continuation",
+        )
     )
 
-    stale = normalize(payload)
-    assert stale.reply is False
-    assert stale.error == "stale_continuation"
-
-    explicitly_addressed = normalize(payload, is_directly_addressed=True)
-    assert explicitly_addressed.reply is True
-    assert explicitly_addressed.continuation == "no"
-    assert explicitly_addressed.reason_code == "direct_request"
-
-    verified = normalize(payload, continuation_context_available=True)
-    assert verified.reply is True
-    assert verified.continuation == "yes"
+    assert decision.reply is True
+    assert decision.continuation == "yes"
+    assert decision.reason_code == "continuation"
 
 
 def test_participation_parser_accepts_json_and_rejects_unknown_enums(monkeypatch):

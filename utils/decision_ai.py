@@ -80,11 +80,11 @@ class DecisionAI:
   <classify>
     先辨认消息事实，再以当前人格的整体感受决定是否开口。下面的字段是帮助你表达判断的标记，不是逐项打勾的回复门槛；除明确的消息归属和说话姿态外，不要让字段名取代你的人格判断。
 
-    1. continuation = yes 仅在同时满足以下全部条件时成立：
-       - 当前消息发送者与上一轮对话对象一致；
-       - 上下文中最近一条真实机器人回复紧邻当前消息，且中间没有其他人接管话题；
-       - 当前消息的省略或指代能由这一条机器人回复唯一解释。
-       旧历史、【📦近期未回复】、长期记忆和仅仅“之前聊过”都不能令 continuation=yes。
+    1. continuation = yes 仅在同时满足以下条件时成立：
+       - 当前消息发送者与机器人最近回应的那位发送者一致；
+       - 当前消息在语义上承接一条近期真实机器人回复；如果中间有群友发言，要判断他们是否实际接管或改变了话题，短暂的无关插话不自动结束续话；
+       - 当前消息的省略或指代能由这一轮对话唯一解释。
+       旧历史、【📦近期未回复】、长期记忆和仅仅“之前聊过”都不能令 continuation=yes；长段或明显转向的群聊也不能仅凭主题相似继续旧话题。
 
     2. ownership 按以下伪代码赋值：
        if 明确回复/只@其他用户 and 当前文字没有同时向机器人提问:
@@ -140,7 +140,7 @@ class DecisionAI:
     好无聊啊 -> 先按当前人格判断；若人格没有自然的具体接话意愿则 no，不得因旧缓存强行 yes。
     璃月在做什么 -> bot（文本点名）+ substantive -> 只按人格真实意愿判断；点名本身不自动 yes。
     是吗 / 奇怪 / 歌 -> reaction -> 通常 no。
-    那是什么歌 -> 只有最近一条真实机器人回复唯一提到一首歌时 continuation=yes，否则 unclear；前者可按人格判断。
+    那是什么歌 -> 如果近期机器人回复唯一提到一首歌，且中间插话没有接管话题，可以 continuation=yes；如果只是旧历史提过，或群聊已经明显转向，应按当前消息重新判断。
     地震了 / Miku好可爱 -> open + substantive -> 如果当前人格自然有反应，可以直接说自己的感受；没有想说的内容就 no。
     九月有什么好看的番吗 -> open + substantive -> 不要因为“能回答”就自动 yes；如果当前人格此刻想分享推荐，可以回复，想保持安静也可以 no。
     有木有小的蓝牙耳机推荐的 -> open + substantive -> 如果当前人格确实有耳机使用体验，想顺手分享一两句，可以自然参与；不想说就 no。
@@ -152,7 +152,7 @@ class DecisionAI:
 
   <context_rules>
     - 当前新消息永远优先，必须与历史、近期未回复缓存、长期记忆分开读取。
-    - 只有“最近一条真实机器人回复”可以解析当前省略指代，且必须满足 continuation 的全部条件。
+    - “最近一条真实机器人回复”以及其后的群聊内容要一起判断；只有当前消息确实承接这一轮对话时，才可用 continuation 解释省略指代。
     - Smart 批次的追加消息只是同一输入批次中的后续内容，不能改变当前发送者归属，也不能把他人话头变成机器人话头。
     - 图片占位符、关键词、记忆和泛泛的人格兴趣都不是单独的回复理由；它们只能帮助你理解当前消息，最后仍由当前人格的整体意愿决定是否开口。
   </context_rules>
@@ -491,7 +491,6 @@ class DecisionAI:
         is_directly_addressed: bool = False,
         is_reply_to_other: bool = False,
         has_at_others: bool = False,
-        continuation_context_available: bool = False,
     ) -> ParticipationDecision:
         """
         调用AI判断是否应该回复
@@ -520,7 +519,6 @@ class DecisionAI:
             is_directly_addressed: Whether the current group message targets the bot.
             is_reply_to_other: Whether a structured reply targets another user.
             has_at_others: Whether the message mentions another user.
-            continuation_context_available: Whether history verifies a recent bot turn for this sender.
 
         Returns:
             A validated participation decision for the reply pipeline.
@@ -733,7 +731,6 @@ class DecisionAI:
                     is_directly_addressed=is_directly_addressed,
                     is_reply_to_other=is_reply_to_other,
                     has_at_others=has_at_others,
-                    continuation_context_available=continuation_context_available,
                     source="ai",
                 )
             else:
@@ -765,7 +762,6 @@ class DecisionAI:
                     is_directly_addressed=is_directly_addressed,
                     is_reply_to_other=is_reply_to_other,
                     has_at_others=has_at_others,
-                    continuation_context_available=continuation_context_available,
                     source="legacy",
                 )
                 if not is_private and re.search(

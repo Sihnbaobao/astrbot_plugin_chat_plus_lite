@@ -49,7 +49,7 @@ open、side 和 direct 都由 Persona 的整体意愿决定；本地硬策略只
 
 ### 2.4 连续话轮的客观边界
 
-continuation 不是“历史中曾经聊过同一主题”的同义词。插件只把历史尾部存在“当前发送者发言后紧接机器人回复”的相邻轮次作为候选证据，再由 DecisionAI 判断当前文本是否唯一承接这条回复。如果中间已经出现其他群友发言，或历史尾部无法验证这组相邻关系，continuation 必须为 no；当前消息仍可以作为新的 open 话题参与判断。时间间隔本身不是硬截止条件。
+continuation 不是“历史中曾经聊过同一主题”的同义词。DecisionAI 会结合机器人近期回复、当前消息和中间的群聊内容判断：短暂的无关插话不自动结束续话，后续聊天已经实质接管或明显转向时也不能只凭主题相似继续旧话题。时间间隔本身不是硬截止条件。
 
 ## 3. 运行时数据流
 
@@ -92,7 +92,7 @@ normalize_decision_payload 是最终边界：
 
 - target、participation、information、interest、reason_code、confidence 必须属于已知枚举。
 - 未知枚举、unclear 或 none participation 必须静默。
-- 没有结构验证的近期机器人轮次时，continuation=yes 且当前消息没有明确地址必须静默，避免旧历史制造 direct 续话。
+- continuation 只是模型对上下文关系的分类，不作为本地回复否决；是否被短插话打断由 Persona 结合上下文判断。
 - target=other 时只能采用 side 说话姿态；是否确有独立公共补充由 Persona 判断，代码不再替它做主观内容裁决。
 - target、participation 或输出结构不可靠时必须静默；subjective interest、information 和 reason_code 本身不再由本地代码强制拦截。
 - reply=no 不能被后续代码重新解释为“可以回答”。
@@ -103,7 +103,7 @@ normalize_decision_payload 是最终边界：
 
 当前消息发送者永远来自 event 元数据。历史消息、长期记忆、未回复缓存和 Smart follower 只能帮助理解，不能替当前消息指定对象，也不能把别人的话归给当前发送者。
 
-平台没有检测到 @ 只表示平台 signal 缺失，不表示文本一定没有点名机器人；模型可以根据当前正文判断文本目标，但不能凭旧历史臆造目标。特别是，历史较早的机器人回复不能替代当前消息缺失的相邻续话证据。
+平台没有检测到 @ 只表示平台 signal 缺失，不表示文本一定没有点名机器人；模型可以根据当前正文和群聊上下文判断文本目标，但不能仅凭较早历史的主题相似臆造当前目标。
 
 ## 5. 正式回复 handoff
 

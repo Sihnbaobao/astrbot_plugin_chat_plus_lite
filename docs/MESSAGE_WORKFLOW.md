@@ -53,10 +53,10 @@
 - 是否 @ 或回复其他用户；
 - 文本是否命中关键词；
 - 当前消息是否包含图片、表情、视频、语音、文件或转发；
-- 历史尾部是否存在当前发送者 -> 机器人回复的结构化连续轮次候选；
-- 当前事件是否唯一承接这条近期机器人回复。
+- 近期机器人回复以及其后的群聊内容；
+- 当前事件是否在语义上承接这轮对话，或只是一个新的公开话题。
 
-这些事实只描述事件，不代替 Persona 决定是否愿意参与。关键词和 @ 是注意力 signal，不能直接设置 reply=yes。旧历史即使语义相关，也不能替代缺失的近期相邻轮次。
+这些事实只描述事件，不代替 Persona 决定是否愿意参与。关键词和 @ 是注意力 signal，不能直接设置 reply=yes。DecisionAI 会判断中间的群友消息是否实际接管或改变话题，短暂的无关插话不自动结束续话。
 
 group_reply_scope=addressed 时，未明确指向机器人的群消息在这里结束；被允许进入候选的消息仍要经过后续参与判断。group_reply_scope=ambient 时，普通消息继续进入后续流程。
 
@@ -103,18 +103,17 @@ DecisionAI 使用当前 Persona、当前发送者、当前正文、目标 signal
 - confidence 和有界 topic_key；
 - reply：yes 或 no。
 
-判断顺序是先确认消息对象和说话姿态，再由 Persona 结合正文、上下文、性格、情绪和聊天氛围做整体判断。模型“能回答”不等于一定要回复，但也不再由本地代码强制要求某个 interest 等级。continuation 仍是一个事实标签：没有结构验证的近期机器人轮次时，不能把旧历史当作当前续话。
+判断顺序是先确认消息对象和说话姿态，再由 Persona 结合正文、近期对话、插话是否接管、性格、情绪和聊天氛围做整体判断。模型“能回答”不等于一定要回复，也不再由本地代码强制要求某个 interest 等级。continuation 是模型对对话关系的判断，不是单独的回复许可。
 
 ## Phase 7：本地硬边界
 
 ParticipationDecision normalizer 在模型之后重新执行不可被 prompt 绕过的规则：
 
 1. 未知枚举、unclear 或 none participation 直接 no。
-2. continuation=yes 但没有结构验证的近期机器人轮次，且当前消息没有明确地址时，直接 no。
-3. target 与 participation 的说话姿态不一致时直接 no；other 只能采用独立的 side 补充，不能替其他用户作答。
-4. open、side 和 direct 的主观是否参与由 Persona 决定；interest、information、reason_code 不再单独构成本地兴趣门槛。
-5. reply=no 不能被后续代码重新解释为可以回答；@ 也不是强制命令。
-6. 空 JSON、JSON 解析失败或其他不可信输出静默。
+2. target 与 participation 的说话姿态不一致时直接 no；other 只能采用 side 说话姿态，不能替其他用户作答。
+3. open、side 和 direct 的主观是否参与由 Persona 决定；continuation、interest、information、reason_code 不再单独构成本地兴趣门槛。
+4. reply=no 不能被后续代码重新解释为可以回答；@ 也不是强制命令。
+5. 空 JSON、JSON 解析失败或其他不可信输出静默。
 
 旧 provider 返回精确 yes/no 时保留受限兼容，不授予旧格式的 side 旁观能力。看起来像 JSON 但解析失败的输出不会被当成自然语言 yes。
 

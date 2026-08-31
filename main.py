@@ -80,11 +80,7 @@ from .utils import (
 )
 from .utils.image_description_cache import ImageDescriptionCache
 from .utils.message_cache_manager import MessageCacheManager
-from .utils.participation import (
-    ParticipationDecision,
-    ParticipationThrottle,
-    has_verified_recent_bot_continuation,
-)
+from .utils.participation import ParticipationDecision, ParticipationThrottle
 
 
 @register(
@@ -2256,15 +2252,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             merged_image_urls.append(image_url)
                 merged_image_urls = list(dict.fromkeys(merged_image_urls))
 
-        continuation_context_available = (
-            not is_private
-            and has_verified_recent_bot_continuation(
-                history_messages,
-                event.get_sender_id(),
-                event.get_self_id(),
-            )
-        )
-
         # 步骤7: AI决策判断（第二道核心过滤）
         has_at_others = bool(
             isinstance(mention_info, dict) and mention_info.get("has_at_others")
@@ -2385,7 +2372,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 is_directly_addressed=is_explicitly_addressed,
                 is_reply_to_other=is_reply_to_other,
                 has_at_others=has_at_others,
-                continuation_context_available=continuation_context_available,
             )
             if (
                 image_question_requested
@@ -2609,15 +2595,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 logger.warning(
                     f"🔄 [并发刷新] 刷新上下文失败，使用原始上下文: {_refresh_err}"
                 )
-
-        continuation_context_available = (
-            not is_private
-            and has_verified_recent_bot_continuation(
-                history_messages,
-                event.get_sender_id(),
-                event.get_self_id(),
-            )
-        )
 
         # 表情包标记回退逻辑（处理跳过路径）
         if is_emoji_message and self.enable_emoji_filter and not emoji_marker_applied:
@@ -2868,7 +2845,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         is_directly_addressed: bool = False,
         is_reply_to_other: bool = False,
         has_at_others: bool = False,
-        continuation_context_available: bool = False,
     ) -> ParticipationDecision:
         """
         执行AI决策判断（在处理完消息内容后）
@@ -2878,7 +2854,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             is_directly_addressed: Whether the current message explicitly targets the bot.
             is_reply_to_other: Whether the current message replies to another user.
             has_at_others: Whether the current message mentions another user.
-            continuation_context_available: Whether history verifies a recent bot turn for this sender.
 
         Returns:
             A validated participation decision for the reply pipeline.
@@ -2998,7 +2973,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             is_directly_addressed=is_directly_addressed,
             is_reply_to_other=is_reply_to_other,
             has_at_others=has_at_others,
-            continuation_context_available=continuation_context_available,
         )
 
         if self.debug_mode:
