@@ -8,7 +8,7 @@
 重构要点（REFACTOR_DESIGN.md）：
 - 删除 SYSTEM_REPLY_PROMPT（约100行系统行为指令）—— 这是群聊人格漂移的最大来源
 - 回复请求的 system_prompt 使用当前会话最终生效的人格
-- prompt 只含纯上下文（历史 + 发送者标注），不注入情绪/注意力文本
+- prompt 以纯上下文为主；仅在群聊涉及其他用户时追加最小对象边界提示
 - 保留标记机制：on_llm_request 钩子（priority=-1）据此恢复完整 prompt，
   同时保留其他插件（emotionai/livingmemory 等）对请求的注入
 - 保留短消息占位机制：event.request_llm() 的 prompt 传当前消息短文本，
@@ -47,7 +47,7 @@ class ReplyHandler:
     回复处理器（精简版）
 
     主要功能：
-    1. 构建回复提示词（纯上下文，不含行为指令）
+    1. 构建回复提示词（上下文 + 必要的对象边界提示）
     2. 调用AI生成回复（event.request_llm）
     3. 检测是否已被其他插件处理
     """
@@ -109,12 +109,13 @@ class ReplyHandler:
         include_timestamp: bool = True,
         history_messages: list = None,
         smart_batch_reply_hint: str = "",
+        reply_context_hint: str = "",
     ) -> ProviderRequest:
         """
         生成AI回复（精简版）
 
-        系统提示词只含人格设定，prompt 只含纯上下文（历史消息+发送者标注），
-        不再注入任何插件行为指令。
+        系统提示词只含人格设定；prompt 以纯上下文为主，
+        仅在需要时追加最小对象边界提示，避免代替其他用户作答。
 
         Args:
             event: 消息事件
@@ -128,6 +129,7 @@ class ReplyHandler:
             include_timestamp: 是否包含时间戳
             history_messages: 历史消息列表（保留参数以兼容调用，构建contexts用）
             smart_batch_reply_hint: Smart并发批次提示（可选追加消息说明）
+            reply_context_hint: 群聊对象边界提示，仅在当前消息涉及其他用户时追加
 
         Returns:
             ProviderRequest对象
@@ -152,12 +154,13 @@ class ReplyHandler:
             if include_sender_info:
                 if sender_name:
                     sender_emphasis = (
-                        f"[系统信息-当前对话对象] {sender_name}（ID:{sender_id}）"
+                        f"[系统信息-当前发送者] {sender_name}（ID:{sender_id}）"
                     )
                 else:
-                    sender_emphasis = f"[系统信息-当前对话对象] 用户ID:{sender_id}"
+                    sender_emphasis = f"[系统信息-当前发送者] 用户ID:{sender_id}"
 
             smart_hint_text = (smart_batch_reply_hint or "").strip()
+            reply_context_hint_text = (reply_context_hint or "").strip()
 
             if prompt_mode == "override" and extra_prompt and extra_prompt.strip():
                 # 覆盖模式：用户自定义提示词完全替代默认内容
@@ -167,15 +170,25 @@ class ReplyHandler:
                     + sender_emphasis
                     + "\n"
                     + formatted_message
+                    + (
+                        ("\n" + reply_context_hint_text)
+                        if reply_context_hint_text
+                        else ""
+                    )
                     + (("\n" + smart_hint_text) if smart_hint_text else "")
                     + ReplyHandler.PROMPT_ENDING
                 )
             else:
-                # 拼接模式（默认）：纯上下文
+                # 拼接模式（默认）：上下文与可选对象边界提示
                 full_prompt = (
                     sender_emphasis
                     + "\n"
                     + formatted_message
+                    + (
+                        ("\n" + reply_context_hint_text)
+                        if reply_context_hint_text
+                        else ""
+                    )
                     + (("\n" + smart_hint_text) if smart_hint_text else "")
                     + ReplyHandler.PROMPT_ENDING
                 )

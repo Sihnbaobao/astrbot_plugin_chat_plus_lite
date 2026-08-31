@@ -4,8 +4,8 @@ Core guarantees under test:
 1. ReplyHandler no longer ships SYSTEM_REPLY_PROMPT (the ~100 line behavior
    instruction block that caused persona drift in group chats).
 2. generate_reply produces a ProviderRequest whose system_prompt is exactly the
-   persona and whose prompt is pure context (sender annotation + history) with
-   no behavior instructions.
+   persona and whose prompt is context plus only narrowly scoped reply-boundary
+   annotations when another user is involved.
 3. DecisionAI.SYSTEM_DECISION_PROMPT only covers the yes/no "should I reply"
    judgment and contains no references to removed features.
 4. MessageCacheManager's expiry filter is pure and correct.
@@ -283,9 +283,38 @@ def test_generate_reply_system_prompt_is_exactly_persona(monkeypatch):
     assert "在吗" in full_prompt
     assert "小明" in full_prompt
     assert "42" in full_prompt
+    assert "[系统信息-当前发送者]" in full_prompt
+    assert "[系统信息-当前对话对象]" not in full_prompt
     for banned in ("严禁元叙述", "系统行为指令", "回复身份", "严禁重复", "请开始回复"):
         assert banned not in full_prompt
     assert "请直接输出你的回复" in full_prompt
+
+
+def test_generate_reply_includes_other_user_boundary_hint(monkeypatch):
+    handler = _load_module(monkeypatch, "reply_handler.py", "reply_handler")
+    event = _Event(message_str="@小明这个游戏我也玩过")
+    context = _Context(persona_prompt="人格A")
+    hint = (
+        "[系统提示-群聊旁观边界] 当前消息直接指向其他群友；"
+        "本次若回复，请用你自己的口吻、立场和经历补充相关内容。"
+    )
+
+    req = _run(
+        handler.ReplyHandler.generate_reply(
+            event,
+            context,
+            formatted_message="当前新消息：@小明这个游戏我也玩过",
+            extra_prompt="",
+            prompt_mode="append",
+            reply_context_hint=hint,
+        )
+    )
+
+    full_prompt = event.get_extra(handler.PLUGIN_CUSTOM_PROMPT, "")
+    assert hint in full_prompt
+    assert "机器人自己的身份" not in full_prompt
+    assert "你自己的口吻、立场和经历" in full_prompt
+    assert req.system_prompt == "人格A"
 
 
 def test_generate_reply_resolves_current_conversation_persona(monkeypatch):
@@ -405,6 +434,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     for preset in ("reserved", "active", "persona"):
         assert f"[persona_willingness preset: {preset}]" in main_source
     assert "仅回复直接@、明确提问、求助" not in main_source
+    assert "reply_context_hint=reply_context_hint" in main_source
+    assert "机器人自己的身份" not in main_source
     assert (
         "is_at_all_message\n                    )\n                    and not compact_current_text"
         in main_source

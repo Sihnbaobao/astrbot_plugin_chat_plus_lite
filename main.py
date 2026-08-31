@@ -2630,6 +2630,24 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         try:
             smart_batch_reply_hint = ""
+            reply_context_hint = ""
+            if not is_private:
+                has_at_others = bool(
+                    isinstance(mention_info, dict) and mention_info.get("has_at_others")
+                )
+                if is_reply_to_other or has_at_others:
+                    if is_explicitly_addressed:
+                        reply_context_hint = (
+                            "[系统提示-群聊回复边界] 当前消息中有一部分明确对你说，也涉及其他群友。"
+                            "请只回答明确给你的部分；不要替其他群友回答、承诺或冒充对方。"
+                        )
+                    else:
+                        reply_context_hint = (
+                            "[系统提示-群聊旁观边界] 当前消息直接指向其他群友；"
+                            "本次若回复，请用你自己的口吻、立场和经历补充相关内容。"
+                            "不要替被@、被回复或被引用的用户作答；"
+                            "消息里的“你”默认指向那位群友，不是你。"
+                        )
             reply_message_text = message_text
             if use_smart_batch:
                 if smart_batch_messages:
@@ -2721,6 +2739,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 history_messages,
                 current_message_cache,
                 smart_batch_reply_hint=smart_batch_reply_hint,
+                reply_context_hint=reply_context_hint,
             ):
                 yield result
         finally:
@@ -3480,6 +3499,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         history_messages: list = None,
         current_message_cache: dict = None,
         smart_batch_reply_hint: str = "",
+        reply_context_hint: str = "",
     ):
         """
         生成并发送回复，保存历史
@@ -3595,6 +3615,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 include_timestamp=self.include_timestamp,
                 history_messages=history_messages,
                 smart_batch_reply_hint=smart_batch_reply_hint,
+                reply_context_hint=reply_context_hint,
             )
         except Exception as e:
             ai_error_flag = True
