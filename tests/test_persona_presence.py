@@ -402,8 +402,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "participation = direct | side | open | none" in prompt
     assert "persona_willingness = yes | no" in prompt
     assert "open 表示公开话题，不是自动邀请" in prompt
-    assert "只是一个可能的公共发言入口；默认保持安静" in prompt
-    assert "strong interest + 具体个人切入点" in prompt
+    assert "是一个可能的公共发言入口；通常先观察" in prompt
+    assert "reply 是整体判断，不是兴趣字段的机械计算" in prompt
     assert "九月有什么好看的番吗" in prompt
     assert "ownership == other 只表示“直接对象是别人”" in prompt
     assert "不能替被@或被回复的用户作答" in prompt
@@ -436,7 +436,7 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "不确定时倾向于回复（yes）" not in source
     assert "被@或点名只说明消息对象可能是当前人格" in source
     assert "ownership == open 时默认 no" not in source
-    assert "普通公共问题、泛泛求助" in source
+    assert "普通问题、泛泛求助" in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     for preset in ("reserved", "active", "persona"):
@@ -487,22 +487,32 @@ def test_participation_policy_balances_direct_and_ambient_messages(monkeypatch):
     assert open_interest.target == "open"
     assert open_interest.participation == "open"
 
-    open_answerable_only = normalize(
-        _decision_payload(interest="weak", reason_code="direct_request")
+    model_declined = normalize(
+        _decision_payload(
+            reply="no",
+            interest="weak",
+            reason_code="none",
+        )
     )
-    assert open_answerable_only.reply is False
+    assert model_declined.reply is False
 
     open_modest_personal_hook = normalize(
         _decision_payload(interest="weak", reason_code="shared_interest")
     )
     assert open_modest_personal_hook.reply is True
 
+    open_model_choice = normalize(
+        _decision_payload(interest="weak", reason_code="none")
+    )
+    assert open_model_choice.reply is True
+
     direct_boring = normalize(
         _decision_payload(
+            reply="no",
             target="bot",
             participation="direct",
             interest="none",
-            reason_code="direct_request",
+            reason_code="none",
         ),
         is_directly_addressed=True,
     )
@@ -558,7 +568,7 @@ def test_participation_policy_requires_independent_side_comment(monkeypatch):
         ),
         has_at_others=True,
     )
-    assert weak_side_comment.reply is False
+    assert weak_side_comment.reply is True
 
 
 def test_participation_parser_accepts_json_and_rejects_unknown_enums(monkeypatch):

@@ -26,13 +26,13 @@
 | enable_group_chat | bool | true | 群聊总开关。 |
 | enabled_groups | list | [] | 留空处理所有群；填写群号后只处理指定群。 |
 | takeover_group_reply | bool | true | 开启后，插件静默时阻止 AstrBot 默认兜底；参与判断失败也保持静默。关闭后静默结果交回 AstrBot 核心链路。 |
-| group_reply_scope | string | ambient | ambient 让普通群消息进入参与判断，开放话题需要具体的 Persona 切入点；强兴趣可以自然展开，较弱但明确的个人补充也可以只说一句；addressed 只让 @、戳、回复机器人、可靠文本点名或关键词消息进入候选。两种模式下 @ 和关键词都不保证回复。 |
+| group_reply_scope | string | ambient | ambient 让普通群消息进入参与判断，开放话题默认克制但由当前 Persona 整体判断，不再用 strong interest 作为本地硬门槛；addressed 只让 @、戳、回复机器人、可靠文本点名或关键词消息进入候选。两种模式下 @ 和关键词都不保证回复。 |
 
 群聊的基本规则：
 
 - direct：消息面向机器人，但人格仍可因为无聊、重复、冒犯、打扰或话题结束而拒绝。
-- side：消息面向其他人时，只有有强烈具体个人连接的独立补充才允许参与，不能替对方回答。
-- open：无明确对象的公共话题默认克制；Persona 有强烈个人连接时可以展开参与，只有一个具体的第一人称补充时也可以低打扰地插一句。
+- side：消息面向其他人时，只有人格自己的独立、相关补充才允许参与，不能替对方回答或接管话题。
+- open：无明确对象的公共话题默认克制；是否参与由 Persona 当下是否自然想开口决定，可以展开，也可以只低打扰地插一句。
 - noise、reaction、unclear 和只等待其他人回答的消息通常静默。
 
 ### 私聊
@@ -55,7 +55,7 @@
 | decision_ai_persona_name | string | 空 | 留空跟随当前会话 Persona；填写后固定使用指定人格判断。 |
 | decision_ai_extra_prompt | text | 空 | 追加参与判断要求。不得写成“命中就必回”来绕过本地硬边界。 |
 | decision_ai_timeout | int | 30 | 参与判断超时时静默；接管群聊时不会回退为全量回复。 |
-| decision_ai_reply_tendency | string | persona | persona 完全依据人格；reserved 更克制；active 更愿意参与有内容的公共话题，但仍要求具体个人切入点，弱兴趣只能支持低打扰的一句补充。 |
+| decision_ai_reply_tendency | string | persona | persona 完全依据人格；reserved 更克制；active 更愿意参与有内容的公共话题。三种倾向都不能绕过消息对象、说话姿态和主动参与预算。 |
 
 群聊参与判断输出一个结构化 JSON，包含 reply、target、information、continuation、participation、interest、reason_code、confidence 和 topic_key。代码会校验枚举并再次执行硬边界。旧 provider 返回精确 yes/no 仍可兼容，但不能借此获得 side 旁观权限。
 
@@ -73,7 +73,7 @@
 | confidence | high / medium / low | 分类置信度，仅用于决策语义和诊断。 |
 | topic_key | 短文本 | 有界诊断标签，不用于生成回复目标。 |
 
-strong 表示 Persona 被具体内容击中，现在就想展开说自己的内容。weak 表示没有强烈冲动，但有具体的第一人称补充，适合低打扰地只说一句；仅仅能回答、知道背景或泛泛感兴趣，仍然没有 open/side 的参与资格。open 可以使用带有效个人理由的 weak，side 仍需要 strong。
+strong 和 weak 只描述这次人格意愿的力度：strong 可以展开，weak 可能只想轻轻说一句，none 则表示不想参与。它们用于帮助 DecisionAI 表达整体判断，不再被 participation.py 作为主观强度门槛；真正能回答但人格不想说时仍应输出 reply=no。
 
 ### 可选推理协议
 

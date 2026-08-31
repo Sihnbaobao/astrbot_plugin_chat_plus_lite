@@ -134,6 +134,16 @@ def _short_text(value: Any, maximum: int = 32) -> str:
     return text[:maximum]
 
 
+def _invalid_choice(payload: Mapping[str, Any], key: str, allowed: set[str]) -> bool:
+    """Detect an invalid supplied enum while allowing legacy omissions."""
+    if key not in payload:
+        return False
+    value = payload.get(key)
+    if value is None or not str(value).strip():
+        return False
+    return str(value).strip().lower() not in allowed
+
+
 def _as_bool(value: Any) -> bool:
     """Normalize common boolean spellings from a model response."""
     if isinstance(value, bool):
@@ -164,13 +174,25 @@ def normalize_decision_payload(
         A safe decision. Invalid or socially unsafe yes responses become silent
         decisions instead of being passed to the reply model.
     """
+    enum_fields = (
+        ("target", TARGET_VALUES),
+        ("information", INFORMATION_VALUES),
+        ("participation", PARTICIPATION_VALUES),
+        ("interest", INTEREST_VALUES),
+        ("reason_code", REASON_VALUES),
+        ("confidence", CONFIDENCE_VALUES),
+    )
+    if any(_invalid_choice(payload, key, allowed) for key, allowed in enum_fields):
+        return ParticipationDecision.silent(
+            source=source, error="invalid_decision_enum"
+        )
+
     target = _choice(payload.get("target"), TARGET_VALUES, "unclear")
     information = _choice(payload.get("information"), INFORMATION_VALUES, "noise")
     participation = _choice(payload.get("participation"), PARTICIPATION_VALUES, "none")
     interest = _choice(payload.get("interest"), INTEREST_VALUES, "none")
     reason_code = _choice(payload.get("reason_code"), REASON_VALUES, "none")
     confidence = _choice(payload.get("confidence"), CONFIDENCE_VALUES, "low")
-    continuation = _as_bool(payload.get("continuation"))
     reply = _as_bool(payload.get("reply"))
 
     if is_private:
@@ -202,43 +224,15 @@ def normalize_decision_payload(
         return decision.with_reply(False, reason_code="none")
     if target == "unclear" or participation == "none":
         return decision.with_reply(False, reason_code="none")
-    if information == "noise":
-        return decision.with_reply(False, reason_code="none")
-    if information == "reaction" and not continuation:
-        return decision.with_reply(False, reason_code="none")
-    if interest == "none":
-        return decision.with_reply(False, reason_code="none")
 
-    if target == "open":
-        if interest not in {"strong", "weak"} or reason_code not in {
-            "shared_interest",
-            "personal_experience",
-            "emotional_reaction",
-        }:
-            return decision.with_reply(False, reason_code="none")
-    elif target == "other":
-        if (
-            participation != "side"
-            or interest != "strong"
-            or reason_code
-            not in {
-                "shared_interest",
-                "personal_experience",
-                "emotional_reaction",
-            }
-        ):
-            return decision.with_reply(False, reason_code="none")
-    elif target == "bot":
-        if participation != "direct":
-            return decision.with_reply(False, reason_code="none")
-        if reason_code not in {
-            "direct_request",
-            "shared_interest",
-            "personal_experience",
-            "emotional_reaction",
-            "continuation",
-        }:
-            return decision.with_reply(False, reason_code="none")
+    # Subjective fields belong to the persona model; validate only the speaking posture.
+    expected_participation = {
+        "bot": "direct",
+        "other": "side",
+        "open": "open",
+    }.get(target)
+    if expected_participation != participation:
+        return decision.with_reply(False, reason_code="none")
 
     return decision
 

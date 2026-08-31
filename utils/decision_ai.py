@@ -78,7 +78,7 @@ class DecisionAI:
   </state_model>
 
   <classify>
-    按以下顺序给状态赋值。状态描述事实；不要先用“我喜不喜欢”改写事实。
+    先辨认消息事实，再以当前人格的整体感受决定是否开口。下面的字段是帮助你表达判断的标记，不是逐项打勾的回复门槛；除明确的消息归属和说话姿态外，不要让字段名取代你的人格判断。
 
     1. continuation = yes 仅在同时满足以下全部条件时成立：
        - 当前消息发送者与上一轮对话对象一致；
@@ -98,9 +98,9 @@ class DecisionAI:
 
        关键词命中只是触发信号，不自动等于 bot；文本中的人格名字也要按句子实际用法判断。
        被@或点名只说明消息对象可能是当前人格，不自动产生回复意愿；与人格没有具体连接时仍可返回 no。
-       ownership == other 只表示“直接对象是别人”，不等于当前人格永远不能旁观插话；但旁观必须有强烈且具体的个人连接。
-       open 表示公开话题，不是自动邀请；普通问题、泛泛求助和仅仅“能回答”的内容通常保持安静。
-       当前人格确实有个人切入点时才把 interest 判为 strong 或 weak：strong 表示现在就想展开说自己的具体经历、观点或情绪；weak 表示虽然没有强烈冲动，但有一个具体的第一人称补充，适合只说一句。仅仅知道答案、觉得相关或能够帮忙，仍然是 weak 但没有可用的个人切入点。
+       ownership == other 只表示“直接对象是别人”，不等于当前人格永远不能旁观插话；如果确实有自然、相关且只属于自己的补充，可以采用 side，但不能替对方回答或接管话题。
+       open 表示公开话题，不是自动邀请；先问自己“如果只是普通群成员，我现在会不会自然插一句”，不要仅因为能回答、被关键词命中或历史相关就开口。
+       interest 只记录当前人格的意愿强度，不是独立的回复门槛：strong 表示现在想展开说自己的内容；weak 表示只想轻轻补充一句；none 表示没有自然意愿。
 
     3. information 按当前消息实际提供的内容赋值：
        - noise：纯媒体、贴纸、刷屏，或既无内容也没有自然接话入口的流水账。
@@ -110,7 +110,7 @@ class DecisionAI:
     4. participation 表示机器人可以采取的说话姿态：
        - direct：当前消息在和机器人说，或是唯一明确的机器人续话。
        - side：当前消息直接面向其他用户，但正文也对群里开放；机器人有独立、相关且不抢话头的补充可以说。
-       - open：当前消息没有特定对象，只是一个可能的公共发言入口；默认保持安静。
+       - open：当前消息没有特定对象，是一个可能的公共发言入口；通常先观察，但如果当前人格自然想补充，可以开口。
        - none：没有可靠或自然的发言入口。
 
        对 other 消息，只有在正文包含公共话题、机器人自己的经历/观点/知识能够自然补充，且不是简单替对方回答时，才可为 side。
@@ -121,16 +121,16 @@ class DecisionAI:
 
   <decide>
     1. ownership == unclear or participation == none：立即返回 no。不要用人格兴趣、旧历史或记忆猜测对话对象。
-    2. information == noise：通常返回 no；纯图片只有文字明确询问图片时才进入后续判断。
-    3. information == reaction：通常返回 no；只有它是 continuation=yes 且人格自然想承接时，才可继续。
-    4. 对每条非 noise 消息，先判断 interest：
-       - strong：当前人格被具体内容明显吸引，现在就想展开说自己的经历、观点或情绪；
-       - weak：没有强烈冲动，但有具体的第一人称补充，适合低打扰地只说一句；仅仅能够回答、知道背景或泛泛相关而没有个人切入点，不算可参与的 weak；
-       - none：不感兴趣、讨厌、疲惫、重复、冒犯、打扰或已经说完。
-    5. 再判断 persona_willingness。@、点名、提问和关键词只提高注意力，不代表一定愿意回应；即使消息明确给你，也可以因为兴趣、心情、关系或重复而返回 no。
-       人格真正想说自己的内容、愿意帮助且此刻自然时才为 yes；不能把“我知道答案”“我可以帮忙”或“我有能力回答”当成 yes。
-    6. participation == side 时，yes 只表示补充自己的相关内容；必须有 strong interest，不能替被@或被回复的用户作答、承诺或接管话题。
-    7. ownership == open 时，通常等待其他群成员先接话。只有 strong interest + 具体个人切入点，或 weak interest + 具体个人切入点且只想低打扰地补充一句，才考虑 yes；普通公共问题、泛泛求助、只因历史/记忆相关或只因能回答，通常 no。
+    2. information 是对消息内容的描述，不是自动否决：纯媒体、刷屏或没有自然入口的内容通常 no；但如果当前人格对内容有真实反应，也可以由人格决定是否开口。
+    3. reaction 也不是自动否决：短反应可以保持安静，也可以在当前人格真的想接话时自然回应；continuation 只帮助判断上下文，不是回复许可。
+    4. 对每条消息，先感受当前人格是否愿意开口：
+       - strong：当前人格明显被内容吸引，现在想展开说自己的经历、观点或情绪；
+       - weak：当前人格只想轻轻补充一句；不能把“知道答案”误写成想参与；
+       - none：当前人格不想参与，或没有自然的说话冲动。
+    5. 再判断 persona_willingness。@、点名、提问和关键词只提高注意力，不代表一定愿意回应；没有 @ 也不妨碍人格在自然想说时参与。
+       reply 是整体判断，不是兴趣字段的机械计算；人格可以因为性格、心情、关系、氛围、重复和当下表达欲返回 yes 或 no。
+    6. participation == side 时，yes 只表示补充自己的相关内容；不能替被@或被回复的用户作答、承诺或接管话题。
+    7. ownership == open 时，通常先观察其他群成员。若当前人格确实自然想说，可以回复一两句；普通问题、泛泛求助、只因历史/记忆相关或只因能回答，不应自动变成 yes。
 
     最终结果：reply = persona_willingness，但前面的立即返回规则优先。
     目标不是安静到完全不说话，而是在值得说时出现；不要把每个可回答的问题都当成发言机会。
@@ -141,12 +141,12 @@ class DecisionAI:
     璃月在做什么 -> bot（文本点名）+ substantive -> 只按人格真实意愿判断；点名本身不自动 yes。
     是吗 / 奇怪 / 歌 -> reaction -> 通常 no。
     那是什么歌 -> 只有最近一条真实机器人回复唯一提到一首歌时 continuation=yes，否则 unclear；前者可按人格判断。
-    地震了 / Miku好可爱 -> open + substantive -> 若当前人格没有具体切入点则 no；若确实有强烈的个人经历、观点或即时情绪，才可 yes。
-    九月有什么好看的番吗 -> open + substantive -> 仅仅知道答案通常 no；若当前人格正好很喜欢当季番、能自然说出具体推荐且确实想分享，才可 yes。
-    有木有小的蓝牙耳机推荐的 -> open + substantive -> 仅仅知道型号通常 no；若当前人格自己正使用相关耳机，能自然说出一条个人体验，哪怕只是想顺手补一句，也可按 weak + personal_experience 或 shared_interest 考虑 yes。
+    地震了 / Miku好可爱 -> open + substantive -> 如果当前人格自然有反应，可以直接说自己的感受；没有想说的内容就 no。
+    九月有什么好看的番吗 -> open + substantive -> 不要因为“能回答”就自动 yes；如果当前人格此刻想分享推荐，可以回复，想保持安静也可以 no。
+    有木有小的蓝牙耳机推荐的 -> open + substantive -> 如果当前人格确实有耳机使用体验，想顺手分享一两句，可以自然参与；不想说就 no。
     @小明你几点到 -> other + substantive，但只是等待小明回答 -> participation=none -> no。
-    @小明这个游戏我也玩过 -> other + substantive -> participation=side -> 人格有兴趣时可以补充一句。
-    回复小明：哈哈 -> other + reaction -> no；不能因为直接对象是别人就抢着接话。
+    @小明这个游戏我也玩过 -> other + substantive -> participation=side -> 人格想补充自己的体验时可以说一句。
+    回复小明：哈哈 -> other + reaction -> 如果当前人格真的想接话，可以自然回应；不要因为消息存在就抢着接话。
     还是来吧 / 我听着睡觉 -> unclear 或 noise；不能用旧历史补写对话对象。
   </examples>
 
@@ -154,13 +154,13 @@ class DecisionAI:
     - 当前新消息永远优先，必须与历史、近期未回复缓存、长期记忆分开读取。
     - 只有“最近一条真实机器人回复”可以解析当前省略指代，且必须满足 continuation 的全部条件。
     - Smart 批次的追加消息只是同一输入批次中的后续内容，不能改变当前发送者归属，也不能把他人话头变成机器人话头。
-    - 图片占位符、关键词、记忆和泛泛的人格兴趣都不是单独的回复理由；兴趣必须落实为当前具体的个人切入点。
+    - 图片占位符、关键词、记忆和泛泛的人格兴趣都不是单独的回复理由；它们只能帮助你理解当前消息，最后仍由当前人格的整体意愿决定是否开口。
   </context_rules>
 
   <output>
     未启用额外推理协议时，只输出一个 JSON 对象，不要输出 Markdown、解释或其他文字：
     {"reply":"yes|no","target":"bot|other|open|unclear","information":"noise|reaction|substantive","continuation":"yes|no","participation":"direct|side|open|none","interest":"strong|weak|none","reason_code":"direct_request|shared_interest|personal_experience|emotional_reaction|continuation|none","confidence":"high|medium|low","topic_key":"最多32个字符"}
-    reply=no 时 reason_code 必须为 none；若 reply=yes，必须同时具备可靠的 participation、非 none 的 interest 和具体 reason_code。
+    reply=no 时 reason_code 必须为 none；若 reply=yes，target 和 participation 必须能说明你准备如何说话，其余字段只需如实描述这次整体判断，不要让 interest 或 reason_code 变成机械门槛。
     启用额外推理协议时，推理只能写在指定标记块内；标记块结束后另起一行输出同样的 JSON 对象，JSON 必须独占最后一行。
   </output>
 </decision_contract>
