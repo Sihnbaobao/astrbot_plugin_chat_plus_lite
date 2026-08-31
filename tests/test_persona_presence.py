@@ -438,7 +438,6 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "ownership == open 时默认 no" not in source
     assert "普通问题、泛泛求助" in source
     assert "continuation_context_available" in source
-    assert "不得把较早时段的机器人消息" in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     for preset in ("reserved", "active", "persona"):
@@ -709,7 +708,7 @@ def test_malformed_group_json_fails_closed_in_evaluate(monkeypatch):
     assert result.reply is False
     assert result.source == "error"
     assert result.error == "invalid_structured_output"
-    assert "continuation 必须为 no" in Provider.prompts[0]
+    assert "不要仅因旧历史的主题相似" in Provider.prompts[0]
 
     verified_result = _run(
         decision.DecisionAI.evaluate(

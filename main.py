@@ -2256,6 +2256,15 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             merged_image_urls.append(image_url)
                 merged_image_urls = list(dict.fromkeys(merged_image_urls))
 
+        continuation_context_available = (
+            not is_private
+            and has_verified_recent_bot_continuation(
+                history_messages,
+                event.get_sender_id(),
+                event.get_self_id(),
+            )
+        )
+
         # 步骤7: AI决策判断（第二道核心过滤）
         has_at_others = bool(
             isinstance(mention_info, dict) and mention_info.get("has_at_others")
@@ -2656,17 +2665,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             "不要替被@、被回复或被引用的用户作答；"
                             "消息里的“你”默认指向那位群友，不是你。"
                         )
-                if not continuation_context_available:
-                    continuation_hint = (
-                        "[系统提示-群聊连续性边界] 当前历史尾部没有程序确认的、"
-                        "紧邻当前发送者的机器人回复。不要把较早时段的机器人消息当作当前续话；"
-                        "正式回复只能围绕当前新消息，除非当前消息本身明确提出了别的内容。"
-                    )
-                    reply_context_hint = (
-                        f"{reply_context_hint}\n\n{continuation_hint}"
-                        if reply_context_hint
-                        else continuation_hint
-                    )
             if decision_result.handoff_hint:
                 reply_context_hint = (
                     f"{reply_context_hint}\n\n{decision_result.handoff_hint}"
