@@ -1,4 +1,4 @@
-// Group Chat Plus Lite — 插件页控制台（分组 tab 分页版）
+// Persona Presence — 插件页控制台（分组 tab 分页版）
 const bridge = window.AstrBotPluginPage;
 const state = { values: {}, runtime: {}, version: "", groups: [] };
 let activeIdx = 0;       // 当前显示的分组下标
@@ -228,7 +228,7 @@ async function renderPrompts() {
         </details>
       </div>`;
     $("#promptGrid").innerHTML =
-      card("读空气判断提示词", "🧠", data.decision || { mode: "append", has_custom: false, extra: "", text: "" }, "decision_ai_extra_prompt") +
+      card("参与判断提示词", "🧠", data.decision || { mode: "append", has_custom: false, extra: "", text: "" }, "decision_ai_extra_prompt") +
       card("回复生成提示词", "💬", data.reply || { mode: "append", has_custom: false, extra: "", text: "" }, "reply_ai_extra_prompt");
     $("#promptGrid").querySelectorAll("[data-prompt-save]").forEach((btn) => {
       btn.addEventListener("click", async () => {

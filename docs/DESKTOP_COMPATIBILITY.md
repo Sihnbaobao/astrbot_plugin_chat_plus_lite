@@ -1,6 +1,6 @@
 # AstrBot 桌面端兼容说明
 
-> 本文档说明 **Group Chat Plus 插件** 在 AstrBot 桌面端（Desktop Edition）与标准版之间的差异，以及已知的兼容性问题与解决方案。
+> 本文档说明 **Persona Presence 插件** 在 AstrBot 桌面端（Desktop Edition）与标准版之间的差异，以及已知的兼容性问题与解决方案。
 
 [← 返回 README](../README.md) | [深度指南与常见问题](ARCHITECTURE.md) | [配置项参考](CONFIG_REFERENCE.md) | [消息工作流程](MESSAGE_WORKFLOW.md) | [项目结构](PROJECT_STRUCTURE.md)
 
@@ -60,9 +60,9 @@
 ├── data/
 │   ├── cmd_config.json
 │   ├── plugins/              ← 插件源码
-│   │   └── astrbot_plugin_chat_plus_lite/
+│   │   └── astrbot_plugin_persona_presence/
 │   ├── plugin_data/          ← 插件数据
-│   │   └── astrbot_plugin_chat_plus_lite/
+│   │   └── astrbot_plugin_persona_presence/
 │   ├── config/
 │   ├── temp/
 │   └── site-packages/
@@ -83,8 +83,8 @@
 
 | 路径类型 | 获取方式 | 标准版 | 桌面端 |
 |----------|----------|--------|--------|
-| 插件数据目录 | `StarTools.get_data_dir()` | `<cwd>/data/plugin_data/astrbot_plugin_chat_plus_lite/` | `~/.astrbot/data/plugin_data/astrbot_plugin_chat_plus_lite/` |
-| 插件源码目录 | `Path(__file__).parent` | `<cwd>/data/plugins/astrbot_plugin_chat_plus_lite/` | `~/.astrbot/data/plugins/astrbot_plugin_chat_plus_lite/` |
+| 插件数据目录 | `StarTools.get_data_dir()` | `<cwd>/data/plugin_data/astrbot_plugin_persona_presence/` | `~/.astrbot/data/plugin_data/astrbot_plugin_persona_presence/` |
+| 插件源码目录 | `Path(__file__).parent` | `<cwd>/data/plugins/astrbot_plugin_persona_presence/` | `~/.astrbot/data/plugins/astrbot_plugin_persona_presence/` |
 | Web 面板静态文件 | `Path(__file__).parent / "web/static"` | 同上相对路径 | 同上相对路径 |
 
 **注意**：如需手动查找插件文件（排查问题），桌面端用户请前往 `~/.astrbot/data/plugins/` 目录。
@@ -228,7 +228,7 @@
 # 方式 1：通过 AstrBot 仪表盘「插件市场」安装
 # 方式 2：手动 clone
 cd <AstrBot目录>/data/plugins/
-git clone https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite.git
+git clone https://github.com/Sihnbaobao/astrbot_plugin_persona_presence.git
 ```
 
 ### 桌面端
@@ -237,7 +237,7 @@ git clone https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite.git
 # 方式 1：通过桌面端内置的仪表盘「插件市场」安装（推荐）
 # 方式 2：手动 clone
 cd ~/.astrbot/data/plugins/
-git clone https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite.git
+git clone https://github.com/Sihnbaobao/astrbot_plugin_persona_presence.git
 ```
 
 **桌面端注意事项：**
@@ -260,11 +260,11 @@ git clone https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite.git
 
 ### Q: 桌面端找不到插件配置文件在哪里
 
-**路径**：`~/.astrbot/data/plugin_data/astrbot_plugin_chat_plus_lite/`
+**路径**：`~/.astrbot/data/plugin_data/astrbot_plugin_persona_presence/`
 
-- Windows：`C:\Users\<用户名>\.astrbot\data\plugin_data\astrbot_plugin_chat_plus_lite\`
-- macOS：`/Users/<用户名>/.astrbot/data/plugin_data/astrbot_plugin_chat_plus_lite/`
-- Linux：`/home/<用户名>/.astrbot/data/plugin_data/astrbot_plugin_chat_plus_lite/`
+- Windows：`C:\Users\<用户名>\.astrbot\data\plugin_data\astrbot_plugin_persona_presence\`
+- macOS：`/Users/<用户名>/.astrbot/data/plugin_data/astrbot_plugin_persona_presence/`
+- Linux：`/home/<用户名>/.astrbot/data/plugin_data/astrbot_plugin_persona_presence/`
 
 ### Q: 桌面端 Web 面板无法访问
 
@@ -290,7 +290,7 @@ git clone https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite.git
 
 可以，但需要手动迁移数据目录。两种版本使用相同的数据格式：
 
-1. 将标准版 `data/plugin_data/astrbot_plugin_chat_plus_lite/` 复制到桌面端 `~/.astrbot/data/plugin_data/astrbot_plugin_chat_plus_lite/`
+1. 将标准版 `data/plugin_data/astrbot_plugin_persona_presence/` 复制到桌面端 `~/.astrbot/data/plugin_data/astrbot_plugin_persona_presence/`
 2. 重启桌面端后端
 
 ### Q: 如何判断当前运行在哪种模式下

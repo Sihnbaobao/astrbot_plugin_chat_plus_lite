@@ -35,7 +35,7 @@
                     "decide"
                 ],
                 "default": "direct",
-                "hint": "direct=普通私聊直接回应，不受群聊安静人格规则影响；decide=使用私聊专用读空气。纯图片/表情包仍按各自媒体策略处理。"
+                "hint": "direct=普通私聊直接回应，不受群聊安静人格规则影响；decide=使用私聊专用参与判断。纯图片/表情包仍按各自媒体策略处理。"
             },
             "enable_debug_log": {
                 "description": "调试日志",
@@ -64,7 +64,7 @@
                 "description": "接管群聊回复",
                 "type": "bool",
                 "default": true,
-                "hint": "开启=由本插件的读空气全权决定是否回复，挡住 AstrBot 主对话（避免 @/点名被兜底必回）；关闭=交给 AstrBot 默认行为。"
+                "hint": "开启=由本插件的参与判断全权决定是否回复，挡住 AstrBot 主对话（避免 @/点名被兜底必回）；关闭=交给 AstrBot 默认行为。"
             },
             "group_reply_scope": {
                 "description": "群聊响应范围",
@@ -74,12 +74,12 @@
                     "ambient"
                 ],
                 "default": "ambient",
-                "hint": "ambient=保留群聊读空气，但开放话题默认不插话，需有具体个人切入点；addressed=仅处理@机器人、关键词、回复机器人消息或戳机器人。ambient 会先过滤明确回复他人、纯媒体和模糊短句。"
+                "hint": "ambient=普通群聊消息也进入兴趣判断；开放话题默认克制，但人格有强烈且具体的个人切入点时可以发言；addressed=只让@机器人、关键词、回复机器人消息或戳机器人进入候选。无论哪种模式，@和关键词都不保证回复。"
             }
         }
     },
     "gcp_decision": {
-        "description": "🧠 读空气（决定要不要回）",
+        "description": "🧠 参与判断（决定要不要回）",
         "type": "object",
         "items": {
             "decision_ai_provider_id": {
@@ -93,7 +93,7 @@
                 "description": "判断携带人格",
                 "type": "bool",
                 "default": true,
-                "hint": "开启=读空气判断用你的人格当主角(推荐)。只影响判断，不影响回复内容。"
+                "hint": "开启=参与判断用你的人格当主角(推荐)。只影响判断，不影响回复内容。"
             },
             "decision_ai_extra_prompt": {
                 "description": "判断补充提示词",
@@ -107,6 +107,24 @@
                 "type": "int",
                 "default": 30,
                 "hint": "判断超时则不回复；建议30。"
+            },
+            "ambient_reply_min_interval_seconds": {
+                "description": "开放发言最小间隔(秒)",
+                "type": "float",
+                "default": 45.0,
+                "hint": "只限制没有明确指向你的 open/side 发言；设为0关闭间隔限制。"
+            },
+            "ambient_reply_window_seconds": {
+                "description": "开放发言统计窗口(秒)",
+                "type": "float",
+                "default": 600.0,
+                "hint": "与开放发言上限一起使用；设为0不保留窗口记录。"
+            },
+            "ambient_reply_max_per_window": {
+                "description": "开放发言窗口上限",
+                "type": "int",
+                "default": 4,
+                "hint": "单个群聊窗口内最多主动补充次数；设为0关闭上限。"
             },
             "decision_ai_reply_tendency": {
                 "description": "回复倾向",
@@ -135,7 +153,7 @@
                 "description": "触发关键词",
                 "type": "list",
                 "default": [],
-                "hint": "命中即跳过随机、必参与判断(可填角色别名)。"
+                "hint": "命中只提高消息的注意力权重并进入统一兴趣判断，不保证回复(可填角色别名)。"
             },
             "blacklist_keywords": {
                 "description": "屏蔽关键词",
@@ -147,7 +165,7 @@
                 "description": "关键词智能模式",
                 "type": "bool",
                 "default": true,
-                "hint": "开启=命中关键词（如bot名字/被@）也交给读空气AI按人格判断是否回复（推荐）；关闭=命中关键词则必回（仅对关键词命中生效，@仍按判断）。"
+                "hint": "兼容旧配置；现在无论开关状态都经过统一兴趣判断，关键词只提高注意力，不直接保证回复。"
             }
         }
     },
@@ -284,7 +302,7 @@
                     "lazy",
                     "eager"
                 ],
-                "hint": "lazy=先用文字读空气，确认值得回复后才检查相关图片；eager=在读空气阶段直接读取图片。"
+                "hint": "lazy=先用文字参与判断，确认值得回复后才检查相关图片；eager=在参与判断阶段直接读取图片。"
             },
             "image_to_text_scope": {
                 "description": "图片处理范围",
@@ -307,7 +325,7 @@
                     "decide",
                     "always"
                 ],
-                "hint": "ignore=忽略纯图片；decide=交给读空气；always=直接处理。含文字的图文消息仍按普通消息处理。"
+                "hint": "ignore=忽略纯图片；decide=交给参与判断；always=直接处理。含文字的图文消息仍按普通消息处理。"
             },
             "private_emoji_mode": {
                 "description": "私聊纯表情包策略",
@@ -318,7 +336,7 @@
                     "decide",
                     "always"
                 ],
-                "hint": "ignore=忽略水消息；decide=让读空气判断是否回应；always=直接处理。"
+                "hint": "ignore=忽略水消息；decide=让参与判断是否回应；always=直接处理。"
             },
             "private_collapse_duplicate_emoji": {
                 "description": "折叠重复表情包",

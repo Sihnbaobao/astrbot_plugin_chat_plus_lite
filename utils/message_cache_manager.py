@@ -147,7 +147,7 @@ class MessageCacheManager:
                 - has_trigger_keyword: 是否触发关键词
                 - poke_info: 戳一戳信息（可选）
                 - image_urls: 图片URL列表（可选）
-                - probability_filtered: 是否概率过滤（可选）
+                - decision_state: 参与判断状态（如 observed，可选）
             source: 缓存来源（用于日志）
 
         Returns:
@@ -307,7 +307,10 @@ class MessageCacheManager:
 
         # 过滤掉窗口缓冲消息（与 get_regular_cached_messages 保持一致）
         cached_messages = [
-            msg for msg in cached_messages if not msg.get("window_buffered", False)
+            msg
+            for msg in cached_messages
+            if not msg.get("window_buffered", False)
+            and msg.get("decision_state") != "observed"
         ]
 
         # 过滤过期消息
@@ -805,7 +808,10 @@ class MessageCacheManager:
 
         # 过滤掉窗口缓冲消息
         regular_messages = [
-            msg for msg in cached_messages if not msg.get("window_buffered", False)
+            msg
+            for msg in cached_messages
+            if not msg.get("window_buffered", False)
+            and msg.get("decision_state") != "observed"
         ]
 
         # 过滤过期消息
@@ -838,6 +844,7 @@ class MessageCacheManager:
             msg
             for msg in self.pending_messages_cache[chat_id]
             if msg.get("window_buffered", False)
+            and msg.get("decision_state") != "observed"
         ]
 
         # 按时间排序

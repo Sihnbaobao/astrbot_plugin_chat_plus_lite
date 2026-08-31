@@ -1,16 +1,16 @@
 """
-聊天增强插件 - Group Chat Plus（精简重构版 refactor-lite）
-基于AI读空气的群聊与私聊增强插件，让bot更懂氛围
+Persona Presence - 人格自主参与插件
+基于AI参与判断的群聊与私聊增强插件，让bot更懂氛围
 
 重构核心原则：
-- 插件只决定"要不要回复"，不决定"说什么"
+- 插件只决定是否进入正式回复，以及传递最小参与依据；不决定回复正文
 - 回复内容完全交给 AstrBot 原始链路（用户设定的人格 + 平台默认 prompt）
 - 不再注入任何系统行为指令/情绪/注意力/主动对话等文本到 system_prompt / prompt
 
 保留功能：
-1. AI读空气判断 - 智能决定是否回复消息（DecisionAI，独立调用只输出 yes/no）
+1. AI参与判断 - 智能决定是否回复消息（DecisionAI，输出结构化参与结果）
 3. 关键词触发 - 特定词触发（可配智能模式）
-4. @消息与普通消息同样由读空气判断
+4. @消息与普通消息同样由参与判断
 5. 图片识别（转文字/多模态直传）、表情包标记、媒体路径内联
 6. 转发消息解析、新成员入群解析
 7. 黑名单（用户/关键词）
@@ -28,7 +28,7 @@
 动态时间段概率、工具提醒文本注入、SystemPromptRewriter 差分重写
 
 作者/维护: Sihnbaobao
-版本: 0.0.11（私聊短连发合并与并发延迟修复）
+版本: 1.0.0（Persona Presence 参与判断重构）
 """
 
 import asyncio
@@ -80,18 +80,19 @@ from .utils import (
 )
 from .utils.image_description_cache import ImageDescriptionCache
 from .utils.message_cache_manager import MessageCacheManager
+from .utils.participation import ParticipationDecision, ParticipationThrottle
 
 
 @register(
-    "astrbot_plugin_chat_plus_lite",
+    "astrbot_plugin_persona_presence",
     "Sihnbaobao",
-    "一个支持群聊与私聊批处理、以AI读空气为主的聊天效果增强插件（人格主导，简洁配置）",
-    "0.0.11",
-    "https://github.com/Sihnbaobao/astrbot_plugin_chat_plus_lite",
+    "让当前 Persona 按兴趣、关系和当下意愿选择是否参与对话的增强插件",
+    "1.0.0",
+    "https://github.com/Sihnbaobao/astrbot_plugin_persona_presence",
 )
-class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
+class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
     """
-    聊天增强插件主类（精简重构版）
+    Persona Presence 插件主类
 
     采用事件监听而非消息拦截，确保与其他插件兼容
     """
@@ -152,9 +153,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             "private_duplicate_emoji_window_ms", 1500, minimum=0, maximum=600_000
         )
 
-        # ========== 概率相关配置 ==========
+        # ========== Compatibility settings ==========
 
-        # ========== 决策AI（读空气）配置 ==========
+        # ========== 决策AI（参与判断）配置 ==========
         self.decision_ai_provider_id = self._cfg_str("decision_ai_provider_id", "")
         self.decision_ai_include_persona = self._cfg_bool(
             "decision_ai_include_persona", True
@@ -188,6 +189,15 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         )
         self.judgment_reasoning_end_marker = self._cfg_str(
             "judgment_reasoning_end_marker", "[[GCP_REASONING_END]]"
+        )
+        self.ambient_reply_min_interval_seconds = self._cfg_float(
+            "ambient_reply_min_interval_seconds", 45.0, minimum=0.0, maximum=86_400.0
+        )
+        self.ambient_reply_window_seconds = self._cfg_float(
+            "ambient_reply_window_seconds", 600.0, minimum=0.0, maximum=86_400.0
+        )
+        self.ambient_reply_max_per_window = self._cfg_int(
+            "ambient_reply_max_per_window", 4, minimum=0, maximum=1000
         )
 
         # ========== 回复配置 ==========
@@ -277,7 +287,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.blacklist_keywords = self._cfg_list("blacklist_keywords", [])
         self.keyword_smart_mode = self._cfg_bool(
             "keyword_smart_mode", True
-        )  # 默认：关键词命中（含bot名字/被@）也交给读空气判断
+        )  # 默认：关键词命中（含bot名字/被@）也交给参与判断
         self.takeover_group_reply = self._cfg_bool(
             "takeover_group_reply", True
         )  # 默认：接管群聊回复（stop_event 挡住主对话，避免 @/关键词被兜底必回）
@@ -462,6 +472,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self.poke_trace_records: dict[str, Any] = {}
         # AI错误消息标记 set[message_id]
         self._ai_error_message_ids: set[str] = set()
+        self.participation_throttle = ParticipationThrottle(
+            min_interval_seconds=self.ambient_reply_min_interval_seconds,
+            window_seconds=self.ambient_reply_window_seconds,
+            max_replies_per_window=self.ambient_reply_max_per_window,
+        )
 
         # Smart 并发参数同步
         try:
@@ -479,7 +494,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
         # 日志输出
         logger.info("=" * 50)
-        logger.info("群聊增强插件已加载 - 0.0.11（私聊短连发合并/并发延迟修复版）")
+        logger.info("Persona Presence 已加载 - 1.0.0（人格自主参与）")
         logger.info(
             f"🔘 群聊功能总开关: {'✓ 已启用' if self.enable_group_chat else '✗ 已禁用'}"
         )
@@ -548,6 +563,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             self._private_recent_emoji.clear()
             self.poke_trace_records.clear()
             self._ai_error_message_ids.clear()
+            self.participation_throttle.reset()
 
     async def _close_http_session(self) -> None:
         """Close the owned HTTP session and make repeated cleanup harmless."""
@@ -564,7 +580,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         """Return the active HTTP session or raise a clear lifecycle error."""
         session = self.session
         if session is None or session.closed:
-            raise RuntimeError("ChatPlus HTTP session is not initialized")
+            raise RuntimeError("PersonaPresence HTTP session is not initialized")
         return session
 
     # ============================================================
@@ -828,7 +844,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             pass
         self.config[key] = value
 
-    _PLUGIN_NAME = "astrbot_plugin_chat_plus_lite"
+    _PLUGIN_NAME = "astrbot_plugin_persona_presence"
 
     # ============================================================
     # 插件页配置源：100% 由 _conf_schema.json 驱动
@@ -893,7 +909,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 f"/{self._PLUGIN_NAME}/prompts",
                 self._api_prompts,
                 ["GET"],
-                "提示词预览（读空气判断/回复生成）",
+                "提示词预览（参与判断/回复生成）",
             )
             self._web_apis_registered = True
             logger.info("✅ 插件页 Web API 已注册（Dashboard 插件页可用）")
@@ -919,7 +935,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         groups = self._schema_groups()
         return json_response(
             {
-                "version": "0.0.11",
+                "version": "1.0.0",
                 "values": values,
                 "groups": groups,
                 "runtime": runtime,
@@ -975,7 +991,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         return json_response({"applied": applied, "skipped": skipped})
 
     def _page_tendency_prompt(self) -> str:
-        """与 DecisionAI.should_reply 中 reply_tendency 段落保持一致的预览文本。"""
+        """与 DecisionAI.evaluate 中 reply_tendency 段落保持一致的预览文本。"""
         tendency = self.decision_ai_reply_tendency
         if tendency == "reserved":
             return (
@@ -997,7 +1013,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         )
 
     async def _api_prompts(self):
-        """返回读空气判断/回复生成的提示词预览（与真实拼接逻辑保持一致）。"""
+        """返回参与判断/回复生成的提示词预览（与真实拼接逻辑保持一致）。"""
         from astrbot.api.web import json_response
 
         try:
@@ -1322,7 +1338,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             except Exception:
                 pass
             if (not _raw_msg_str or not _raw_msg_str.strip()) and not _msg_components:
-                # 平台系统事件/真空消息（如进群通知）：不参与读空气，静默放行
+                # 平台系统事件/真空消息（如进群通知）：不进入参与判断，静默放行
                 event.call_llm = True
                 return
 
@@ -1582,8 +1598,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         消息处理主流程''  # 占位
 
         流程：
-        初始检查 → 消息触发器（@/关键词）→ 戳一戳/@提及 → 概率判断 →
-        内容处理（图片/媒体/上下文）→ Smart并发 → AI决策（读空气）→ 生成并发送回复
+        初始检查 → 消息触发器（@/关键词）→ 戳一戳/@提及 → 参与候选整理 →
+        内容处理（图片/媒体/上下文）→ Smart并发 → AI决策（参与判断）→ 生成并发送回复
         """
 
         # 步骤1: 初始检查（最基本的过滤）
@@ -1605,7 +1621,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             self.takeover_private_reply if is_private else self.takeover_group_reply
         )
 
-        # 步骤2: 检查消息触发器（决定是否跳过概率判断）
+        # 步骤2: 检查消息触发器（整理参与候选 signal）
         _chat_key_for_seq = ProbabilityManager.get_chat_key(
             platform_name, is_private, chat_id
         )
@@ -1617,7 +1633,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             matched_trigger_keyword,
         ) = await self._check_message_triggers(event)
 
-        # 步骤2.5: 检测@全体成员与戳一戳信息（概率判断前提取）
+        # 步骤2.5: 检测@全体成员与戳一戳信息（参与判断前提取）
         is_at_all_message = False
         try:
             is_at_all_message = bool(
@@ -1929,99 +1945,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     return
                 force_private_media_reply = private_media_policy == "always"
 
-        # 步骤3: 概率判断（传统概率模式已移除，默认AI主导，恒处理）
-        should_process = True
-        if not should_process:
-            # 历史概率模式残留分支（恒不进入，保留以兼容旧结构）
-            try:
-                original_message_text = MessageCleaner.extract_raw_message_from_event(
-                    event, self_id=str(event.get_self_id())
-                )
-                await asyncio.sleep(0)
-                has_image = PlatformLTMHelper.has_image_in_message(event)
-                is_pure_image = PlatformLTMHelper.is_pure_image_message(event)
+        # Step 3 has no random gate; eligible messages rely on DecisionAI and local policy.
 
-                processed_text = None
-                should_cache = True
-                success = False
-
-                if has_image:
-                    (
-                        success,
-                        platform_processed_text,
-                    ) = await PlatformLTMHelper.extract_image_caption_from_platform(
-                        self.context,
-                        event,
-                        original_message_text,
-                        max_wait=self.platform_image_caption_max_wait,
-                        retry_interval=self.platform_image_caption_retry_interval,
-                        fast_check_count=self.platform_image_caption_fast_check_count,
-                    )
-                    if success and platform_processed_text:
-                        processed_text = platform_processed_text
-                        await self._save_platform_descriptions_to_cache(
-                            event, platform_processed_text
-                        )
-                    else:
-                        cache_fallback_text = await self._try_cache_fallback_for_images(
-                            event
-                        )
-                        if cache_fallback_text:
-                            processed_text = cache_fallback_text
-                            success = True
-                        elif is_pure_image:
-                            should_cache = False
-                        else:
-                            should_cache, processed_text = (
-                                MessageCleaner.process_cached_message_images(
-                                    original_message_text
-                                )
-                            )
-                else:
-                    processed_text = original_message_text
-                    should_cache = bool(processed_text and processed_text.strip())
-
-                if should_cache and processed_text:
-                    image_retained_in_cache = (has_image and success) or (not has_image)
-                    if (
-                        is_emoji_message
-                        and self.enable_emoji_filter
-                        and image_retained_in_cache
-                    ):
-                        processed_text = EmojiDetector.add_emoji_marker(processed_text)
-                    cached_message = {
-                        "role": "user",
-                        "content": processed_text,
-                        "timestamp": time.time(),
-                        "message_id": self._get_processing_id(event),
-                        "sender_id": event.get_sender_id(),
-                        "sender_name": event.get_sender_name(),
-                        "message_timestamp": event.message_obj.timestamp
-                        if hasattr(event, "message_obj")
-                        and hasattr(event.message_obj, "timestamp")
-                        else None,
-                        "mention_info": mention_info,
-                        "is_at_message": is_at_message,
-                        "has_trigger_keyword": has_trigger_keyword,
-                        "is_at_all_message": is_at_all_message,
-                        "poke_info": None,
-                        "persistent_poke_event_text": persistent_poke_event_text,
-                        "probability_filtered": True,
-                        "image_urls": [],
-                        "is_empty_at": False,
-                    }
-                    source_label = (
-                        "概率过滤-带图片描述" if (has_image and success) else "概率过滤"
-                    )
-                    self.cache_manager.add_to_cache(
-                        chat_id, cached_message, source=source_label
-                    )
-            except Exception as e:
-                logger.warning(f"[概率过滤-缓存] 缓存消息失败: {e}")
-
-            return
-
-        # 步骤3.5: 戳一戳反戳逻辑（放在概率判断之后）
+        # 步骤3.5: 戳一戳反戳逻辑（正式参与判断之前）
         poke_info = (
             poke_info_for_probability.get("poke_info")
             if poke_info_for_probability
@@ -2128,7 +2054,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 for _cached in self.pending_messages_cache[chat_id]:
                     if isinstance(_cached, dict):
                         _urls = _cached.get("image_urls") or []
-                        if _urls:
+                        if _urls and _cached.get("decision_state") != "observed":
                             merged_image_urls.extend(_urls)
                 if merged_image_urls:
                     _seen_urls = set()
@@ -2327,6 +2253,10 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 merged_image_urls = list(dict.fromkeys(merged_image_urls))
 
         # 步骤7: AI决策判断（第二道核心过滤）
+        has_at_others = bool(
+            isinstance(mention_info, dict) and mention_info.get("has_at_others")
+        )
+        decision_result = ParticipationDecision.silent(source="policy")
         _welcome_skip_all = (
             (
                 event.get_extra("is_welcome_message")
@@ -2338,20 +2268,44 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         _at_all_skip_all = is_at_all_message and self.at_all_message_mode == "skip_all"
 
         if _welcome_skip_all or _at_all_skip_all:
-            should_reply = True
+            decision_result = ParticipationDecision(
+                reply=True,
+                target="bot" if is_explicitly_addressed else "open",
+                participation="direct" if is_explicitly_addressed else "open",
+                information="substantive",
+                interest="weak",
+                reason_code="direct_request"
+                if is_explicitly_addressed
+                else "shared_interest",
+                confidence="low",
+                source="forced",
+            )
             if self.debug_mode:
                 logger.info("【步骤7】skip_all 模式消息，跳过AI决策，强制处理")
         elif force_private_media_reply:
-            should_reply = True
+            decision_result = ParticipationDecision(
+                reply=True,
+                target="bot",
+                participation="direct",
+                information="substantive",
+                interest="weak",
+                reason_code="direct_request",
+                confidence="high",
+                source="forced",
+            )
             if self.debug_mode:
                 logger.info(
                     f"Forced handling for private {private_media_kind or 'media'}-only message"
                 )
         elif ambient_attention_blocked:
-            should_reply = False
+            decision_result = ParticipationDecision.silent(
+                source="policy", reason_code="none"
+            )
             logger.info("[Ambient attention] Skipping obvious noise before decision AI")
         elif group_reply_blocked:
-            should_reply = False
+            decision_result = ParticipationDecision.silent(
+                source="policy", reason_code="none"
+            )
             logger.info(
                 "[Group boundary] Skipping decision AI for an unaddressed group message"
             )
@@ -2406,7 +2360,7 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         " The sender explicitly asks about an image; treat this as a "
                         "direct request and return yes unless the message is unsafe or invalid."
                     )
-            should_reply = await self._check_ai_decision(
+            decision_result = await self._check_ai_decision(
                 event,
                 decision_context_for_ai,
                 is_at_message,
@@ -2417,29 +2371,66 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 force_ai_decision=is_private and bool(private_media_kind),
                 is_directly_addressed=is_explicitly_addressed,
                 is_reply_to_other=is_reply_to_other,
+                has_at_others=has_at_others,
             )
-            if image_question_requested and not should_reply:
-                should_reply = True
+            if (
+                image_question_requested
+                and not decision_result.reply
+                and not decision_result.error
+            ):
+                decision_result = decision_result.with_reply(
+                    True,
+                    target="bot",
+                    participation="direct",
+                    information="substantive",
+                    interest="weak",
+                    reason_code="direct_request",
+                    source="policy",
+                )
                 logger.info(
                     "Direct image question detected; continuing to image relevance check"
                 )
 
+        should_reply = decision_result.reply
+        if should_reply and not is_private:
+            chat_key = ProbabilityManager.get_chat_key(
+                platform_name, is_private, chat_id
+            )
+            allowed, throttle_reason = self.participation_throttle.allow_and_record(
+                chat_key, decision_result, is_private=is_private
+            )
+            if not allowed:
+                decision_result = decision_result.with_reply(
+                    False, source="policy", reason_code="none"
+                )
+                should_reply = False
+                logger.info(
+                    f"[Participation budget] suppressed {throttle_reason}: "
+                    f"{decision_result.summary()}"
+                )
+
         if not should_reply:
-            # Let the core pipeline answer when private decision AI failed.
             decision_ai_failed = bool(getattr(event, "_decision_ai_error", False))
-            if takeover_reply and not decision_ai_failed:
+            if decision_ai_failed:
+                logger.warning(
+                    "[DecisionAI] Participation evaluation failed; "
+                    "takeover mode will remain silent"
+                )
+            if takeover_reply:
                 try:
                     event.stop_event()
                 except Exception:
                     pass
             else:
                 event.call_llm = True
-            # AI决策判定不通过时，将消息添加到缓存
+            # Keep a rejected message as a non-active observation only.
             if cached_message_data:
+                observed_message = dict(cached_message_data)
+                observed_message["decision_state"] = "observed"
                 self.cache_manager.add_to_cache(
-                    chat_id, cached_message_data, source="AI决策过滤"
+                    chat_id, observed_message, source="AI决策观察"
                 )
-                logger.debug("📦 决策AI判断: 不回复此消息，已缓存消息，等待后续转正")
+                logger.debug("[DecisionAI] Rejected message retained as an observation")
 
             # Smart 批次下被吸收但未触发回复的后续消息回落为普通缓存
             if use_smart_batch:
@@ -2450,8 +2441,9 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     _fallback_cache = dict(_smart_msg)
                     _fallback_cache.pop("window_buffered", None)
                     _fallback_cache.pop("smart_batch_dynamic_hint", None)
+                    _fallback_cache["decision_state"] = "observed"
                     self.cache_manager.add_to_cache(
-                        chat_id, _fallback_cache, source="AI决策过滤-smart-batch"
+                        chat_id, _fallback_cache, source="AI决策观察-smart-batch"
                     )
 
             if self.debug_mode:
@@ -2650,6 +2642,12 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             "不要替被@、被回复或被引用的用户作答；"
                             "消息里的“你”默认指向那位群友，不是你。"
                         )
+            if decision_result.handoff_hint:
+                reply_context_hint = (
+                    f"{reply_context_hint}\n\n{decision_result.handoff_hint}"
+                    if reply_context_hint
+                    else decision_result.handoff_hint
+                )
             reply_message_text = message_text
             if use_smart_batch:
                 if smart_batch_messages:
@@ -2821,17 +2819,17 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         if has_trigger_keyword:
             if self.debug_mode:
                 logger.info(
-                    f"【步骤4】检测到触发关键词: {matched_trigger_keyword}，跳过读空气判断"
+                    f"【步骤4】检测到触发关键词: {matched_trigger_keyword}，进入统一参与判断"
                 )
 
         return is_at_message, has_trigger_keyword, matched_trigger_keyword
 
     # ============================================================
-    # 概率判断
+    # 参与判断
     # ============================================================
 
     # ============================================================
-    # AI决策判断（读空气）
+    # AI决策判断（参与判断）
     # ============================================================
 
     async def _check_ai_decision(
@@ -2846,7 +2844,8 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         force_ai_decision: bool = False,
         is_directly_addressed: bool = False,
         is_reply_to_other: bool = False,
-    ) -> bool:
+        has_at_others: bool = False,
+    ) -> ParticipationDecision:
         """
         执行AI决策判断（在处理完消息内容后）
 
@@ -2854,12 +2853,11 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             force_ai_decision: Keep AI gating for private media in direct mode.
             is_directly_addressed: Whether the current message explicitly targets the bot.
             is_reply_to_other: Whether the current message replies to another user.
+            has_at_others: Whether the current message mentions another user.
 
         Returns:
-            True=应该回复, False=不回复
+            A validated participation decision for the reply pipeline.
         """
-        keyword_smart_mode = self.keyword_smart_mode
-
         platform_name = event.get_platform_name()
         is_private = event.is_private_chat()
         chat_id = event.get_group_id() if not is_private else event.get_sender_id()
@@ -2869,9 +2867,18 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         if is_private and self.private_reply_mode == "direct" and not force_ai_decision:
             if self.debug_mode:
                 logger.info("Private direct mode: bypassing group-style reply decision")
-            return True
+            return ParticipationDecision(
+                reply=True,
+                target="bot",
+                participation="direct",
+                information="substantive",
+                interest="weak",
+                reason_code="direct_request",
+                confidence="high",
+                source="policy",
+            )
 
-        # 在读空气AI之前注入记忆（可选，pre_decision 模式）
+        # 在参与判断AI之前注入记忆（可选，pre_decision 模式）
         decision_formatted_context = formatted_context
         if (
             self.enable_memory_injection
@@ -2931,80 +2938,65 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     f"[决策AI] 记忆插件({memory_mode}模式)不可用，判定前跳过记忆注入"
                 )
 
-        # Decide whether the current message should reach the reply model.
-        # Ambient group messages still use AI attention after the deterministic noise gate;
-        # direct triggers and keyword_smart_mode keep their existing semantics.
-        should_do_ai_decision = keyword_smart_mode or not has_trigger_keyword
+        # Every eligible message goes through the same interest decision.
+        # Keywords and @ signals change attention context, never the final answer.
 
-        if should_do_ai_decision:
-            if self.debug_mode:
-                logger.info("【步骤9】调用决策AI判断是否回复")
+        if self.debug_mode:
+            logger.info("【步骤9】调用决策AI判断是否回复")
 
-            _decision_start = time.time()
+        _decision_start = time.time()
 
-            # 判断是否通过关键词触发（智能模式下）
-            is_keyword_triggered = has_trigger_keyword and keyword_smart_mode
+        # A keyword is an attention signal, never a reply bypass.
+        is_keyword_triggered = has_trigger_keyword
 
-            should_reply = await DecisionAI.should_reply(
-                self.context,
-                event,
-                decision_formatted_context,
-                self.decision_ai_provider_id,
-                self.decision_ai_extra_prompt,
-                self.decision_ai_timeout,
-                self.decision_ai_prompt_mode,
-                image_urls=image_urls,
-                include_sender_info=self.include_sender_info,
-                is_keyword_triggered=is_keyword_triggered,
-                matched_keyword=matched_trigger_keyword,
-                enable_reasoning=self.enable_decision_ai_reasoning,
-                reasoning_log_enabled=self.decision_ai_reasoning_log,
-                reasoning_log_mode=self.decision_ai_reasoning_log_mode,
-                reasoning_start_marker=self.judgment_reasoning_start_marker,
-                reasoning_end_marker=self.judgment_reasoning_end_marker,
-                include_persona=self.decision_ai_include_persona,
-                configured_persona_name=self.decision_ai_persona_name,
-                reply_tendency=self.decision_ai_reply_tendency,
-                is_private=is_private,
-                is_directly_addressed=is_directly_addressed,
-                is_reply_to_other=is_reply_to_other,
-            )
+        decision_result = await DecisionAI.evaluate(
+            self.context,
+            event,
+            decision_formatted_context,
+            self.decision_ai_provider_id,
+            self.decision_ai_extra_prompt,
+            self.decision_ai_timeout,
+            self.decision_ai_prompt_mode,
+            image_urls=image_urls,
+            include_sender_info=self.include_sender_info,
+            is_keyword_triggered=is_keyword_triggered,
+            matched_keyword=matched_trigger_keyword,
+            enable_reasoning=self.enable_decision_ai_reasoning,
+            reasoning_log_enabled=self.decision_ai_reasoning_log,
+            reasoning_log_mode=self.decision_ai_reasoning_log_mode,
+            reasoning_start_marker=self.judgment_reasoning_start_marker,
+            reasoning_end_marker=self.judgment_reasoning_end_marker,
+            include_persona=self.decision_ai_include_persona,
+            configured_persona_name=self.decision_ai_persona_name,
+            reply_tendency=self.decision_ai_reply_tendency,
+            is_private=is_private,
+            is_directly_addressed=is_directly_addressed,
+            is_reply_to_other=is_reply_to_other,
+            has_at_others=has_at_others,
+        )
 
-            if self.debug_mode:
-                _decision_elapsed = time.time() - _decision_start
-                logger.info(f"【步骤9】决策AI判断完成，耗时: {_decision_elapsed:.2f}秒")
+        if self.debug_mode:
+            _decision_elapsed = time.time() - _decision_start
+            logger.info(f"【步骤9】决策AI判断完成，耗时: {_decision_elapsed:.2f}秒")
 
-            if not should_reply:
-                logger.debug("决策AI判断: 不应该回复此消息")
-                # 清理pre_decision缓存（防止内存残留）
-                try:
-                    ckey = ProbabilityManager.get_chat_key(
-                        platform_name, is_private, chat_id
-                    )
-                    if (
-                        hasattr(self, "_pre_decision_context_by_chat")
-                        and ckey in self._pre_decision_context_by_chat
-                    ):
-                        del self._pre_decision_context_by_chat[ckey]
-                except Exception:
-                    pass
-                return False
-
-            logger.debug("决策AI判断: 应该回复此消息")
-            return True
-        else:
-            if self.debug_mode and has_trigger_keyword and not keyword_smart_mode:
-                logger.info("【步骤9】触发关键词(非智能模式),跳过AI决策,必定回复")
+        if not decision_result.reply:
+            logger.debug(f"决策AI判断: 不应该回复此消息 ({decision_result.summary()})")
+            # 清理pre_decision缓存（防止内存残留）
             try:
                 ckey = ProbabilityManager.get_chat_key(
                     platform_name, is_private, chat_id
                 )
-                if not hasattr(self, "_ai_decision_skipped"):
-                    self._ai_decision_skipped = set()
-                self._ai_decision_skipped.add(ckey)
+                if (
+                    hasattr(self, "_pre_decision_context_by_chat")
+                    and ckey in self._pre_decision_context_by_chat
+                ):
+                    del self._pre_decision_context_by_chat[ckey]
             except Exception:
                 pass
-            return True
+            return decision_result
+
+        logger.debug(f"决策AI判断: 应该回复此消息 ({decision_result.summary()})")
+        return decision_result
 
     # ============================================================
     # 消息内容处理
@@ -3532,15 +3524,6 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                         ckey, formatted_context
                     )
 
-            # 清理跳过决策AI的标记
-            if (
-                hasattr(self, "_ai_decision_skipped")
-                and ckey in self._ai_decision_skipped
-            ):
-                try:
-                    self._ai_decision_skipped.discard(ckey)
-                except Exception:
-                    pass
         except Exception:
             pass
 

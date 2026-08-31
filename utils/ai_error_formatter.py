@@ -61,7 +61,7 @@ def format_ai_error(
 
     Args:
         exception: 捕获的异常对象
-        context_label: 调用上下文标签，如「主动对话生成」「读空气判断」等
+        context_label: 调用上下文标签，如「主动对话生成」「参与判断」等
 
     Returns:
         格式化后的错误字符串，适合直接传入 logger.error()

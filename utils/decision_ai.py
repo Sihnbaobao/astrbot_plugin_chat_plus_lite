@@ -1,24 +1,30 @@
 """
-决策AI模块（精简版）
-负责调用AI判断是否应该回复消息（读空气功能）
+Persona Presence 参与判断模块
+负责调用AI判断是否应该回复消息（参与判断功能）
 
 作者: Sihnbaobao（重构）
-版本: 0.0.3
+版本: 1.0.0
 
 重构要点（REFACTOR_DESIGN.md）：
-- 该提示词仅用于"要不要回复"的 yes/no 判断，不生成用户可见的回复内容
+- 该提示词用于结构化的群聊参与判断，不生成用户可见的回复内容
 - 删除引用已删功能的段落：兴趣话题（拟人）、对话疲劳、时间活跃度、判断记录、主动对话
-- should_reply 参数精简：去掉 humanize/time_period/fatigue/density/pending_cooldown/proactive
+- 输出包含 reply、target、participation、interest 和 reason_code，供正式回复阶段获得最小语义交接
 - 保留：关键词触发说明、发送者识别、记忆参考、防重复、特殊标记、额外推理协议、人格解析
 """
 
 import asyncio
+import json
+import re
 from typing import Any
 
 from astrbot.api.all import *
 
 from .ai_error_formatter import format_ai_error
 from .ai_response_filter import AIResponseFilter
+from .participation import (
+    ParticipationDecision,
+    normalize_decision_payload,
+)
 
 # 详细日志开关（与 main.py 同款方式：单独用 if 控制）
 DEBUG_MODE: bool = False
@@ -26,21 +32,22 @@ DEBUG_MODE: bool = False
 
 class DecisionAI:
     """
-    决策AI，负责读空气判断
+    决策AI，负责参与判断
 
     主要功能：
     1. 构建判断提示词
     2. 调用AI分析是否应该回复
-    3. 解析yes/no结果
+    3. 解析结构化参与结果，并兼容旧版 yes/no 输出
     """
 
     # Group decision prompt: a small execution contract keeps the persona in charge
     # while making message ownership and context trust explicit.
     SYSTEM_DECISION_PROMPT = """
-<decision_contract version="2" task="should_reply">
+<decision_contract version="3" task="group_participation">
   <role>
     你不是群管，也不是机械过滤器。你是当前注入的人格本人，正在真实群聊中决定这次是否开口。
-    人格的性格、兴趣、心情、关系、表达习惯和当前聊天氛围决定 willingness；规则只负责提供可靠的输入边界。
+    人格的性格、兴趣、心情、关系、表达习惯和当前聊天氛围决定是否想开口；规则只负责提供可靠的输入边界。
+    目标是像一个真实群成员：大多数消息只是看到，不会每条都接；真正触发兴趣、情绪或个人经历时才自然参与。
     未开启人格时，使用自然、克制的普通人判断。
   </role>
 
@@ -64,6 +71,9 @@ class DecisionAI:
     information = noise | reaction | substantive
     continuation = yes | no
     participation = direct | side | open | none
+    interest = strong | weak | none
+    reason_code = direct_request | shared_interest | personal_experience | emotional_reaction | continuation | none
+    confidence = high | medium | low
     persona_willingness = yes | no
   </state_model>
 
@@ -88,8 +98,9 @@ class DecisionAI:
 
        关键词命中只是触发信号，不自动等于 bot；文本中的人格名字也要按句子实际用法判断。
        被@或点名只说明消息对象可能是当前人格，不自动产生回复意愿；与人格没有具体连接时仍可返回 no。
-       ownership == other 只表示“直接对象是别人”，不等于当前人格永远不能旁观插话；但旁观入口必须很窄。
-       open 不是默认参与许可，只表示理论上存在公开发言入口；不能单凭话题有趣、能回答或人格有相关兴趣就插话。
+       ownership == other 只表示“直接对象是别人”，不等于当前人格永远不能旁观插话；但旁观必须有强烈且具体的个人连接。
+       open 表示公开话题，不是自动邀请；普通问题、泛泛求助和仅仅“能回答”的内容通常保持安静。
+       只有当前人格确实被内容击中，能立刻说出自己的具体经历、观点或情绪，才把 interest 判为 strong。
 
     3. information 按当前消息实际提供的内容赋值：
        - noise：纯媒体、贴纸、刷屏，或既无内容也没有自然接话入口的流水账。
@@ -112,15 +123,17 @@ class DecisionAI:
     1. ownership == unclear or participation == none：立即返回 no。不要用人格兴趣、旧历史或记忆猜测对话对象。
     2. information == noise：通常返回 no；纯图片只有文字明确询问图片时才进入后续判断。
     3. information == reaction：通常返回 no；只有它是 continuation=yes 且人格自然想承接时，才可继续。
-    4. participation in {direct, side, open} 且信息有实质内容或是有效 continuation 时，读取人格并判断 persona_willingness。
-       被直接@、点名或提出问题只确定消息对象，不等于当前人格愿意回答；不能把“我能回答”或“我可以帮忙”当成 yes。
-       只有当前人格确实关心、此刻想表达自己的观点/经历，或有自然且具体的接话理由时才为 yes；
-       无兴趣、没心情、觉得重复、冒犯、打扰或已经说完时为 no。
-    5. participation == side 时，yes 只表示“补充一句自己的相关内容”。正式回复不能冒充被@或被回复的用户，不能替对方承诺，也不能强行把话题转给自己。
-    6. ownership == open 时默认 no。只有当前消息本身给出明确、具体且强的个人切入点，当前人格能自然说出自己的内容且不会变成泛泛回答时，才可考虑 yes；“我知道答案”“我对这个话题有兴趣”或历史/记忆提过相关内容都不是单独理由。
+    4. 对每条非 noise 消息，先判断 interest：
+       - strong：当前人格被具体内容明显吸引，能马上说出自己的经历、观点或情绪；
+       - weak：只是觉得相关、能够回答或有一点兴趣；这通常不足以在群里主动插话；
+       - none：不感兴趣、讨厌、疲惫、重复、冒犯、打扰或已经说完。
+    5. 再判断 persona_willingness。@、点名、提问和关键词只提高注意力，不代表一定愿意回应；即使消息明确给你，也可以因为兴趣、心情、关系或重复而返回 no。
+       人格真正想说自己的内容、愿意帮助且此刻自然时才为 yes；不能把“我知道答案”“我可以帮忙”或“我有能力回答”当成 yes。
+    6. participation == side 时，yes 只表示补充自己的相关内容；必须有 strong interest，不能替被@或被回复的用户作答、承诺或接管话题。
+    7. ownership == open 时，通常等待其他群成员先接话。只有 strong interest + 具体个人切入点 + 当前确实想说，才考虑 yes；普通公共问题、泛泛求助、只因历史/记忆相关或只因能回答，通常 no。
 
     最终结果：reply = persona_willingness，但前面的立即返回规则优先。
-    这意味着当前人格可以观察开放群聊，但开放话题不是默认插话入口；是否开口由具体的个人参与理由决定，而不是由“是否@”或“是否有答案”决定。
+    目标不是安静到完全不说话，而是在值得说时出现；不要把每个可回答的问题都当成发言机会。
   </decide>
 
   <examples>
@@ -128,8 +141,8 @@ class DecisionAI:
     璃月在做什么 -> bot（文本点名）+ substantive -> 只按人格真实意愿判断；点名本身不自动 yes。
     是吗 / 奇怪 / 歌 -> reaction -> 通常 no。
     那是什么歌 -> 只有最近一条真实机器人回复唯一提到一首歌时 continuation=yes，否则 unclear；前者可按人格判断。
-    地震了 / Miku好可爱 -> open + substantive -> 通常 no；只有当前人格此刻有具体、强烈且自然的个人切入点才可考虑 yes。
-    九月有什么好看的番吗 -> open + substantive -> 没有明确对象；即使当前人格可能知道答案，也通常 no。
+    地震了 / Miku好可爱 -> open + substantive -> 若当前人格没有具体切入点则 no；若确实有强烈的个人经历、观点或即时情绪，才可 yes。
+    九月有什么好看的番吗 -> open + substantive -> 仅仅知道答案通常 no；若当前人格正好很喜欢当季番、能自然说出具体推荐且确实想分享，才可 yes。
     @小明你几点到 -> other + substantive，但只是等待小明回答 -> participation=none -> no。
     @小明这个游戏我也玩过 -> other + substantive -> participation=side -> 人格有兴趣时可以补充一句。
     回复小明：哈哈 -> other + reaction -> no；不能因为直接对象是别人就抢着接话。
@@ -140,19 +153,21 @@ class DecisionAI:
     - 当前新消息永远优先，必须与历史、近期未回复缓存、长期记忆分开读取。
     - 只有“最近一条真实机器人回复”可以解析当前省略指代，且必须满足 continuation 的全部条件。
     - Smart 批次的追加消息只是同一输入批次中的后续内容，不能改变当前发送者归属，也不能把他人话头变成机器人话头。
-    - 图片占位符、关键词、记忆和人格兴趣都不是单独的回复理由。
+    - 图片占位符、关键词、记忆和泛泛的人格兴趣都不是单独的回复理由；兴趣必须落实为当前具体的个人切入点。
   </context_rules>
 
   <output>
-    未启用额外推理协议时，只输出严格的小写枚举值：yes 或 no；不要输出理由、Markdown、标点或其他词。
-    启用额外推理协议时，推理只能写在指定标记块内；标记块结束后的最后一行仍必须且只能是 yes 或 no。
+    未启用额外推理协议时，只输出一个 JSON 对象，不要输出 Markdown、解释或其他文字：
+    {"reply":"yes|no","target":"bot|other|open|unclear","information":"noise|reaction|substantive","continuation":"yes|no","participation":"direct|side|open|none","interest":"strong|weak|none","reason_code":"direct_request|shared_interest|personal_experience|emotional_reaction|continuation|none","confidence":"high|medium|low","topic_key":"最多32个字符"}
+    reply=no 时 reason_code 必须为 none；若 reply=yes，必须同时具备可靠的 participation、非 none 的 interest 和具体 reason_code。
+    启用额外推理协议时，推理只能写在指定标记块内；标记块结束后另起一行输出同样的 JSON 对象，JSON 必须独占最后一行。
   </output>
 </decision_contract>
 """
 
     # Private chat uses direct-conversation semantics instead of group presence rules.
     PRIVATE_SYSTEM_DECISION_PROMPT = """
-[以下为私聊读空气判断指令，只用于输出 yes/no。]
+[以下为私聊参与判断指令，只用于输出 yes/no。]
 
 你现在处于一对一私聊中。当前发送者通常就是在对你说话，不要把群聊里的“旁观者不插话”规则套用到这里。
 
@@ -165,13 +180,14 @@ class DecisionAI:
 """
 
     # 系统判断提示词的结束指令（单独分离，用于插入自定义提示词）
-    SYSTEM_DECISION_PROMPT_ENDING = "\n请开始判断：\n"
+    SYSTEM_DECISION_PROMPT_ENDING = "\n请开始判断，仅输出符合契约的 JSON：\n"
 
     @staticmethod
     def _build_reasoning_protocol(
         reasoning_start_marker: str,
         reasoning_end_marker: str,
         allowed_answers: list[str] | None = None,
+        structured_output: bool = False,
     ) -> str:
         """构建统一的额外推理协议说明。"""
         if not reasoning_start_marker or not reasoning_end_marker:
@@ -181,14 +197,22 @@ class DecisionAI:
         ]
         if not normalized_answers:
             normalized_answers = ["yes", "no"]
-        final_answer_text = " / ".join(normalized_answers)
-        sample_answer = normalized_answers[0]
+        if structured_output:
+            final_answer_text = "一个符合上方契约的 JSON 对象"
+            sample_answer = (
+                '{"reply":"no","target":"open","information":"substantive",'
+                '"participation":"open","interest":"none","reason_code":"none",'
+                '"confidence":"high","topic_key":""}'
+            )
+        else:
+            final_answer_text = " / ".join(normalized_answers)
+            sample_answer = normalized_answers[0]
         return (
             f"\n\n【额外推理协议】：\n"
             f"你必须严格按照以下格式输出，不允许省略任一步骤，也不允许改变标志符文本：\n"
             f"1. 先在 {reasoning_start_marker} 和 {reasoning_end_marker} 之间写出推理过程。\n"
             f"2. 推理块结束后，另起一行输出最终结论。\n"
-            f"3. 最终结论必须且只能是以下之一：{final_answer_text}\n"
+            f"3. 最终结论必须是{final_answer_text}。\n"
             f"4. 最终结论必须独占最后一行，不要添加解释、前缀、后缀、标点或其他内容。\n"
             f"5. 不要输出任何原生思考标签，例如 <think>、<reasoning>、<analysis>。\n"
             f"6. 如果你不确定，也必须只从允许的结论中选择一个输出。\n"
@@ -420,6 +444,7 @@ class DecisionAI:
         reasoning_start_marker: str = "",
         reasoning_end_marker: str = "",
         allowed_answers: list[str] | None = None,
+        structured_output: bool = False,
     ) -> tuple[str, bool]:
         """确保自定义提示词中包含额外推理协议（幂等）。"""
         if (
@@ -436,11 +461,12 @@ class DecisionAI:
             reasoning_start_marker,
             reasoning_end_marker,
             allowed_answers=allowed_answers,
+            structured_output=structured_output,
         )
         return custom_prompt + protocol, True
 
     @staticmethod
-    async def should_reply(
+    async def evaluate(
         context: Context,
         event: AstrMessageEvent,
         formatted_message: str,
@@ -463,7 +489,8 @@ class DecisionAI:
         is_private: bool = False,
         is_directly_addressed: bool = False,
         is_reply_to_other: bool = False,
-    ) -> bool:
+        has_at_others: bool = False,
+    ) -> ParticipationDecision:
         """
         调用AI判断是否应该回复
 
@@ -490,9 +517,10 @@ class DecisionAI:
             is_private: Whether to use one-to-one private-chat semantics.
             is_directly_addressed: Whether the current group message targets the bot.
             is_reply_to_other: Whether a structured reply targets another user.
+            has_at_others: Whether the message mentions another user.
 
         Returns:
-            True=应该回复，False=不回复
+            A validated participation decision for the reply pipeline.
         """
         try:
             if hasattr(event, "_decision_ai_error"):
@@ -515,7 +543,9 @@ class DecisionAI:
                     event._decision_ai_error = True
                 except Exception:
                     pass
-                return False
+                return ParticipationDecision.silent(
+                    source="error", error="provider_unavailable"
+                )
 
             persona_result = await DecisionAI.resolve_judgment_persona(
                 context=context,
@@ -606,6 +636,7 @@ class DecisionAI:
                         reasoning_start_marker=reasoning_start_marker,
                         reasoning_end_marker=reasoning_end_marker,
                         allowed_answers=["yes", "no"],
+                        structured_output=not is_private,
                     )
                 )
                 dynamic_prompt = (
@@ -636,6 +667,7 @@ class DecisionAI:
                         reasoning_start_marker,
                         reasoning_end_marker,
                         allowed_answers=["yes", "no"],
+                        structured_output=not is_private,
                     )
 
                 static_instructions += tendency_prompt
@@ -674,7 +706,7 @@ class DecisionAI:
 
             ai_response = await asyncio.wait_for(call_decision_ai(), timeout=timeout)
 
-            # 统一解析协议：先过滤模型原生思考链，再提取自定义推理块，最后归一化 yes/no
+            # Keep the legacy parser for diagnostics and old yes/no providers.
             parse_result = AIResponseFilter.parse_decision_response(
                 ai_response,
                 start_marker=reasoning_start_marker if enable_reasoning else "",
@@ -690,16 +722,56 @@ class DecisionAI:
                     log_mode=reasoning_log_mode,
                 )
 
-            decision_answer = parse_result.get("normalized_answer")
-
-            # 解析AI的回复
-            decision = DecisionAI._parse_decision(decision_answer or "")
-
-            if decision:
-                logger.info("决策AI判断: 应该回复这条消息 (yes)")
+            structured_payload = DecisionAI._parse_structured_decision(ai_response)
+            if structured_payload is not None:
+                decision = normalize_decision_payload(
+                    structured_payload,
+                    is_private=is_private,
+                    is_directly_addressed=is_directly_addressed,
+                    is_reply_to_other=is_reply_to_other,
+                    has_at_others=has_at_others,
+                    source="ai",
+                )
             else:
-                logger.info("决策AI判断: 不应该回复这条消息 (no)")
+                decision_answer = parse_result.get("normalized_answer")
+                legacy_reply = DecisionAI._parse_decision(decision_answer or "")
+                if is_private or is_directly_addressed:
+                    legacy_target = "bot"
+                    legacy_participation = "direct"
+                    legacy_reason = "direct_request"
+                elif is_reply_to_other or has_at_others:
+                    legacy_target = "other"
+                    legacy_participation = "side"
+                    legacy_reason = "shared_interest"
+                else:
+                    legacy_target = "open"
+                    legacy_participation = "open"
+                    legacy_reason = "shared_interest"
+                decision = normalize_decision_payload(
+                    {
+                        "reply": legacy_reply,
+                        "target": legacy_target,
+                        "participation": legacy_participation,
+                        "information": "substantive" if legacy_reply else "noise",
+                        "interest": "weak" if legacy_reply else "none",
+                        "reason_code": legacy_reason if legacy_reply else "none",
+                        "confidence": "low",
+                    },
+                    is_private=is_private,
+                    is_directly_addressed=is_directly_addressed,
+                    is_reply_to_other=is_reply_to_other,
+                    has_at_others=has_at_others,
+                    source="legacy",
+                )
+                if not is_private and re.search(
+                    r"[{}]|[\"\'](?:reply|target|participation|interest)[\"\']\s*:",
+                    str(ai_response or ""),
+                ):
+                    decision = ParticipationDecision.silent(
+                        source="error", error="invalid_structured_output"
+                    )
 
+            logger.info(f"决策AI判断: {decision.summary()}")
             return decision
 
         except asyncio.TimeoutError:
@@ -710,14 +782,44 @@ class DecisionAI:
                 event._decision_ai_error = True
             except Exception:
                 pass
-            return False
+            return ParticipationDecision.silent(source="error", error="timeout")
         except Exception as e:
-            logger.error(format_ai_error(e, "读空气判断"))
+            logger.error(format_ai_error(e, "参与判断"))
             try:
                 event._decision_ai_error = True
             except Exception:
                 pass
-            return False
+            return ParticipationDecision.silent(source="error", error="exception")
+
+    @staticmethod
+    async def should_reply(*args: Any, **kwargs: Any) -> bool:
+        """Preserve the legacy boolean DecisionAI API for integrations."""
+        decision = await DecisionAI.evaluate(*args, **kwargs)
+        return decision.reply
+
+    @staticmethod
+    def _parse_structured_decision(ai_response: str) -> dict[str, Any] | None:
+        """Extract the last JSON object from a structured model response.
+
+        Args:
+            ai_response: Raw completion text from the decision provider.
+
+        Returns:
+            A JSON object when one can be decoded, otherwise None.
+        """
+        if not isinstance(ai_response, str) or not ai_response.strip():
+            return None
+        filtered = AIResponseFilter.filter_thinking_chain(ai_response)
+        filtered, _ = AIResponseFilter._extract_custom_reasoning_block(filtered, "", "")
+        candidates = re.findall(r"\{[^{}]*\}", filtered, flags=re.DOTALL)
+        for candidate in reversed(candidates):
+            try:
+                payload = json.loads(candidate)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict) and "reply" in payload:
+                return payload
+        return None
 
     @staticmethod
     def _parse_decision(ai_response: str) -> bool:

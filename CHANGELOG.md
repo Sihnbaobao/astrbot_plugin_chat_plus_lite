@@ -1,5 +1,12 @@
 ## 📝 更新日志
 
+## 1.0.0
+
+- **Rename**: the plugin is now Persona Presence / 人格自主参与, with technical ID astrbot_plugin_persona_presence.
+- **Participation model**: @, keywords and direct address increase attention but do not force a reply; strong, concrete Persona interest can also open a reply without @.
+- **Safety boundaries**: structured participation decisions, observation-only cache entries, and an open/side reply budget prevent unsolicited reply storms.
+- **Migration**: move the old plugin data/config paths to the new ID before enabling this plugin; the repository is now https://github.com/Sihnbaobao/astrbot_plugin_persona_presence.
+
 ## 0.0.12
 
 - **Plain image handling**: `image_to_text_scope` now defaults to `all` and is exposed in the config schema, so plain group images reach the multimodal reply model instead of being dropped as undecidable messages.
@@ -55,14 +62,14 @@
 
 - **消息库统一官方**：禁用插件自定义存储（custom_storage_max_messages=0），历史只存 AstrBot 官方库。
 - **reset 彻底清**：@bot reset 联动清空 platform_message_history + conversations + 插件内存缓存，不再残留旧记忆。
-- **移除传统概率模式**：配置与代码一并删除（概率筛选/读空气概率/回复后boost/相关属性日志与注释）。
+- **移除传统概率模式**：配置与代码一并删除（概率筛选/参与判断概率/回复后boost/相关属性日志与注释）。
 - **修官方保存**：官方库写入改走标准 API update_conversation（此前靠猜方法名静默失败、官方库不更新）。
 - **发送前剥离工具协议残留**（/parameter /invoke /tool_calls 及闭合标签），修回复后带代码正文问题。
 - 空回复日志守卫；判断日志去重；@/关键词一视同仁（继承 0.0.2）。
 
 ## 0.0.2 (2026-08-18)
 
-- **@/触发关键词与普通消息一视同仁**：被@、点名、触发关键词（含bot名字）都交给读空气AI按人格判断，不再因@/关键词而必回；keyword_smart_mode 默认开启。
+- **@/触发关键词与普通消息一视同仁**：被@、点名、触发关键词（含bot名字）都交给参与判断AI按人格判断，不再因@/关键词而必回；keyword_smart_mode 默认开启。
 - **接管群聊回复**：新增 takeover_group_reply（默认开），stop_event 挡住 AstrBot 主对话的兜底响应——判 no 时不再被主 LLM 兜底回复（@ 必回真因）。
 - **修 bug**：孤儿 @staticmethod 误令 _is_enabled 变静态方法；_safe_sender_display 迁移丢装饰器；孤儿 after_message_sent 装饰器令非协程 hook 触发 AssertionError；判断日志去重。
 - 行为调整：@ 提示词改为与普通消息一视同仁（不再倾向回）。
@@ -71,7 +78,7 @@
 ## 0.0.1 (2026-08-18) — 重生版
 
 彻底重构并重置版本号：
-- **人格主导读空气**：判断以用户 LLM 人格为立场，仅保留防乱回护栏；随机概率默认关闭（AI 全权判断），`enable_random_probability_filter` 可开。
+- **人格主导参与判断**：判断以用户 LLM 人格为立场，仅保留防乱回护栏；随机概率默认关闭（AI 全权判断），`enable_random_probability_filter` 可开。
 - **配置页精简重做**：12组合并为7组、80→50项；分组 tab 浏览、短说明直显/长说明ⓘ折叠；移除消息处理流水线（重复且失真）；删除原作者运行时指纹/免责横幅（_session_guard）与空消息 INFO 噪声。
 - **删除冗余功能代码**：移除转发解析、入群欢迎解析、输出/保存内容过滤及其工具类（约1400行）。
 - 作者改为 Sihnbaobao；日志降噪（内部流程转 DEBUG）。
@@ -87,10 +94,10 @@
 
 ### V2.6.0-lite (2026-08-18)
 
-**🧠 读空气决策人格化重构 + 主流程整理**
+**🧠 参与判断决策人格化重构 + 主流程整理**
 
-- **人格第一立场**：重写 `SYSTEM_DECISION_PROMPT`，读空气判断以用户 LLM 人格为主角（按人格的性格/兴趣/心情判断要不要回），把原来盖住人格的中性社交规则清单替换为"@/点名/提问/求助必回、别乱回他人对话/水话/被拒绝/复读"等防乱回护栏。判断只决定"要不要回复"，不生成回复内容（回复 AI 保持人格一致，不受影响）。
-- **随机概率默认关闭（AI 全权主导）**：新增 `enable_random_probability_filter`（默认 `false`）——普通消息不再随机抽签，直接交给读空气 AI 用人格判断；概率参数保留，打开开关即可恢复旧随机风格。
+- **人格第一立场**：重写 `SYSTEM_DECISION_PROMPT`，参与判断以用户 LLM 人格为主角（按人格的性格/兴趣/心情判断要不要回），把原来盖住人格的中性社交规则清单替换为"@/点名/提问/求助必回、别乱回他人对话/水话/被拒绝/复读"等防乱回护栏。判断只决定"要不要回复"，不生成回复内容（回复 AI 保持人格一致，不受影响）。
+- **随机概率默认关闭（AI 全权主导）**：新增 `enable_random_probability_filter`（默认 `false`）——普通消息不再随机抽签，直接交给参与判断 AI 用人格判断；概率参数保留，打开开关即可恢复旧随机风格。
 - **主流程整理**：把 5 处重复的 `ContextManager.format_context_for_ai` 调用抽为 `_format_ai_context` helper；并发等待标记由易残留的动态属性改为局部变量，行为不变。
 - **✅ 验证**：语法校验通过；重启 AstrBot 插件正常加载（`Plugin astrbot_plugin_chat_plus_lite (V2.6.0-lite) by Sihnbaobao`），无报错。
 

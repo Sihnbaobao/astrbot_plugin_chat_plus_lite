@@ -1,6 +1,6 @@
 """
 概率管理器模块
-负责管理和动态调整读空气概率
+负责管理和动态调整参与判断概率
 
 v1.1.0 更新：
 - 🆕 支持临时概率提升（主动对话后的等待回应状态）
@@ -33,7 +33,7 @@ class ProbabilityManager:
     概率管理器
 
     主要功能：
-    1. 管理每个会话的读空气概率
+    1. 管理每个会话的参与判断概率
     2. AI回复后临时提升概率
     3. 🆕 v1.1.0: 支持主动对话后的临时概率提升
     4. 🆕 v1.1.0: 支持动态时间段概率调整
@@ -227,7 +227,7 @@ class ProbabilityManager:
         platform_name: str, is_private: bool, chat_id: str, initial_probability: float
     ) -> float:
         """
-        获取当前聊天的读空气概率
+        获取当前聊天的参与判断概率
 
         🆕 v1.1.0: 支持动态时间段概率调整
         🆕 v1.1.0: 支持临时概率提升（主动对话后的等待回应状态）
@@ -371,7 +371,7 @@ class ProbabilityManager:
         duration: int,
     ) -> None:
         """
-        临时提升读空气概率
+        临时提升参与判断概率
 
         AI回复后调用，提升概率促进连续对话
 

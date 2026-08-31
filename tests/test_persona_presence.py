@@ -1,4 +1,4 @@
-"""Regression tests for the refactor-lite rewrite.
+"""Regression tests for the Persona Presence participation rewrite.
 
 Core guarantees under test:
 1. ReplyHandler no longer ships SYSTEM_REPLY_PROMPT (the ~100 line behavior
@@ -6,8 +6,8 @@ Core guarantees under test:
 2. generate_reply produces a ProviderRequest whose system_prompt is exactly the
    persona and whose prompt is context plus only narrowly scoped reply-boundary
    annotations when another user is involved.
-3. DecisionAI.SYSTEM_DECISION_PROMPT only covers the yes/no "should I reply"
-   judgment and contains no references to removed features.
+3. DecisionAI.SYSTEM_DECISION_PROMPT defines structured interest-based
+   participation and contains no references to removed features.
 4. MessageCacheManager's expiry filter is pure and correct.
 5. KeywordChecker trigger/blacklist matching still works.
 """
@@ -197,7 +197,7 @@ def _load_module(monkeypatch, rel_path, module_name, stubs=None):
     """Load a utils module under a fake package with optional extra stubs."""
     _install_astrbot_stubs(monkeypatch)
 
-    package_name = "gcp_lite_test_pkg"
+    package_name = "persona_presence_test_pkg"
     package = types.ModuleType(package_name)
     package.__path__ = [str(REPO_ROOT)]
     utils_package = types.ModuleType(f"{package_name}.utils")
@@ -395,19 +395,19 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
         "拟人",
     ):
         assert removed not in prompt
-    assert '<decision_contract version="2" task="should_reply">' in prompt
+    assert '<decision_contract version="3" task="group_participation">' in prompt
     assert "ownership = bot | other | open | unclear" in prompt
     assert "information = noise | reaction | substantive" in prompt
     assert "continuation = yes | no" in prompt
     assert "participation = direct | side | open | none" in prompt
     assert "persona_willingness = yes | no" in prompt
-    assert "open 不是默认参与许可" in prompt
+    assert "open 表示公开话题，不是自动邀请" in prompt
     assert "只是一个可能的公共发言入口；默认保持安静" in prompt
-    assert "开放话题不是默认插话入口" in prompt
+    assert "strong interest + 具体个人切入点" in prompt
     assert "九月有什么好看的番吗" in prompt
     assert "ownership == other 只表示“直接对象是别人”" in prompt
-    assert "不能冒充被@或被回复的用户" in prompt
-    assert "是否开口由具体的个人参与理由决定" in prompt
+    assert "不能替被@或被回复的用户作答" in prompt
+    assert "不要把每个可回答的问题都当成发言机会" in prompt
     assert "平台没有检测到机器人信号" in prompt
     assert "不等于消息不能开放参与" in prompt
     assert "关键词命中只是触发信号" in prompt
@@ -418,8 +418,10 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "@小明这个游戏我也玩过" in prompt
     assert "回复小明：哈哈" in prompt
     assert "还是来吧 / 我听着睡觉" in prompt
-    assert "图片占位符、关键词、记忆和人格兴趣都不是单独的回复理由" in prompt
-    assert "严格的小写枚举值：yes 或 no" in prompt
+    assert "图片占位符、关键词、记忆和泛泛的人格兴趣都不是单独的回复理由" in prompt
+    assert "只输出一个 JSON 对象" in prompt
+    assert "interest" in prompt
+    assert "reason_code" in prompt
 
     source = (UTILS_DIR / "decision_ai.py").read_text(encoding="utf-8")
     assert "[系统信息-群聊目标信号]" in source
@@ -433,7 +435,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "普通闲聊、寒暄、纯陈述一律不回复" not in source
     assert "不确定时倾向于回复（yes）" not in source
     assert "被@或点名只说明消息对象可能是当前人格" in source
-    assert "ownership == open 时默认 no" in source
+    assert "ownership == open 时默认 no" not in source
+    assert "普通公共问题、泛泛求助" in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     for preset in ("reserved", "active", "persona"):
@@ -448,6 +451,241 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
 
     assert "一对一私聊" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
     assert "安静、冷淡或话少" in decision.DecisionAI.PRIVATE_SYSTEM_DECISION_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# Structured participation policy
+# ---------------------------------------------------------------------------
+
+
+def _load_participation(monkeypatch):
+    return _load_module(monkeypatch, "participation.py", "participation")
+
+
+def _decision_payload(**overrides):
+    payload = {
+        "reply": "yes",
+        "target": "open",
+        "information": "substantive",
+        "continuation": "no",
+        "participation": "open",
+        "interest": "strong",
+        "reason_code": "shared_interest",
+        "confidence": "high",
+        "topic_key": "anime",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_participation_policy_balances_direct_and_ambient_messages(monkeypatch):
+    participation = _load_participation(monkeypatch)
+    normalize = participation.normalize_decision_payload
+
+    open_interest = normalize(_decision_payload())
+    assert open_interest.reply is True
+    assert open_interest.target == "open"
+    assert open_interest.participation == "open"
+
+    open_answerable_only = normalize(_decision_payload(interest="weak"))
+    assert open_answerable_only.reply is False
+
+    direct_boring = normalize(
+        _decision_payload(
+            target="bot",
+            participation="direct",
+            interest="none",
+            reason_code="direct_request",
+        ),
+        is_directly_addressed=True,
+    )
+    assert direct_boring.reply is False
+
+    direct_relevant = normalize(
+        _decision_payload(
+            target="bot",
+            participation="direct",
+            interest="strong",
+            reason_code="shared_interest",
+        ),
+        is_directly_addressed=True,
+    )
+    assert direct_relevant.reply is True
+    assert direct_relevant.handoff_hint.startswith("[系统提示-本次参与依据]")
+    assert "共同兴趣" in direct_relevant.handoff_hint
+
+
+def test_participation_policy_requires_independent_side_comment(monkeypatch):
+    participation = _load_participation(monkeypatch)
+    normalize = participation.normalize_decision_payload
+
+    logistics = normalize(
+        _decision_payload(
+            target="other",
+            participation="none",
+            interest="strong",
+            reason_code="shared_interest",
+        ),
+        has_at_others=True,
+    )
+    assert logistics.reply is False
+
+    independent_comment = normalize(
+        _decision_payload(
+            target="other",
+            participation="side",
+            interest="strong",
+            reason_code="personal_experience",
+        ),
+        has_at_others=True,
+    )
+    assert independent_comment.reply is True
+    assert "不要替其他用户" in independent_comment.handoff_hint
+
+
+def test_participation_parser_accepts_json_and_rejects_unknown_enums(monkeypatch):
+    response_filter = _load_module(
+        monkeypatch,
+        "ai_response_filter.py",
+        "ai_response_filter",
+    )
+    decision = _load_module(
+        monkeypatch,
+        "decision_ai.py",
+        "decision_ai",
+        stubs={
+            "ai_response_filter": {
+                "AIResponseFilter": response_filter.AIResponseFilter
+            },
+            "ai_error_formatter": {"format_ai_error": lambda e, l: f"{l}: {e}"},
+        },
+    )
+    raw = (
+        "\n"
+        '{"reply":"yes","target":"open",'
+        '"information":"substantive","participation":"open",'
+        '"interest":"strong","reason_code":"shared_interest",'
+        '"confidence":"high","topic_key":"番剧"}'
+    )
+    payload = decision.DecisionAI._parse_structured_decision(raw)
+    assert payload is not None
+    assert payload["reply"] == "yes"
+
+    participation = _load_participation(monkeypatch)
+    invalid = participation.normalize_decision_payload(
+        payload | {"interest": "very_strong"}
+    )
+    assert invalid.reply is False
+
+
+def test_malformed_group_json_fails_closed_in_evaluate(monkeypatch):
+    response_filter = _load_module(
+        monkeypatch,
+        "ai_response_filter.py",
+        "ai_response_filter",
+    )
+    decision = _load_module(
+        monkeypatch,
+        "decision_ai.py",
+        "decision_ai",
+        stubs={
+            "ai_response_filter": {
+                "AIResponseFilter": response_filter.AIResponseFilter
+            },
+            "ai_error_formatter": {"format_ai_error": lambda e, l: f"{l}: {e}"},
+        },
+    )
+
+    async def resolve_judgment_persona(**kwargs):
+        return {"system_prompt": ""}
+
+    decision.DecisionAI.resolve_judgment_persona = staticmethod(
+        resolve_judgment_persona
+    )
+
+    class ProviderResponse:
+        completion_text = '{"reply":"yes","target":"open"'
+
+    class Provider:
+        async def text_chat(self, **kwargs):
+            return ProviderResponse()
+
+    class Context:
+        def get_using_provider(self):
+            return Provider()
+
+    class Event:
+        session_id = "session"
+
+        def get_sender_id(self):
+            return "user"
+
+        def get_sender_name(self):
+            return "User"
+
+    result = _run(
+        decision.DecisionAI.evaluate(
+            Context(),
+            Event(),
+            "当前消息",
+            "",
+            "",
+            is_private=False,
+        )
+    )
+    assert result.reply is False
+    assert result.source == "error"
+    assert result.error == "invalid_structured_output"
+
+
+def test_participation_throttle_limits_only_unsolicited_group_replies(monkeypatch):
+    participation = _load_participation(monkeypatch)
+    throttle = participation.ParticipationThrottle(
+        min_interval_seconds=30,
+        window_seconds=100,
+        max_replies_per_window=2,
+    )
+    open_decision = participation.ParticipationDecision(
+        reply=True,
+        target="open",
+        participation="open",
+        information="substantive",
+        interest="strong",
+        reason_code="shared_interest",
+    )
+    assert throttle.allow_and_record("group", open_decision, now=0) == (True, "")
+    assert throttle.allow_and_record("group", open_decision, now=10) == (
+        False,
+        "ambient_min_interval",
+    )
+    assert throttle.allow_and_record("group", open_decision, now=31) == (True, "")
+    assert throttle.allow_and_record("group", open_decision, now=62) == (
+        False,
+        "ambient_window_cap",
+    )
+
+    direct = open_decision.with_reply(
+        True,
+        target="bot",
+        participation="direct",
+        reason_code="direct_request",
+    )
+    assert throttle.allow_and_record("group", direct, now=10) == (True, "")
+
+
+def test_rejected_cache_entries_do_not_become_active_context(monkeypatch):
+    import time as _time
+
+    manager_module = _load_cache_manager(monkeypatch)
+    manager = manager_module.MessageCacheManager()
+    now = _time.time()
+    manager.pending_messages_cache["group"] = [
+        {"content": "ignored", "timestamp": now, "decision_state": "observed"},
+        {"content": "active", "timestamp": now},
+    ]
+    assert [item["content"] for item in manager.get_cached_messages("group")] == [
+        "active"
+    ]
 
 
 # ---------------------------------------------------------------------------

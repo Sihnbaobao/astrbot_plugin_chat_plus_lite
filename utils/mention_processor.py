@@ -2,7 +2,7 @@
 @/发送者/提及识别域（MentionMixin）。
 
 从主插件类拆出的独立功能域：发送者显示、@全体/@他人判断、@解析与提及检查。
-通过 self 访问 ChatPlus 的状态与工具，保持行为不变。
+通过 self 访问 PersonaPresence 的状态与工具，保持行为不变。
 """
 
 from astrbot.api.all import *  # noqa: F403  （与 main.py 保持一致）

@@ -289,7 +289,7 @@ class AIResponseFilter:
         response: str, start_marker: str = "", end_marker: str = ""
     ) -> dict[str, Any]:
         """
-        解析决策型AI响应（读空气/主动对话判断）
+        解析决策型AI响应（参与判断/主动对话判断）
         """
         if not response:
             return {

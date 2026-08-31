@@ -164,7 +164,7 @@ class CommandMixin:
                     chat_id = event.get_group_id()
                     session_str = f"{platform_name}:GroupMessage:{chat_id}"
                     notice = (
-                        "【Group Chat Plus】插件全局重置：成功\n"
+                        "【Persona Presence】插件全局重置：成功\n"
                         "\n"
                         "已执行以下操作：\n"
                         "1. 清空所有会话的插件缓存（待处理消息、回复记录、概率等状态）\n"
@@ -194,7 +194,7 @@ class CommandMixin:
                     pass
             except Exception:
                 try:
-                    notice = "【Group Chat Plus】插件全局重置：失败\n执行重置时发生内部错误，请查看日志。"
+                    notice = "【Persona Presence】插件全局重置：失败\n执行重置时发生内部错误，请查看日志。"
                     yield event.plain_result(f"{notice}")
                     logger.info(f"{notice}")
                 except Exception:
@@ -236,7 +236,7 @@ class CommandMixin:
                     chat_id = event.get_group_id()
                     session_str = f"{platform_name}:GroupMessage:{chat_id}"
                     notice = (
-                        "【Group Chat Plus】当前会话重置：成功\n"
+                        "【Persona Presence】当前会话重置：成功\n"
                         "\n"
                         "已执行以下操作：\n"
                         "1. 清空本会话的插件缓存（待处理消息、回复记录、概率等状态）\n"
@@ -266,7 +266,7 @@ class CommandMixin:
                     pass
             except Exception:
                 try:
-                    notice = "【Group Chat Plus】当前会话重置：失败\n执行重置时发生内部错误，请查看日志。"
+                    notice = "【Persona Presence】当前会话重置：失败\n执行重置时发生内部错误，请查看日志。"
                     yield event.plain_result(f"{notice}")
                     logger.info(f"{notice}")
                 except Exception:
@@ -304,7 +304,7 @@ class CommandMixin:
                 if self.image_description_cache:
                     cleared = await self.image_description_cache.clear_async()
                 notice = (
-                    "【Group Chat Plus】图片描述缓存清除："
+                    "【Persona Presence】图片描述缓存清除："
                     + ("成功" if cleared else "完成（缓存未启用或无缓存）")
                     + "\n即将重启 AstrBot..."
                 )
@@ -316,7 +316,7 @@ class CommandMixin:
             except Exception:
                 try:
                     yield event.plain_result(
-                        "【Group Chat Plus】图片描述缓存清除：失败，请查看日志"
+                        "【Persona Presence】图片描述缓存清除：失败，请查看日志"
                     )
                 except Exception:
                     pass
