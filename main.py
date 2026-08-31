@@ -987,11 +987,13 @@ class ChatPlus(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             return (
                 "\n\n[persona_willingness preset: active]\n"
                 "在人格意愿判断阶段降低开口门槛：更愿意参与有内容的开放话题和有效续话；"
+                "开放话题仍需要具体的个人切入点，不把“能回答”变成 yes；"
                 "不把 reaction、noise 或不明归属变成 substantive，也不能覆盖 other 或 unclear 的立即 no。\n"
             )
         return (
             "\n\n[persona_willingness preset: persona]\n"
-            "完全依据当前人格的性格、兴趣、心情、关系和聊天氛围判断是否愿意开口。\n"
+            "完全依据当前人格的性格、兴趣、心情、关系和聊天氛围判断是否愿意开口；"
+            "群聊开放消息默认保持安静，只有具体个人切入点才考虑发言。\n"
         )
 
     async def _api_prompts(self):

@@ -54,7 +54,7 @@
 |--------|------|--------|------|
 | `enable_group_chat` | bool | `true` | **总开关**，关闭后插件完全不处理群聊消息 |
 | `enabled_groups` | list | `[]` | 启用的群组ID列表。留空 = 所有群聊都启用；填写群号 = 仅指定群组启用 |
-| `group_reply_scope` | string | `ambient` | `ambient` 保留群聊读空气并先过滤明显噪声；`addressed` 仅处理 @机器人、当前关键词、回复机器人消息或戳机器人 |
+| `group_reply_scope` | string | `ambient` | `ambient` 保留群聊读空气并先过滤明显噪声；开放话题默认不插话，需有具体个人切入点；`addressed` 仅处理 @机器人、当前关键词、回复机器人消息或戳机器人 |
 | `enable_debug_log` | bool | `false` | 开启后输出详细调试日志，用于排查问题；当 `on_llm_request` 的 system_prompt 重写进入兼容增强或保守回退路径时，也会通过该日志帮助判断当前是精确命中、轻量兼容识别，还是低置信度保守模式 |
 
 ---

@@ -401,10 +401,13 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "continuation = yes | no" in prompt
     assert "participation = direct | side | open | none" in prompt
     assert "persona_willingness = yes | no" in prompt
-    assert "open 是正式参与入口" in prompt
+    assert "open 不是默认参与许可" in prompt
+    assert "只是一个可能的公共发言入口；默认保持安静" in prompt
+    assert "开放话题不是默认插话入口" in prompt
+    assert "九月有什么好看的番吗" in prompt
     assert "ownership == other 只表示“直接对象是别人”" in prompt
     assert "不能冒充被@或被回复的用户" in prompt
-    assert "是否开口由人格决定，而不是由“是否@”决定" in prompt
+    assert "是否开口由具体的个人参与理由决定" in prompt
     assert "平台没有检测到机器人信号" in prompt
     assert "不等于消息不能开放参与" in prompt
     assert "关键词命中只是触发信号" in prompt
@@ -429,6 +432,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "请只基于当前消息判断是否回复" not in source
     assert "普通闲聊、寒暄、纯陈述一律不回复" not in source
     assert "不确定时倾向于回复（yes）" not in source
+    assert "被@或点名只说明消息对象可能是当前人格" in source
+    assert "ownership == open 时默认 no" in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     for preset in ("reserved", "active", "persona"):
