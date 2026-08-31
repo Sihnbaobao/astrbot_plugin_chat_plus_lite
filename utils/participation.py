@@ -8,6 +8,7 @@ from typing import Any
 TARGET_VALUES = {"bot", "other", "open", "unclear"}
 INFORMATION_VALUES = {"noise", "reaction", "substantive"}
 PARTICIPATION_VALUES = {"direct", "side", "open", "none"}
+CONTINUATION_VALUES = {"yes", "no"}
 INTEREST_VALUES = {"strong", "weak", "none"}
 REASON_VALUES = {
     "direct_request",
@@ -40,6 +41,7 @@ class ParticipationDecision:
     Args:
         reply: Whether the reply pipeline may continue.
         target: Semantic target of the current message.
+        continuation: Whether the current message continues the verified recent bot turn.
         participation: Allowed speaking posture for the reply.
         information: Information level of the current message.
         interest: Persona-specific interest strength.
@@ -60,6 +62,7 @@ class ParticipationDecision:
     topic_key: str = ""
     source: str = "ai"
     error: str = ""
+    continuation: str = "no"
 
     @classmethod
     def silent(
@@ -116,7 +119,8 @@ class ParticipationDecision:
         """Return bounded fields suitable for an operational log line."""
         return (
             f"reply={'yes' if self.reply else 'no'} "
-            f"target={self.target} participation={self.participation} "
+            f"target={self.target} continuation={self.continuation} "
+            f"participation={self.participation} "
             f"information={self.information} interest={self.interest} "
             f"reason={self.reason_code} confidence={self.confidence}"
         )
@@ -144,6 +148,45 @@ def _invalid_choice(payload: Mapping[str, Any], key: str, allowed: set[str]) -> 
     return str(value).strip().lower() not in allowed
 
 
+def has_verified_recent_bot_continuation(
+    history_messages: list[Any] | None,
+    current_sender_id: Any,
+    bot_id: Any,
+) -> bool:
+    """Check whether history ends with the current sender's bot turn.
+
+    Args:
+        history_messages: Chronologically ordered messages before the current event.
+        current_sender_id: Sender ID of the current event.
+        bot_id: Current bot sender ID.
+
+    Returns:
+        True only when the last two messages are current-sender then bot.
+    """
+    current_id = str(current_sender_id or "").strip()
+    current_bot_id = str(bot_id or "").strip()
+    if (
+        not current_id
+        or not current_bot_id
+        or not history_messages
+        or len(history_messages) < 2
+    ):
+        return False
+
+    previous_message = history_messages[-2]
+    latest_message = history_messages[-1]
+    previous_sender = getattr(
+        getattr(previous_message, "sender", None), "user_id", None
+    )
+    latest_sender = getattr(getattr(latest_message, "sender", None), "user_id", None)
+    if previous_sender is None or latest_sender is None:
+        return False
+    return (
+        str(previous_sender).strip() == current_id
+        and str(latest_sender).strip() == current_bot_id
+    )
+
+
 def _as_bool(value: Any) -> bool:
     """Normalize common boolean spellings from a model response."""
     if isinstance(value, bool):
@@ -158,6 +201,7 @@ def normalize_decision_payload(
     is_directly_addressed: bool = False,
     is_reply_to_other: bool = False,
     has_at_others: bool = False,
+    continuation_context_available: bool = False,
     source: str = "ai",
 ) -> ParticipationDecision:
     """Validate an AI decision and enforce hard social-boundary rules.
@@ -168,6 +212,7 @@ def normalize_decision_payload(
         is_directly_addressed: Whether platform structure targets the bot.
         is_reply_to_other: Whether a structured reply targets another user.
         has_at_others: Whether the message mentions another user.
+        continuation_context_available: Whether history verifies a recent bot turn for this sender.
         source: Decision source label for diagnostics.
 
     Returns:
@@ -177,6 +222,7 @@ def normalize_decision_payload(
     enum_fields = (
         ("target", TARGET_VALUES),
         ("information", INFORMATION_VALUES),
+        ("continuation", CONTINUATION_VALUES),
         ("participation", PARTICIPATION_VALUES),
         ("interest", INTEREST_VALUES),
         ("reason_code", REASON_VALUES),
@@ -189,6 +235,7 @@ def normalize_decision_payload(
 
     target = _choice(payload.get("target"), TARGET_VALUES, "unclear")
     information = _choice(payload.get("information"), INFORMATION_VALUES, "noise")
+    continuation = _choice(payload.get("continuation"), CONTINUATION_VALUES, "no")
     participation = _choice(payload.get("participation"), PARTICIPATION_VALUES, "none")
     interest = _choice(payload.get("interest"), INTEREST_VALUES, "none")
     reason_code = _choice(payload.get("reason_code"), REASON_VALUES, "none")
@@ -211,6 +258,7 @@ def normalize_decision_payload(
     decision = ParticipationDecision(
         reply=reply,
         target=target,
+        continuation=continuation,
         participation=participation,
         information=information,
         interest=interest,
@@ -224,6 +272,20 @@ def normalize_decision_payload(
         return decision.with_reply(False, reason_code="none")
     if target == "unclear" or participation == "none":
         return decision.with_reply(False, reason_code="none")
+
+    # A continuation claim is a structural fact, so old history cannot authorize it.
+    if not is_private and continuation == "yes" and not continuation_context_available:
+        if is_directly_addressed:
+            continuation = "no"
+            if reason_code == "continuation":
+                reason_code = "direct_request"
+            decision = replace(
+                decision, continuation=continuation, reason_code=reason_code
+            )
+        else:
+            return ParticipationDecision.silent(
+                source=source, error="stale_continuation"
+            )
 
     # Subjective fields belong to the persona model; validate only the speaking posture.
     expected_participation = {

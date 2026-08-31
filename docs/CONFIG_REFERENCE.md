@@ -57,7 +57,7 @@
 | decision_ai_timeout | int | 30 | 参与判断超时时静默；接管群聊时不会回退为全量回复。 |
 | decision_ai_reply_tendency | string | persona | persona 完全依据人格；reserved 更克制；active 更愿意参与有内容的公共话题。三种倾向都不能绕过消息对象、说话姿态和主动参与预算。 |
 
-群聊参与判断输出一个结构化 JSON，包含 reply、target、information、continuation、participation、interest、reason_code、confidence 和 topic_key。代码会校验枚举并再次执行硬边界。旧 provider 返回精确 yes/no 仍可兼容，但不能借此获得 side 旁观权限。
+群聊参与判断输出一个结构化 JSON，包含 reply、target、information、continuation、participation、interest、reason_code、confidence 和 topic_key。代码会校验枚举并再次执行消息对象、说话姿态和连续性硬边界。旧 provider 返回精确 yes/no 仍可兼容，但不能借此获得 side 旁观权限。
 
 ### 结构化参与字段
 
@@ -66,7 +66,7 @@
 | reply | yes / no | 模型是否建议进入正式回复。 |
 | target | bot / other / open / unclear | 当前消息的语义对象。 |
 | information | noise / reaction / substantive | 当前消息的信息量。 |
-| continuation | yes / no | 是否是紧邻机器人真实回复的唯一自然续话。 |
+| continuation | yes / no | 是否唯一承接一条结构验证过的近期机器人回复；较早历史不能单独令它为 yes。 |
 | participation | direct / side / open / none | 允许采用的说话姿态。 |
 | interest | strong / weak / none | Persona 对当前内容的具体参与意愿。 |
 | reason_code | direct_request / shared_interest / personal_experience / emotional_reaction / continuation / none | 交给正式回复的最小理由类别。 |

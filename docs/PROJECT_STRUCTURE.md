@@ -38,7 +38,7 @@ main.py 不承担正式回复正文的人格生成，也不应重新引入随机
 | 文件 | 责任 |
 | --- | --- |
 | decision_ai.py | 构造参与判断请求、注入当前 Persona、解析结构化 JSON，并兼容旧 yes/no。 |
-| participation.py | 校验不可信模型字段、校验消息对象和说话姿态、生成最小 handoff、限制主动参与频率；不替 Persona 做主观兴趣裁决。 |
+| participation.py | 校验不可信模型字段、校验消息对象、说话姿态和连续性、生成最小 handoff、限制主动参与频率；不替 Persona 做主观兴趣裁决。 |
 | reply_handler.py | 解析当前会话 Persona，创建 AstrBot provider request，复用正式回复和 Hook 边界。 |
 | message_cache_manager.py | 管理待处理消息、过期和数量限制；排除 decision_state=observed 的 active 读取。 |
 | smart_concurrent_manager.py | 按到达序号选择 anchor，吸收 follower，维护有界 Smart 批次。 |
@@ -73,7 +73,7 @@ _conf_schema.json 的分组与字段由 AstrBot 配置页读取。pages/control/
 
 ## 数据状态
 
-ParticipationDecision 是一次判断的不可变结果，至少包含 reply、target、participation、information、interest、reason_code、confidence 和 topic_key。
+ParticipationDecision 是一次判断的不可变结果，至少包含 reply、target、continuation、participation、information、interest、reason_code、confidence 和 topic_key。
 
 被拒绝消息写入缓存时添加 decision_state=observed。MessageCacheManager 的 active、regular、window 和图片候选读取都排除它，避免被拒绝消息制造续话、目标或下一次视觉处理。
 

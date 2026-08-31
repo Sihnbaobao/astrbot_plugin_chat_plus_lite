@@ -10,7 +10,7 @@ Persona Presence 的职责是帮助 AstrBot 在群聊中像一个真实群成员
 
 - 大多数群消息只被看见，不产生回复。
 - @、点名、戳一戳、关键词和结构化回复会提高注意力，但都不是回复保证。
-- 没有 @ 的公开话题，如果当前 Persona 有强烈、具体、立刻能说出的个人连接，仍然可以自然参与。
+- 没有 @ 的公开话题，如果当前 Persona 自然想参与，可以按自己的力度补充；不再要求固定的强兴趣等级。
 - “我知道答案”“我能帮忙”或“模型可以回答”不等于人格想发言。
 - 明确无聊、重复、冒犯、打扰、已经结束、无信息或只等待别人回答的消息通常保持安静。
 
@@ -46,6 +46,10 @@ open、side 和 direct 都由 Persona 的整体意愿决定；本地硬策略只
 - substantive：具体事实、观点、问题、请求、经历、社交邀请或可以展开的内容。
 
 短消息不必然是 noise；有效短问题、明确邀请和唯一指代的续问仍可进入判断。反过来，长句也不自动值得回复。
+
+### 2.4 连续话轮的客观边界
+
+continuation 不是“历史中曾经聊过同一主题”的同义词。插件只把历史尾部存在“当前发送者发言后紧接机器人回复”的相邻轮次作为候选证据，再由 DecisionAI 判断当前文本是否唯一承接这条回复。如果中间已经出现其他群友发言，或历史尾部无法验证这组相邻关系，continuation 必须为 no；当前消息仍可以作为新的 open 话题参与判断。时间间隔本身不是硬截止条件。
 
 ## 3. 运行时数据流
 
@@ -87,9 +91,10 @@ DecisionAI 的 system prompt 是判断协议，不是正式回复提示。群聊
 normalize_decision_payload 是最终边界：
 
 - target、participation、information、interest、reason_code、confidence 必须属于已知枚举。
-- unclear、none、noise 和 reaction 按规则收敛为静默，只有有效 continuation 可以例外进入后续意愿判断。
-- other 消息没有独立公共补充时必须静默。
-- target、participation 或输出结构不可靠时必须静默；subjective interest 本身不再由本地代码强制拦截。
+- 未知枚举、unclear 或 none participation 必须静默。
+- 没有结构验证的近期机器人轮次时，continuation=yes 且当前消息没有明确地址必须静默，避免旧历史制造 direct 续话。
+- target=other 时只能采用 side 说话姿态；是否确有独立公共补充由 Persona 判断，代码不再替它做主观内容裁决。
+- target、participation 或输出结构不可靠时必须静默；subjective interest、information 和 reason_code 本身不再由本地代码强制拦截。
 - reply=no 不能被后续代码重新解释为“可以回答”。
 
 旧 provider 仍可能只返回 yes/no。纯旧格式继续被兼容为一个受限的 direct/open 决策；新代码不得把这个兼容层扩展成新的旁路。看起来像 JSON 但无法解析的响应按失败处理，不用宽松的 yes/no 前缀猜测。
@@ -98,7 +103,7 @@ normalize_decision_payload 是最终边界：
 
 当前消息发送者永远来自 event 元数据。历史消息、长期记忆、未回复缓存和 Smart follower 只能帮助理解，不能替当前消息指定对象，也不能把别人的话归给当前发送者。
 
-平台没有检测到 @ 只表示平台 signal 缺失，不表示文本一定没有点名机器人；模型可以根据当前正文判断文本目标，但不能凭旧历史臆造目标。
+平台没有检测到 @ 只表示平台 signal 缺失，不表示文本一定没有点名机器人；模型可以根据当前正文判断文本目标，但不能凭旧历史臆造目标。特别是，历史较早的机器人回复不能替代当前消息缺失的相邻续话证据。
 
 ## 5. 正式回复 handoff
 

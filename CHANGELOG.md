@@ -4,7 +4,7 @@
 
 - **Rename**: the plugin is now Persona Presence / 人格自主参与, with technical ID astrbot_plugin_persona_presence.
 - **Participation model**: @, keywords and direct address increase attention but do not force a reply; the current Persona owns the subjective choice to speak, including on ordinary messages without @.
-- **Safety boundaries**: structured participation decisions, observation-only cache entries, and an open/side reply budget prevent unsolicited reply storms.
+- **Safety boundaries**: structured participation decisions, verified recent-turn continuity, observation-only cache entries, and an open/side reply budget prevent stale-context replies and unsolicited reply storms.
 - **Migration**: move the old plugin data/config paths to the new ID before enabling this plugin; the repository is now https://github.com/Sihnbaobao/astrbot_plugin_persona_presence.
 
 ## 0.0.12

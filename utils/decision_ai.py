@@ -491,6 +491,7 @@ class DecisionAI:
         is_directly_addressed: bool = False,
         is_reply_to_other: bool = False,
         has_at_others: bool = False,
+        continuation_context_available: bool = False,
     ) -> ParticipationDecision:
         """
         调用AI判断是否应该回复
@@ -519,6 +520,7 @@ class DecisionAI:
             is_directly_addressed: Whether the current group message targets the bot.
             is_reply_to_other: Whether a structured reply targets another user.
             has_at_others: Whether the message mentions another user.
+            continuation_context_available: Whether history verifies a recent bot turn for this sender.
 
         Returns:
             A validated participation decision for the reply pipeline.
@@ -598,6 +600,17 @@ class DecisionAI:
                     "不能直接断言消息没有指向机器人。普通历史、【📦近期未回复】缓存和长期记忆只能作为背景，"
                     "不能制造对话对象、补写当前消息的主语或单独成为回复理由。"
                 )
+                if continuation_context_available:
+                    enhanced_context += (
+                        "\n\n[系统信息-连续话轮证据] 历史尾部已确认当前发送者的上一条消息紧接着是机器人回复。"
+                        "只有当前文本确实唯一承接这条回复时，continuation 才能为 yes；否则仍为 no。"
+                    )
+                else:
+                    enhanced_context += (
+                        "\n\n[系统信息-连续话轮证据] 历史尾部没有确认的当前发送者 -> 机器人相邻轮次。"
+                        "continuation 必须为 no；不得把较早时段的机器人消息、旧话题或长期记忆当作当前续话。"
+                        "如果当前文字本身没有明确指向机器人，应按 open 或 unclear 判断，不要因旧历史改成 bot/direct。"
+                    )
 
             # 发送者再确认（追加在 prompt 末尾，避免混淆发送者）
             _decision_sender_tail = ""
@@ -731,6 +744,7 @@ class DecisionAI:
                     is_directly_addressed=is_directly_addressed,
                     is_reply_to_other=is_reply_to_other,
                     has_at_others=has_at_others,
+                    continuation_context_available=continuation_context_available,
                     source="ai",
                 )
             else:
@@ -762,6 +776,7 @@ class DecisionAI:
                     is_directly_addressed=is_directly_addressed,
                     is_reply_to_other=is_reply_to_other,
                     has_at_others=has_at_others,
+                    continuation_context_available=continuation_context_available,
                     source="legacy",
                 )
                 if not is_private and re.search(

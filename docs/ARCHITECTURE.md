@@ -65,10 +65,10 @@ DecisionAI 将当前消息分成两个互补维度。
 
 - ownership：bot、other、open、unclear。
 - information：noise、reaction、substantive。
-- continuation：只有当前消息紧邻机器人真实回复、同一发送者且指代唯一时才是 yes。
+- continuation：只有当前消息唯一承接一条经过结构验证的近期机器人回复时才是 yes。
 - participation：direct、side、open、none。
 
-历史中的旧消息、未回复标记、长期记忆和 Smart follower 只能帮助解释当前文本，不能成为当前消息的发送者或目标。
+历史中的旧消息、未回复标记、长期记忆和 Smart follower 只能帮助解释当前文本，不能成为当前消息的发送者或目标。插件会先检查历史尾部是否为当前发送者发言后紧接机器人回复，并将结果作为 continuation_context_available 传给 DecisionAI；没有这个证据时，旧历史不能制造 continuation。
 
 ### 4.2 Persona 意愿
 
@@ -80,11 +80,10 @@ DecisionAI 将当前消息分成两个互补维度。
 
 | 组合 | 结果 |
 | --- | --- |
-| unclear 或 none participation | no |
-| noise | 通常 no |
-| reaction | 通常 no；有效 continuation 可再判断 |
-| other + 无独立公共补充 | no |
-| side/open 与 target 或说话姿态不一致 | no |
+| 未知枚举、unclear 或 none participation | no |
+| continuation=yes 但没有结构验证的近期机器人轮次，且当前消息没有明确地址 | no |
+| target 与 participation 说话姿态不一致 | no |
+| target=other 但 participation 不是 side | no |
 | direct + Persona 明确不愿意回复 | no |
 | side + 人格有自己的相关补充 | 可 yes |
 | open + Persona 自然想参与 | 可 yes |
@@ -107,7 +106,7 @@ DecisionAI 将当前消息分成两个互补维度。
   "topic_key": "short diagnostic label"
 }
 
-utils/participation.py 是不可信模型输出和业务流程之间的边界。它会收敛布尔值、裁剪 topic_key、检查枚举并执行 participation 规则。未知 target、interest 或 reason_code 不会被当作积极结果。
+utils/participation.py 是不可信模型输出和业务流程之间的边界。它会收敛布尔值、裁剪 topic_key、检查枚举，并执行消息对象、说话姿态和连续性规则。未知的已提供枚举不会被当作积极结果；interest 等主观字段仍不单独构成本地回复门槛。
 
 旧 provider 的精确 yes/no 仍兼容。它只能形成受限的旧式 direct/open 决定，不得用来制造 side 参与。看起来像 JSON 但解析失败的内容必须按失败静默，不能用宽松的自然语言前缀猜结果。
 

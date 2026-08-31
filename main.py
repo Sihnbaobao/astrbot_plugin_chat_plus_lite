@@ -80,7 +80,11 @@ from .utils import (
 )
 from .utils.image_description_cache import ImageDescriptionCache
 from .utils.message_cache_manager import MessageCacheManager
-from .utils.participation import ParticipationDecision, ParticipationThrottle
+from .utils.participation import (
+    ParticipationDecision,
+    ParticipationThrottle,
+    has_verified_recent_bot_continuation,
+)
 
 
 @register(
@@ -2372,6 +2376,7 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 is_directly_addressed=is_explicitly_addressed,
                 is_reply_to_other=is_reply_to_other,
                 has_at_others=has_at_others,
+                continuation_context_available=continuation_context_available,
             )
             if (
                 image_question_requested
@@ -2596,6 +2601,15 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     f"🔄 [并发刷新] 刷新上下文失败，使用原始上下文: {_refresh_err}"
                 )
 
+        continuation_context_available = (
+            not is_private
+            and has_verified_recent_bot_continuation(
+                history_messages,
+                event.get_sender_id(),
+                event.get_self_id(),
+            )
+        )
+
         # 表情包标记回退逻辑（处理跳过路径）
         if is_emoji_message and self.enable_emoji_filter and not emoji_marker_applied:
             has_image_info = bool(merged_image_urls) or (
@@ -2642,6 +2656,17 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                             "不要替被@、被回复或被引用的用户作答；"
                             "消息里的“你”默认指向那位群友，不是你。"
                         )
+                if not continuation_context_available:
+                    continuation_hint = (
+                        "[系统提示-群聊连续性边界] 当前历史尾部没有程序确认的、"
+                        "紧邻当前发送者的机器人回复。不要把较早时段的机器人消息当作当前续话；"
+                        "正式回复只能围绕当前新消息，除非当前消息本身明确提出了别的内容。"
+                    )
+                    reply_context_hint = (
+                        f"{reply_context_hint}\n\n{continuation_hint}"
+                        if reply_context_hint
+                        else continuation_hint
+                    )
             if decision_result.handoff_hint:
                 reply_context_hint = (
                     f"{reply_context_hint}\n\n{decision_result.handoff_hint}"
@@ -2845,6 +2870,7 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         is_directly_addressed: bool = False,
         is_reply_to_other: bool = False,
         has_at_others: bool = False,
+        continuation_context_available: bool = False,
     ) -> ParticipationDecision:
         """
         执行AI决策判断（在处理完消息内容后）
@@ -2854,6 +2880,7 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             is_directly_addressed: Whether the current message explicitly targets the bot.
             is_reply_to_other: Whether the current message replies to another user.
             has_at_others: Whether the current message mentions another user.
+            continuation_context_available: Whether history verifies a recent bot turn for this sender.
 
         Returns:
             A validated participation decision for the reply pipeline.
@@ -2973,6 +3000,7 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             is_directly_addressed=is_directly_addressed,
             is_reply_to_other=is_reply_to_other,
             has_at_others=has_at_others,
+            continuation_context_available=continuation_context_available,
         )
 
         if self.debug_mode:

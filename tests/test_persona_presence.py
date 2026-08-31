@@ -437,6 +437,8 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "被@或点名只说明消息对象可能是当前人格" in source
     assert "ownership == open 时默认 no" not in source
     assert "普通问题、泛泛求助" in source
+    assert "continuation_context_available" in source
+    assert "不得把较早时段的机器人消息" in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     for preset in ("reserved", "active", "persona"):
@@ -571,6 +573,46 @@ def test_participation_policy_requires_independent_side_comment(monkeypatch):
     assert weak_side_comment.reply is True
 
 
+def test_recent_continuation_requires_current_sender_and_adjacent_bot_turn(monkeypatch):
+    participation = _load_participation(monkeypatch)
+    def message(sender_id):
+        return types.SimpleNamespace(sender=types.SimpleNamespace(user_id=sender_id))
+
+    assert participation.has_verified_recent_bot_continuation(
+        [message("user"), message("bot")], "user", "bot"
+    ) is True
+    assert participation.has_verified_recent_bot_continuation(
+        [message("user"), message("bot"), message("other")], "user", "bot"
+    ) is False
+    assert participation.has_verified_recent_bot_continuation(
+        [message("other"), message("bot")], "user", "bot"
+    ) is False
+
+
+def test_stale_continuation_is_rejected_without_current_address(monkeypatch):
+    participation = _load_participation(monkeypatch)
+    normalize = participation.normalize_decision_payload
+    payload = _decision_payload(
+        target="bot",
+        continuation="yes",
+        participation="direct",
+        reason_code="continuation",
+    )
+
+    stale = normalize(payload)
+    assert stale.reply is False
+    assert stale.error == "stale_continuation"
+
+    explicitly_addressed = normalize(payload, is_directly_addressed=True)
+    assert explicitly_addressed.reply is True
+    assert explicitly_addressed.continuation == "no"
+    assert explicitly_addressed.reason_code == "direct_request"
+
+    verified = normalize(payload, continuation_context_available=True)
+    assert verified.reply is True
+    assert verified.continuation == "yes"
+
+
 def test_participation_parser_accepts_json_and_rejects_unknown_enums(monkeypatch):
     response_filter = _load_module(
         monkeypatch,
@@ -635,7 +677,10 @@ def test_malformed_group_json_fails_closed_in_evaluate(monkeypatch):
         completion_text = '{"reply":"yes","target":"open"'
 
     class Provider:
+        prompts = []
+
         async def text_chat(self, **kwargs):
+            self.prompts.append(kwargs.get("prompt", ""))
             return ProviderResponse()
 
     class Context:
@@ -664,6 +709,21 @@ def test_malformed_group_json_fails_closed_in_evaluate(monkeypatch):
     assert result.reply is False
     assert result.source == "error"
     assert result.error == "invalid_structured_output"
+    assert "continuation 必须为 no" in Provider.prompts[0]
+
+    verified_result = _run(
+        decision.DecisionAI.evaluate(
+            Context(),
+            Event(),
+            "当前消息",
+            "",
+            "",
+            is_private=False,
+            continuation_context_available=True,
+        )
+    )
+    assert verified_result.error == "invalid_structured_output"
+    assert "历史尾部已确认当前发送者的上一条消息紧接着是机器人回复" in Provider.prompts[1]
 
 
 def test_participation_throttle_limits_only_unsolicited_group_replies(monkeypatch):
