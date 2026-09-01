@@ -50,12 +50,6 @@ from astrbot.api import logger
 from astrbot.api.all import *
 from astrbot.api.event import filter
 from astrbot.core.message.components import Plain
-from astrbot.core.message.message_event_result import MessageChain
-
-# aiocqhttp 平台相关（戳一戳功能仅支持该平台）
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
-    AiocqhttpAdapter,
-)
 from astrbot.core.provider.entities import ProviderRequest
 
 # 导入保留的工具模块
@@ -310,13 +304,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             "enable_command_prefix_match", False
         )
         self.command_prefix_match_list = self._cfg_list("command_prefix_match_list", [])
-        self.plugin_gcp_reset_allowed_user_ids = self._cfg_list(
-            "plugin_gcp_reset_allowed_user_ids", []
-        )
-        self.plugin_gcp_reset_here_allowed_user_ids = self._cfg_list(
-            "plugin_gcp_reset_here_allowed_user_ids", []
-        )
-
         # ========== @消息过滤配置 ==========
         self.enable_ignore_at_others = self._cfg_bool("enable_ignore_at_others", False)
         self.ignore_at_others_mode = self._cfg_choice(
@@ -1072,77 +1059,6 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             }
         )
 
-    @filter.on_platform_loaded()
-    async def on_platform_loaded(self):
-        """平台加载完成后，发送重启完成提示（gcp_reset 后使用）。"""
-        restart_umo = self._cfg("restart_umo")
-        platform_id = self._cfg("platform_id")
-        restart_start_ts = self._cfg("restart_start_ts")
-        if not restart_umo or not platform_id or not restart_start_ts:
-            return
-
-        platform = self.context.get_platform_inst(platform_id)
-        if not isinstance(platform, AiocqhttpAdapter):
-            logger.warning("未找到 aiocqhttp 平台实例，跳过重启提示")
-            try:
-                await self.context.send_message(
-                    session=restart_umo,
-                    message_chain=MessageChain(
-                        [
-                            Plain(
-                                "⚠️ 重启完成提示发送失败：当前平台不支持重启提示功能（仅支持aiocqhttp平台）"
-                            )
-                        ]
-                    ),
-                )
-            except Exception as e:
-                logger.error(f"发送重启失败提示时出错: {e}")
-            self.config["restart_umo"] = ""
-            self.config["restart_start_ts"] = 0
-            await asyncio.to_thread(self.config.save_config)
-            return
-
-        client = platform.get_client()
-        if not client:
-            logger.warning("未找到 CQHttp 实例，跳过重启提示")
-            try:
-                await self.context.send_message(
-                    session=restart_umo,
-                    message_chain=MessageChain(
-                        [Plain("⚠️ 重启完成提示发送失败：未找到CQHttp客户端实例")]
-                    ),
-                )
-            except Exception as e:
-                logger.error(f"发送重启失败提示时出错: {e}")
-            self.config["restart_umo"] = ""
-            self.config["restart_start_ts"] = 0
-            await asyncio.to_thread(self.config.save_config)
-            return
-
-        ws_connected = asyncio.Event()
-
-        @client.on_websocket_connection
-        def _(_):
-            ws_connected.set()
-
-        try:
-            await asyncio.wait_for(ws_connected.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            logger.warning(
-                "等待 aiocqhttp WebSocket 连接超时，可能未能发送重启完成提示。"
-            )
-
-        elapsed = time.time() - float(restart_start_ts)
-        await self.context.send_message(
-            session=restart_umo,
-            message_chain=MessageChain(
-                [Plain(f"AstrBot重启完成（耗时{elapsed:.2f}秒）")]
-            ),
-        )
-        self.config["restart_umo"] = ""
-        self.config["restart_start_ts"] = 0
-        self.config.save_config()
-
     # ============================================================
     # 重启辅助
     # ============================================================
@@ -1257,7 +1173,7 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             raise e
 
     # ============================================================
-    # 指令过滤与重置指令
+    # 指令过滤与平台 reset 联动
     # ============================================================
 
     # ============================================================

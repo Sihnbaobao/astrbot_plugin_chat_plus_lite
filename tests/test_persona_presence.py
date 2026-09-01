@@ -441,6 +441,10 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
     assert "continuation_context_available" not in source
 
     main_source = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
+    command_source = (UTILS_DIR / "command_processor.py").read_text(encoding="utf-8")
+    assert '@filter.command("gcp_reset")' not in command_source
+    assert '@filter.command("gcp_reset_here")' not in command_source
+    assert '@filter.command("gcp_clear_image_cache")' in command_source
     for preset in ("reserved", "active", "persona"):
         assert f"[persona_willingness preset: {preset}]" in main_source
     assert "仅回复直接@、明确提问、求助" not in main_source

@@ -103,7 +103,6 @@
   → 终止所有子进程
   → 调用 os.execv() 替换当前进程（原地重启）
   → 新进程启动，加载插件
-  → 插件 on_platform_loaded() 发送"重启完成"通知
 ```
 
 `os.execv()` 在 Linux/macOS 上是原子的进程替换，非常可靠。
@@ -120,7 +119,7 @@
 
 ### 潜在问题：插件直接调用重启 API
 
-当本插件通过 `gcp_reset` / `gcp_reset_here` / `gcp_clear_image_cache` 指令或 Web 面板触发重启时，流程如下：
+当本插件通过 `gcp_clear_image_cache` 指令或 Web 面板触发重启时，流程如下：
 
 ```
 插件 → POST /api/stat/restart-core
@@ -165,7 +164,6 @@
 
 | 场景 | 建议操作 |
 |------|----------|
-| 执行 `gcp_reset` / `gcp_reset_here` 后无响应 | 桌面端托盘图标 → 右键 → **Restart Backend** |
 | 执行 `gcp_clear_image_cache` 后无响应 | 同上 |
 | Web 面板「保存并重启」后面板断连 | 核心设置页的按钮会**自动轮询等待服务器恢复并刷新页面**，超时（35 秒）则提示手动 F5。流程图页的按钮不主动刷新（方便连续配置多项后统一重启） |
 | 后端状态显示「离线」但插件仍运行 | 桌面端可能丢失了进程跟踪，手动重启即可 |
@@ -248,15 +246,6 @@ git clone https://github.com/Sihnbaobao/astrbot_plugin_persona_presence.git
 ---
 
 ## 故障排除
-
-### Q: 桌面端执行 gcp_reset 后 AstrBot 无响应
-
-**原因**：桌面端（Windows）的重启策略是 `ManagedSkipGraceful`，插件通过 HTTP API 触发的 `os.execv()` 重启可能导致 Tauri 丢失子进程跟踪。
-
-**解决**：
-1. 右键桌面端系统托盘图标
-2. 点击 **Restart Backend**（重启后端）
-3. 等待后端重新启动
 
 ### Q: 桌面端找不到插件配置文件在哪里
 

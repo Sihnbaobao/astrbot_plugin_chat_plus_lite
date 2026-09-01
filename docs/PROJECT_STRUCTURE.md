@@ -51,7 +51,7 @@ main.py 不承担正式回复正文的人格生成，也不应重新引入随机
 | keyword_checker.py | 匹配触发关键词和黑名单关键词；触发词只提高注意力。 |
 | mention_processor.py | 处理 @机器人、@全体和 @其他用户边界。 |
 | poke_processor.py | 处理戳一戳过滤、反戳和回复后戳。 |
-| command_processor.py | 处理插件 reset、缓存清理等命令。 |
+| command_processor.py | 处理指令过滤和图片缓存清理命令。 |
 | save_processor.py | 保存用户消息、正式回复和批次历史。 |
 | memory_injector.py | 可选接入 livingmemory，记忆只作背景。 |
 | platform_ltm_helper.py | 平台图片描述和媒体辅助逻辑。 |
