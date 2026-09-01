@@ -445,6 +445,11 @@ def test_decision_prompt_has_no_removed_feature_references(monkeypatch):
         assert f"[persona_willingness preset: {preset}]" in main_source
     assert "仅回复直接@、明确提问、求助" not in main_source
     assert "reply_context_hint=reply_context_hint" in main_source
+    assert "if is_private and cm:" in main_source
+    assert "last_bot_reply_sender_id" in main_source
+    assert "current_sender_id == last_bot_reply_sender_id" in main_source
+    assert "_last_bot_reply_context" in main_source
+    assert "Suppressed unverified group continuation" in main_source
     assert "机器人自己的身份" not in main_source
     assert (
         "is_at_all_message\n                    )\n                    and not compact_current_text"
@@ -573,7 +578,7 @@ def test_participation_policy_requires_independent_side_comment(monkeypatch):
     assert weak_side_comment.reply is True
 
 
-def test_continuation_is_model_owned_without_local_context_gate(monkeypatch):
+def test_continuation_payload_stays_model_owned_before_runtime_boundary(monkeypatch):
     participation = _load_participation(monkeypatch)
     normalize = participation.normalize_decision_payload
     decision = normalize(

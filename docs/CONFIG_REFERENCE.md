@@ -57,7 +57,7 @@
 | decision_ai_timeout | int | 30 | 参与判断超时时静默；接管群聊时不会回退为全量回复。 |
 | decision_ai_reply_tendency | string | persona | persona 完全依据人格；reserved 更克制；active 更愿意参与有内容的公共话题。三种倾向都不能绕过消息对象、说话姿态和主动参与预算。 |
 
-群聊参与判断输出一个结构化 JSON，包含 reply、target、information、continuation、participation、interest、reason_code、confidence 和 topic_key。代码会校验枚举并再次执行消息对象和说话姿态边界；continuation 由 DecisionAI 根据近期对话和中间群聊内容判断，不单独构成本地回复门槛。旧 provider 返回精确 yes/no 仍可兼容，但不能借此获得 side 旁观权限。
+群聊参与判断输出一个结构化 JSON，包含 reply、target、information、continuation、participation、interest、reason_code、confidence 和 topic_key。代码会校验枚举并再次执行消息对象和说话姿态边界；continuation 的语义由 DecisionAI 根据近期对话和中间群聊内容判断，群聊 continuation=yes 还必须通过当前发送者关系的结构化事实校验。旧 provider 返回精确 yes/no 仍可兼容，但不能借此获得 side 旁观权限。
 
 ### 结构化参与字段
 
@@ -85,7 +85,7 @@ strong 和 weak 只描述这次人格意愿的力度：strong 可以展开，wea
 | judgment_reasoning_start_marker | string | [[GCP_REASONING_START]] | 分析块起始标记。 |
 | judgment_reasoning_end_marker | string | [[GCP_REASONING_END]] | 分析块结束标记。 |
 
-解析失败、JSON 不完整或未知枚举都按静默处理。不要依赖隐藏推理来实现业务规则；业务硬边界必须在 participation.py 中保持可测试。
+解析失败、JSON 不完整或未知枚举都按静默处理。不要依赖隐藏推理来实现业务规则；结构化决策边界在 participation.py 中保持可测试，依赖 event/history 事实的边界在 main.py 中保持可测试。
 
 ## 开放发言预算
 

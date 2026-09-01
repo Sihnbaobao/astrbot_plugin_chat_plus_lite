@@ -460,6 +460,8 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         self._pending_bot_replies: dict[str, list[str]] = {}
         # 群聊消息序号 {chat_key: int}
         self._group_message_seq: dict[str, int] = {}
+        # Last reply trigger {chat_key: {"sender_id": str, "group_seq": int}}.
+        self._last_bot_reply_context: dict[str, dict[str, Any]] = {}
         # agent完成标志 set[message_id]
         self._agent_done_flags: set[str] = set()
         # 重复消息拦截标记 {message_id: True}
@@ -554,6 +556,7 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
             self.raw_reply_cache.clear()
             self.pending_messages_cache.clear()
             self._group_message_seq.clear()
+            self._last_bot_reply_context.clear()
             self._arrival_seq_counter = 0
             self._pending_bot_replies.clear()
             self._agent_done_flags.clear()
@@ -2391,6 +2394,69 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                     "Direct image question detected; continuing to image relevance check"
                 )
 
+        # A continuation claim is a factual handoff, not a substitute for a
+        # current direct request. Verify its sender relation from structured history.
+        if not is_private and decision_result.continuation == "yes":
+            current_sender_id = str(event.get_sender_id() or "").strip()
+            bot_id = str(event.get_self_id() or "").strip()
+            _reply_context_key = ProbabilityManager.get_chat_key(
+                platform_name, is_private, chat_id
+            )
+            _last_reply_context = self._last_bot_reply_context.get(
+                _reply_context_key, {}
+            )
+            last_bot_reply_sender_id = str(
+                _last_reply_context.get("sender_id") or ""
+            ).strip()
+            if not last_bot_reply_sender_id:
+                previous_sender_id = ""
+                for historical_message in history_messages or []:
+                    sender = getattr(historical_message, "sender", None)
+                    sender_id = str(getattr(sender, "user_id", "") or "").strip()
+                    if (
+                        not sender_id
+                        or sender_id == "unknown"
+                        or sender_id.startswith(("history_user_", "refresh_user_"))
+                    ):
+                        continue
+                    if sender_id == bot_id:
+                        last_bot_reply_sender_id = previous_sender_id
+                    else:
+                        previous_sender_id = sender_id
+
+            continuation_verified = bool(
+                current_sender_id
+                and last_bot_reply_sender_id
+                and current_sender_id == last_bot_reply_sender_id
+            )
+            if not continuation_verified:
+                if is_explicitly_addressed:
+                    decision_result = decision_result.with_reply(
+                        decision_result.reply,
+                        continuation="no",
+                        reason_code=(
+                            "direct_request" if decision_result.reply else "none"
+                        ),
+                        source="policy",
+                    )
+                    logger.info(
+                        "[Continuation boundary] Unverified continuation downgraded to direct request "
+                        f"(current_sender={current_sender_id or 'unknown'}, "
+                        f"reply_sender={last_bot_reply_sender_id or 'unknown'})"
+                    )
+                else:
+                    decision_result = decision_result.with_reply(
+                        False,
+                        continuation="no",
+                        reason_code="none",
+                        source="policy",
+                    )
+                    logger.info(
+                        "[Continuation boundary] Suppressed unverified group continuation "
+                        f"(current_sender={current_sender_id or 'unknown'}, "
+                        f"reply_sender={last_bot_reply_sender_id or 'unknown'})"
+                    )
+
         should_reply = decision_result.reply
         if should_reply and not is_private:
             chat_key = ProbabilityManager.get_chat_key(
@@ -3252,10 +3318,11 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
                 context=self.context,
                 cached_messages=[],
             )
-            # 兼容性代码：尝试从 conversation_manager 获取额外的官方对话历史
+            # Generic role history lacks reliable group sender and timestamp metadata.
+            # Keep it for private chats, where the conversation is one-to-one.
             try:
                 cm = self.context.conversation_manager
-                if cm:
+                if is_private and cm:
                     uid = event.unified_msg_origin
                     cid = await cm.get_curr_conversation_id(uid)
                     if cid:
@@ -3809,6 +3876,49 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
 
             yield reply_result
 
+            if not is_private and not ai_error_flag:
+                reply_sender_id = str(
+                    (
+                        current_message_cache.get("sender_id")
+                        if isinstance(current_message_cache, dict)
+                        else None
+                    )
+                    or event.get_sender_id()
+                    or ""
+                ).strip()
+                if reply_sender_id:
+                    reply_chat_key = ProbabilityManager.get_chat_key(
+                        event.get_platform_name(), is_private, chat_id
+                    )
+                    try:
+                        reply_group_seq = int(
+                            (
+                                current_message_cache.get("group_seq", 0)
+                                if isinstance(current_message_cache, dict)
+                                else 0
+                            )
+                            or 0
+                        )
+                    except (TypeError, ValueError):
+                        reply_group_seq = 0
+                    previous_reply_context = self._last_bot_reply_context.get(
+                        reply_chat_key
+                    )
+                    try:
+                        previous_group_seq = int(
+                            (previous_reply_context or {}).get("group_seq", -1)
+                        )
+                    except (TypeError, ValueError):
+                        previous_group_seq = -1
+                    if (
+                        previous_reply_context is None
+                        or reply_group_seq >= previous_group_seq
+                    ):
+                        self._last_bot_reply_context[reply_chat_key] = {
+                            "sender_id": reply_sender_id,
+                            "group_seq": reply_group_seq,
+                        }
+
             # 安全兜底：agent完整流程结束后，检查是否有未保存的累积回复
             message_id = self._get_processing_id(event)
             if (
@@ -3875,126 +3985,34 @@ class PersonaPresence(PokeMixin, MentionMixin, CommandMixin, SaveMixin, Star):
         current_history: list,
         max_context: int,
     ) -> list | None:
-        """
-        并发等待后刷新历史消息
+        """Refresh sender-aware history after concurrent processing wait.
 
-        在并发等待期间，前一条消息的AI回复可能已经保存到官方对话历史中。
-        如果发现新消息则返回更新后的历史列表，否则返回None。
+        Args:
+            event: Current message event.
+            chat_id: Current group or private-chat identifier.
+            current_history: History used before the wait.
+            max_context: Maximum number of history messages to retain.
+
+        Returns:
+            A refreshed history list when new messages were persisted; otherwise None.
         """
         try:
-            cm = self.context.conversation_manager
-            if not cm:
-                return None
-
-            uid = event.unified_msg_origin
-            cid = await cm.get_curr_conversation_id(uid)
-            if not cid:
-                return None
-
-            conv = await cm.get_conversation(
-                unified_msg_origin=uid, conversation_id=cid
-            )
-            if not conv or not conv.history:
-                return None
-
-            try:
-                official_history = json.loads(conv.history)
-            except (json.JSONDecodeError, TypeError):
-                return None
-
-            if not isinstance(official_history, list) or len(official_history) == 0:
-                return None
-
-            self_id = event.get_self_id()
-            platform_name = event.get_platform_name()
-            is_private_chat = event.is_private_chat()
-
             try:
                 max_context = int(max_context)
             except (TypeError, ValueError):
                 max_context = -1
 
-            if isinstance(max_context, int) and max_context > 0:
-                msgs_iter = official_history[-max_context:]
-            elif isinstance(max_context, int) and max_context == 0:
+            if max_context == 0:
                 return None
-            else:
-                msgs_iter = official_history
 
-            refreshed_msgs = []
-            for idx, msg in enumerate(msgs_iter):
-                if (
-                    not isinstance(msg, dict)
-                    or "role" not in msg
-                    or "content" not in msg
-                ):
-                    continue
-
-                m = AstrBotMessage()
-                m.message_str = ContextManager._content_to_safe_text(msg.get("content"))
-                m.platform_name = platform_name
-                _ts = msg.get("timestamp") or msg.get("ts") or msg.get("time")
-                try:
-                    m.timestamp = int(float(_ts)) if _ts else int(time.time())
-                except Exception:
-                    m.timestamp = int(time.time())
-                m.type = (
-                    MessageType.GROUP_MESSAGE
-                    if not is_private_chat
-                    else MessageType.FRIEND_MESSAGE
-                )
-                if not is_private_chat:
-                    m.group_id = event.get_group_id()
-                m.self_id = self_id
-                m.session_id = getattr(event, "session_id", None) or (
-                    event.get_sender_id() if is_private_chat else event.get_group_id()
-                )
-                raw_message_id = (
-                    msg.get("message_id") or msg.get("id") or msg.get("mid") or ""
-                )
-                m.message_id = (
-                    str(raw_message_id) or f"official_refresh_{idx}_{m.timestamp}"
-                )
-
-                if msg["role"] == "assistant":
-                    m.sender = MessageMember(user_id=self_id, nickname="AI")
-                else:
-                    sender_info = (
-                        msg.get("sender")
-                        if isinstance(msg.get("sender"), dict)
-                        else None
-                    )
-                    sender_id = None
-                    sender_name = None
-                    if sender_info:
-                        sender_id = (
-                            sender_info.get("user_id")
-                            or sender_info.get("id")
-                            or sender_info.get("uid")
-                            or sender_info.get("qq")
-                            or sender_info.get("uin")
-                        )
-                        sender_name = sender_info.get("nickname") or sender_info.get(
-                            "name"
-                        )
-                    sender_id = (
-                        str(sender_id)
-                        if sender_id is not None
-                        else f"refresh_user_{idx}"
-                    )
-                    sender_name = sender_name or ("对方" if is_private_chat else "群友")
-                    m.sender = MessageMember(user_id=sender_id, nickname=sender_name)
-
-                refreshed_msgs.append(m)
-
-            _cutoff_ts = ContextManager.get_history_cutoff(chat_id)
-            if _cutoff_ts > 0 and refreshed_msgs:
-                refreshed_msgs = [
-                    _m
-                    for _m in refreshed_msgs
-                    if (getattr(_m, "timestamp", 0) or 0) >= _cutoff_ts
-                ]
-
+            refreshed_msgs = await ContextManager.get_history_messages_with_fallback(
+                event=event,
+                max_messages=max_context,
+                context=self.context,
+                cached_messages=[],
+            )
+            if not refreshed_msgs:
+                return None
             refreshed_msgs, _, _ = self.cache_manager.merge_cache_to_history(
                 chat_id=chat_id,
                 history_messages=refreshed_msgs,

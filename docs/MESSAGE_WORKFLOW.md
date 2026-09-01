@@ -103,7 +103,7 @@ DecisionAI 使用当前 Persona、当前发送者、当前正文、目标 signal
 - confidence 和有界 topic_key；
 - reply：yes 或 no。
 
-判断顺序是先确认消息对象和说话姿态，再由 Persona 结合正文、近期对话、插话是否接管、性格、情绪和聊天氛围做整体判断。模型“能回答”不等于一定要回复，也不再由本地代码强制要求某个 interest 等级。continuation 是模型对对话关系的判断，不是单独的回复许可。
+判断顺序是先确认消息对象和说话姿态，再由 Persona 结合正文、近期对话、插话是否接管、性格、情绪和聊天氛围做整体判断。模型“能回答”不等于一定要回复，也不再由本地代码强制要求某个 interest 等级。continuation 的语义判断属于 Persona；群聊 continuation=yes 还要通过当前发送者与最近机器人回复对应发送者的结构化事实校验。
 
 ## Phase 7：本地硬边界
 
@@ -111,7 +111,7 @@ ParticipationDecision normalizer 在模型之后重新执行不可被 prompt 绕
 
 1. 未知枚举、unclear 或 none participation 直接 no。
 2. target 与 participation 的说话姿态不一致时直接 no；other 只能采用 side 说话姿态，不能替其他用户作答。
-3. open、side 和 direct 的主观是否参与由 Persona 决定；continuation、interest、information、reason_code 不再单独构成本地兴趣门槛。
+3. open、side 和 direct 的主观是否参与由 Persona 决定；continuation 不构成本地兴趣门槛，但未经发送者事实校验的群聊续话不会进入正式回复；interest、information、reason_code 仍不单独构成本地兴趣门槛。
 4. reply=no 不能被后续代码重新解释为可以回答；@ 也不是强制命令。
 5. 空 JSON、JSON 解析失败或其他不可信输出静默。
 

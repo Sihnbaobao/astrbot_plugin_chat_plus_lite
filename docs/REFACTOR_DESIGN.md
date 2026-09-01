@@ -92,7 +92,7 @@ normalize_decision_payload 是最终边界：
 
 - target、participation、information、interest、reason_code、confidence 必须属于已知枚举。
 - 未知枚举、unclear 或 none participation 必须静默。
-- continuation 只是模型对上下文关系的分类，不作为本地回复否决；是否被短插话打断由 Persona 结合上下文判断。
+- continuation 的主题关系只是模型分类，不作为本地兴趣门槛；群聊 yes 仍需通过当前发送者关系的结构化事实校验，是否被短插话打断继续由 Persona 结合上下文判断。
 - target=other 时只能采用 side 说话姿态；是否确有独立公共补充由 Persona 判断，代码不再替它做主观内容裁决。
 - target、participation 或输出结构不可靠时必须静默；subjective interest、information 和 reason_code 本身不再由本地代码强制拦截。
 - reply=no 不能被后续代码重新解释为“可以回答”。

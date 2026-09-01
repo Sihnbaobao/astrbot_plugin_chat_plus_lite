@@ -68,7 +68,7 @@ DecisionAI 将当前消息分成两个互补维度。
 - continuation：由 DecisionAI 结合近期机器人回复和中间群聊内容判断；短暂的无关插话不自动结束续话，较早历史仅仅主题相似也不足以成为续话依据。
 - participation：direct、side、open、none。
 
-历史中的旧消息、未回复标记、长期记忆和 Smart follower 只能帮助解释当前文本，不能单独成为当前消息的发送者或目标。是否续话由模型结合当前消息判断，代码不再把消息是否严格相邻作为本地硬规则。
+历史中的旧消息、未回复标记、长期记忆和 Smart follower 只能帮助解释当前文本，不能单独成为当前消息的发送者或目标。是否续话的语义判断由模型结合当前消息完成；代码只校验 continuation=yes 所声称的发送者关系，不把消息是否严格相邻作为本地硬规则。
 
 ### 4.2 Persona 意愿
 
@@ -83,7 +83,7 @@ DecisionAI 将当前消息分成两个互补维度。
 | 未知枚举、unclear 或 none participation | no |
 | target 与 participation 说话姿态不一致 | no |
 | target=other 但 participation 不是 side | no |
-| continuation | 只描述上下文关系，不单独改写 reply |
+| continuation | 描述上下文关系；群聊 yes 还需通过发送者事实校验，不替 Persona 做主题判断 |
 | direct + Persona 明确不愿意回复 | no |
 | side + 人格有自己的相关补充 | 可 yes |
 | open + Persona 自然想参与 | 可 yes |
@@ -106,7 +106,7 @@ DecisionAI 将当前消息分成两个互补维度。
   "topic_key": "short diagnostic label"
 }
 
-utils/participation.py 是不可信模型输出和业务流程之间的边界。它会收敛布尔值、裁剪 topic_key、检查枚举，并执行消息对象和说话姿态规则。continuation 只作为模型对上下文关系的结构化描述，不单独构成本地回复门槛；interest 等主观字段也仍不单独构成本地回复门槛。
+utils/participation.py 是不可信模型输出和业务流程之间的边界。它会收敛布尔值、裁剪 topic_key、检查枚举，并执行消息对象和说话姿态规则。continuation 的主题关系仍由 Persona 判断；main.py 只对群聊 continuation=yes 做结构化发送者事实校验，不把 interest 等主观字段变成本地兴趣门槛。
 
 旧 provider 的精确 yes/no 仍兼容。它只能形成受限的旧式 direct/open 决定，不得用来制造 side 参与。看起来像 JSON 但解析失败的内容必须按失败静默，不能用宽松的自然语言前缀猜结果。
 
@@ -177,7 +177,8 @@ direct 和 private 不消耗预算。预算在正式生成前记录，用于防�
 
 - 黑名单和指令过滤仍在 DecisionAI 前执行。
 - 图片描述缓存、lazy/eager 模式和私聊纯媒体策略保持原有路径。
-- 官方历史仍是保存和会话 reset 的权威链路。
+- 官方历史仍是保存和会话 reset 的权威链路；群聊上下文只使用带真实发送者和时间元数据的历史来源，通用 role 历史只保留给私聊。
+- continuation 由 Persona 判断，但群聊的 continuation=yes 还必须通过当前发送者与最近机器人回复对应发送者的结构化事实校验；无法验证的非直接消息不会进入正式回复。
 - livingmemory 只作为可选上下文注入，不可以替当前消息指定目标。
 - 正式回复的重复过滤、内容过滤、工具和第三方 Hook 兼容逻辑继续由现有 ReplyHandler/main.py 管理。
 - 关键词配置保留用于注意力入口和兼容旧配置；keyword_smart_mode 不再代表“关闭后必回”。
@@ -188,7 +189,7 @@ direct 和 private 不消耗预算。预算在正式生成前记录，用于防�
 修改参与策略时必须同步检查：
 
 1. DecisionAI 的 system contract 与 parser。
-2. participation.py 的本地硬边界。
+2. participation.py 的决策边界和 main.py 的历史事实边界。
 3. main.py 的 force 分支、throttle 和 observation 缓存。
 4. ReplyHandler handoff 是否仍然最小且无推理泄露。
 5. Smart anchor/follower 的主对象不变量。
